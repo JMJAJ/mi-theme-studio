@@ -25,6 +25,8 @@ function appMenuItems(): MenuItem[] {
   const items: (MenuItem | null)[] = [
     cmd('file.new', 'New theme…'),
     cmd('file.open', 'Open theme…'),
+    cmd('file.openPhone', 'Open from phone…'),
+    cmd('file.openDownloaded', 'Open downloaded…'),
     ...(recent.length
       ? [{ heading: 'Recent' } as MenuItem, ...recent.map((r): MenuItem => ({ label: r.name.replace(/\.(mtz|zip)$/i, ''), icon: Clock3, onSelect: () => openPackage(r.path) }))]
       : []),

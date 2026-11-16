@@ -1,5 +1,6 @@
 // Start screen: three ways into a theme, then recent work.
-import { FileArchive, FilePlus2, FolderOpen, LifeBuoy, ShoppingBag, Smartphone, X } from 'lucide-react';
+import { Download, FileArchive, FilePlus2, FolderOpen, LifeBuoy, ShoppingBag, Smartphone, X } from 'lucide-react';
+import { openStoreTab } from '../../state/storeTab';
 import { useStore } from '../../state/store';
 import * as A from '../../state/actions';
 import { formatBytes, formatDateTime, relativeTime } from '../../lib/format';
@@ -63,6 +64,13 @@ export function Welcome() {
             <span className="sc-title">Start from the store</span>
             <span className="sc-desc">Download a free theme, font or wallpaper and remix it.</span>
           </button>
+          <button className="start-card" onClick={() => openStoreTab('device')}>
+            <span className="sc-icon">
+              <Smartphone />
+            </span>
+            <span className="sc-title">Open from your phone</span>
+            <span className="sc-desc">Edit a theme Theme Manager already has on the phone.</span>
+          </button>
         </div>
 
         <div className="start-columns">
@@ -112,6 +120,13 @@ export function Welcome() {
             <div className="section-head">
               <h2>Your phone</h2>
             </div>
+            <button className="surface start-phone" onClick={() => openStoreTab('downloads')} style={{ marginBottom: 10 }}>
+              <Download />
+              <span className="grow">
+                <strong>Downloaded themes</strong>
+                <span className="muted">Open or reuse themes you got from the store.</span>
+              </span>
+            </button>
             <button className="surface start-phone" onClick={() => A.goTo('phone')}>
               <Smartphone />
               <span className="grow">

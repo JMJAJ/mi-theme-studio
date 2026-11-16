@@ -49,8 +49,12 @@ mockIPC((cmd, args) => {
     case 'adb_log':
     case 'screenshots_list':
     case 'store_downloads':
-    case 'adb_cached_themes':
       return [];
+    case 'adb_cached_themes':
+      return ['Dark Anime', 'Faith', 'Grey Sonnet', 'Holy Sword'].map((title, i) => ({
+        localId: `00000000-0000-4000-8000-00000000000${i}`, title, author: 'Xiaomi', designer: null, description: null,
+        components: ['icons', 'lockscreen', 'wallpaper'], hasPreview: false,
+      }));
     case 'adb_status':
       return { location: { path: 'adb.exe', source: 'bundled' }, searched: [], version: '1.0.41', devices: withPhone ? [device] : [], error: null };
     case 'adb_details':
@@ -82,7 +86,7 @@ if (params.get('menu')) setTimeout(() => (document.querySelector('[aria-label="M
 const click = params.get('click');
 if (click) {
   setTimeout(() => {
-    const target = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === click);
+    const target = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === click || b.textContent?.trim().startsWith(click));
     target?.click();
   }, 1600);
 }

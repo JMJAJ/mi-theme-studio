@@ -54,10 +54,11 @@ import {
   useThemeStore,
 } from '../../state/themeStore';
 import { DeviceThemes } from './DeviceThemes';
+import { useStoreTabRequest, type StoreTab } from '../../state/storeTab';
 
 const CONSENT_KEY = 'mts.catalog.consent.v1';
 
-type Tab = 'discover' | 'categories' | 'downloads' | 'device';
+type Tab = StoreTab;
 
 const KINDS: { kind: ProductKind; label: string; noun: string; icon: typeof Palette }[] = [
   { kind: 'theme', label: 'Themes', noun: 'theme', icon: Palette },
@@ -897,7 +898,16 @@ function rootFor(tab: 'discover' | 'categories', product: ProductKind): Route {
 export function CatalogView() {
   const region = useThemeStore((s) => s.region);
   const freeOnly = useThemeStore((s) => s.freeOnly);
-  const [tab, setTab] = useState<Tab>('discover');
+  const [tab, setTab] = useState<Tab>(() => useStoreTabRequest.getState().tab ?? 'discover');
+  const tabRequest = useStoreTabRequest((s) => s.seq);
+  useEffect(() => {
+    const requested = useStoreTabRequest.getState().tab;
+    if (requested) {
+      setTab(requested);
+      setStack([]);
+      useStoreTabRequest.setState({ tab: null });
+    }
+  }, [tabRequest]);
   const [product, setProductState] = useState<ProductKind>(loadProduct);
   const [stack, setStack] = useState<Route[]>([]);
   const setProduct = (next: ProductKind) => {
@@ -985,7 +995,9 @@ export function CatalogView() {
           <input className="input" placeholder={`Search ${KINDS.find((k) => k.kind === product)?.label.toLowerCase()}…`} value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search the store" />
         </form>
         <span className="grow" />
-        <label className="check" title="Hide paid themes (only free themes can be downloaded)">
+        {tab !== 'device' && (
+          <>
+            <label className="check" title="Hide paid themes (only free themes can be downloaded)">
           <input type="checkbox" checked={freeOnly} onChange={(e) => setFreeOnly(e.target.checked)} /> Free only
         </label>
         <select
@@ -1003,6 +1015,8 @@ export function CatalogView() {
             </option>
           ))}
         </select>
+          </>
+        )}
         <button className="btn btn-sm" onClick={() => (tab === 'downloads' && !stack.length ? void refreshDownloads() : setRefreshKey((k) => k + 1))} title="Refresh">
           <RefreshCw />
         </button>

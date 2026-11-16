@@ -1,9 +1,10 @@
 // Themes already cached by Theme Manager on the connected phone.
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, BookOpen, Globe, ImageOff, Info, Loader2 } from 'lucide-react';
+import { AlertTriangle, BookOpen, FolderOpen, Globe, ImageOff, Info, Loader2 } from 'lucide-react';
 import { api, errorMessage } from '../../lib/api';
 import type { CachedDeviceTheme, DeviceEntry } from '../../lib/types';
 import { log, useStore } from '../../state/store';
+import { openPhoneThemeAsProject } from '../../state/actions';
 
 const NO_DEVICES: DeviceEntry[] = [];
 
@@ -13,12 +14,14 @@ function DeviceThemeCard({
   isOpening,
   openBusy,
   onOpenReference,
+  onOpenProject,
 }: {
   serial: string;
   theme: CachedDeviceTheme;
-  isOpening: boolean;
+  isOpening: false | 'project' | 'ref';
   openBusy: boolean;
   onOpenReference: (theme: CachedDeviceTheme) => void;
+  onOpenProject: (theme: CachedDeviceTheme) => void;
 }) {
   const cardRef = useRef<HTMLElement>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -92,8 +95,11 @@ function DeviceThemeCard({
           {theme.components.length ? theme.components.map((part) => <span className="badge badge-outline" key={part}>{part}</span>) : <span className="muted">No component list</span>}
         </div>
         <div className="device-theme-actions">
-          <button className="btn btn-sm" disabled={openBusy} onClick={() => onOpenReference(theme)}>
-            {isOpening ? <Loader2 className="spin" /> : <BookOpen />} {isOpening ? 'Opening reference…' : 'Open as reference'}
+          <button className="btn btn-sm btn-primary" disabled={openBusy} onClick={() => onOpenProject(theme)} title="Copy this theme from the phone and edit it as a new project">
+            {isOpening === 'project' ? <Loader2 className="spin" /> : <FolderOpen />} {isOpening === 'project' ? 'Opening…' : 'Open'}
+          </button>
+          <button className="btn btn-sm" disabled={openBusy} onClick={() => onOpenReference(theme)} title="Open read-only beside your project to copy parts from it">
+            {isOpening === 'ref' ? <Loader2 className="spin" /> : <BookOpen />} {isOpening === 'ref' ? 'Opening…' : 'As reference'}
           </button>
         </div>
       </div>
@@ -109,6 +115,7 @@ export function DeviceThemes({ refreshKey, compact = false }: { refreshKey: numb
   const [error, setError] = useState<string | null>(null);
   const [referenceError, setReferenceError] = useState<string | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [openingKind, setOpeningKind] = useState<'project' | 'ref'>('ref');
   const request = useRef(0);
   const ready = !!selectedSerial && attachedDevices.some((d) => d.serial === selectedSerial && d.state === 'device');
 
@@ -139,6 +146,7 @@ export function DeviceThemes({ refreshKey, compact = false }: { refreshKey: numb
   const openReference = async (theme: CachedDeviceTheme) => {
     if (!selectedSerial || openingId) return;
     setOpeningId(theme.localId);
+    setOpeningKind('ref');
     setReferenceError(null);
     try {
       const snapshot = await api.adbCachedThemeReference(selectedSerial, theme.localId);
@@ -158,12 +166,24 @@ export function DeviceThemes({ refreshKey, compact = false }: { refreshKey: numb
     }
   };
 
+  const openProject = async (theme: CachedDeviceTheme) => {
+    if (!selectedSerial || openingId) return;
+    setOpeningId(theme.localId);
+    setOpeningKind('project');
+    setReferenceError(null);
+    try {
+      await openPhoneThemeAsProject(selectedSerial, theme.localId, theme.title);
+    } finally {
+      setOpeningId(null);
+    }
+  };
+
   return (
     <>
       {!compact && (
       <div className="banner banner-info" style={{ marginBottom: 16 }}>
         <Info />
-        <span>Themes already cached by Theme Manager on the selected phone. Opening one creates a read-only reference so you can copy parts into your project; the phone cache stays untouched.</span>
+        <span>Themes already cached by Theme Manager on the selected phone. Open one to edit a copy as a new project, or open it as a read-only reference to copy parts into your theme. The phone's copy stays untouched.</span>
       </div>
       )}
       {referenceError && <div className="banner banner-err" style={{ marginBottom: 14 }}><AlertTriangle /><span>{referenceError}</span></div>}
@@ -199,9 +219,10 @@ export function DeviceThemes({ refreshKey, compact = false }: { refreshKey: numb
                 key={`${selectedSerial}:${theme.localId}`}
                 serial={selectedSerial!}
                 theme={theme}
-                isOpening={openingId === theme.localId}
+                isOpening={openingId === theme.localId ? openingKind : false}
                 openBusy={openingId !== null}
                 onOpenReference={(t) => void openReference(t)}
+                onOpenProject={(t) => void openProject(t)}
               />
             ))}
           </div>

@@ -138,6 +138,8 @@ export const api = {
     call<number[]>('adb_cached_theme_preview', { serial, localId }),
   adbCachedThemeReference: (serial: string, localId: string) =>
     call<ProjectSnapshot>('adb_cached_theme_reference', { serial, localId }),
+  adbCachedThemeOpen: (serial: string, localId: string) =>
+    call<ProjectSnapshot>('adb_cached_theme_open', { serial, localId }),
   adbScreenshot: (serial: string, model: string | null, opId: string) =>
     call<ScreenshotInfo>('adb_screenshot', { serial, model, opId }),
   screenshotsList: () => call<ScreenshotInfo[]>('screenshots_list'),

@@ -997,6 +997,30 @@ pub async fn adb_cached_theme_reference(
     .await
 }
 
+/// Open a theme cached by Theme Manager on the phone as an editable, untitled
+/// project; the phone's copy stays untouched and saving asks for a location.
+#[tauri::command]
+pub async fn adb_cached_theme_open(
+    app: AppHandle,
+    serial: String,
+    local_id: String,
+) -> AppResult<ProjectSnapshot> {
+    blocking(app, move |state, app| {
+        let package =
+            adb::theme_cache::reference_package(&adb_for(state, app)?, &serial, &local_id)?;
+        let mut project =
+            Project::from_bytes(&package.archive, &package.name, None, Limits::default())?;
+        if let Some(report) = project.import_report.as_mut() {
+            report.warnings.extend(package.warnings);
+        }
+        let snap = snapshot(&project, "main");
+        *lock(&state.main) = Some(project);
+        *lock(&state.last_autosave) = None;
+        Ok(snap)
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn adb_screenshot(
     app: AppHandle,

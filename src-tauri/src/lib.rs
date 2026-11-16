@@ -89,6 +89,7 @@ pub fn run() {
             commands::adb_cached_themes,
             commands::adb_cached_theme_preview,
             commands::adb_cached_theme_reference,
+            commands::adb_cached_theme_open,
             commands::adb_screenshot,
             commands::screenshots_list,
             commands::screenshot_save,

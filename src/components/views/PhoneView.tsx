@@ -117,7 +117,7 @@ export function PhoneView() {
           <section className="section">
             <div className="section-head">
               <h2>Themes on this phone</h2>
-              <span className="muted">Open one as a reference and copy parts into your theme</span>
+              <span className="muted">Open one to edit a copy, or as a reference to copy parts from</span>
               <div className="actions">
                 <button className="btn btn-ghost btn-sm" onClick={() => setRefreshKey((k) => k + 1)}>
                   Refresh

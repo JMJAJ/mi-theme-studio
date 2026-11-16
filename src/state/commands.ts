@@ -41,6 +41,7 @@ import { DEFAULT_LAYOUT, getState, setState, updateLayout, type StoreState } fro
 import { parentOf } from '../lib/paths';
 import { resetZoom, zoomIn, zoomOut } from './zoom';
 import { stopStream, useMirrorStream } from './mirrorStream';
+import { openStoreTab } from './storeTab';
 import { startInAppMirror } from '../components/common/MirrorButton';
 
 export interface Command {
@@ -78,6 +79,8 @@ export const COMMANDS: Command[] = [
   // File
   { id: 'file.new', group: 'File', label: 'New theme…', shortcut: 'Ctrl+N', icon: FilePlus2, run: A.newProject, global: true },
   { id: 'file.open', group: 'File', label: 'Open package…', shortcut: 'Ctrl+O', icon: FolderOpen, run: () => A.openPackage(), global: true },
+  { id: 'file.openPhone', group: 'File', label: 'Open a theme from the phone…', icon: Smartphone, run: () => openStoreTab('device') },
+  { id: 'file.openDownloaded', group: 'File', label: 'Open a downloaded theme…', icon: Download, run: () => openStoreTab('downloads') },
   { id: 'file.openReference', group: 'File', label: 'Open reference package…', icon: BookOpen, enabled: hasProject, run: A.openReference },
   { id: 'file.save', group: 'File', label: 'Save', shortcut: 'Ctrl+S', icon: Save, enabled: hasProject, run: () => void A.save(), global: true },
   { id: 'file.saveAs', group: 'File', label: 'Save as…', shortcut: 'Ctrl+Shift+S', enabled: hasProject, run: () => void A.saveAs(), global: true },
@@ -167,7 +170,7 @@ export type MenuEntry = string | '-' | { heading: string };
 
 /** Menu bar layout (command ids; '-' is a separator). */
 export const MENUS: { label: string; items: MenuEntry[] }[] = [
-  { label: 'File', items: ['file.new', 'file.open', 'recent', '-', 'file.save', 'file.saveAs', 'file.exportCopy', 'file.report', '-', 'file.openReference', '-', 'file.close'] },
+  { label: 'File', items: ['file.new', 'file.open', 'file.openPhone', 'file.openDownloaded', 'recent', '-', 'file.save', 'file.saveAs', 'file.exportCopy', 'file.report', '-', 'file.openReference', '-', 'file.close'] },
   { label: 'Edit', items: ['edit.undo', 'edit.redo', '-', 'edit.rename', 'edit.duplicate', 'edit.move', 'edit.delete', '-', 'edit.findInFiles', 'edit.goToFile', 'edit.palette'] },
   { label: 'Go', items: ['go.design', 'go.files', 'go.store', 'go.phone', 'go.check'] },
   { label: 'View', items: ['view.phone', 'view.sidebar', 'view.inspector', 'view.dock', '-', 'view.problems', 'view.output', 'view.adbLog', 'view.history', '-', 'view.zoomIn', 'view.zoomOut', 'view.zoomReset', '-', 'view.resetLayout'] },

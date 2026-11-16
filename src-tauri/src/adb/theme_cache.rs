@@ -237,16 +237,11 @@ fn theme_root(adb: &Adb, serial: &str) -> AppResult<&'static str> {
     valid_serial(serial)?;
     for root in THEME_ROOTS {
         let meta_dir = format!("{root}/.data/meta/theme");
-        if adb
-            .shell(
-                serial,
-                &["test", "-d", &meta_dir],
-                Duration::from_secs(8),
-                None,
-            )
-            .is_ok()
-        {
-            return Ok(root);
+        match adb.shell(serial, &["test", "-d", &meta_dir], Duration::from_secs(8), None) {
+            Ok(_) => return Ok(root),
+            // A missing folder fails the test; anything else (adb gone, timeout) is the real problem.
+            Err(e) if matches!(e.code, "adb_missing" | "timeout" | "cancelled") => return Err(e),
+            Err(_) => {}
         }
     }
     Err(AppError::not_found(
@@ -728,5 +723,29 @@ mod tests {
         assert!(project
             .files
             .contains_key("icons!/res/drawable-xhdpi/sample.png"));
+    }
+}
+
+/// Lists the phone's cached themes and opens each as a project.
+/// `MTS_ADB=<adb.exe> MTS_SERIAL=<serial> cargo test theme_cache::live -- --ignored --nocapture`
+#[cfg(test)]
+mod live {
+    use super::*;
+    use crate::package::archive::Limits;
+    use crate::project::Project;
+    use std::sync::Arc;
+
+    #[test]
+    #[ignore]
+    fn opens_cached_themes_as_projects() {
+        let (Ok(path), Ok(serial)) = (std::env::var("MTS_ADB"), std::env::var("MTS_SERIAL")) else { return };
+        let adb = Adb { path: path.into(), log: Arc::new(|_| {}) };
+        let themes = list(&adb, &serial).expect("list");
+        println!("{} cached themes", themes.len());
+        for theme in themes.iter().take(4) {
+            let package = reference_package(&adb, &serial, &theme.local_id).expect("package");
+            let project = Project::from_bytes(&package.archive, &package.name, None, Limits::default()).expect("project");
+            println!("  {} -> {} ({} files, {} warnings)", theme.title, project.title(), project.files.len(), package.warnings.len());
+        }
     }
 }

@@ -751,6 +751,17 @@ export async function openDownloadAsProject(theme: DownloadedTheme) {
   return true;
 }
 
+/** Open a theme cached by Theme Manager on the phone as an editable, untitled project. */
+export async function openPhoneThemeAsProject(serial: string, localId: string, title: string) {
+  if (!(await ensureCanDiscard('open another theme'))) return false;
+  const snapshot = await guard('Open theme', () => api.adbCachedThemeOpen(serial, localId), `Copying ${title} from the phone…`);
+  if (!snapshot) return false;
+  resetWorkspace(snapshot);
+  for (const warning of snapshot.importReport?.warnings ?? []) log('warning', warning);
+  toast('success', `Opened “${title}” from the phone as a new project. Saving asks where to store your copy.`);
+  return true;
+}
+
 const MEDIA_LABELS: Record<MediaTarget, string> = {
   homeWallpaper: 'home screen wallpaper',
   lockWallpaper: 'lock screen wallpaper',

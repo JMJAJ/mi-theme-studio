@@ -90,6 +90,11 @@ if (click) {
     target?.click();
   }, 1600);
 }
+if (params.get('logs')) {
+  const { useStore } = await import('../../src/state/store');
+  setTimeout(() => useStore.setState((s) => ({ dockTab: 'output', layout: { ...s.layout, dock: true }, logs: Array.from({ length: 120 }, (_, i) => ({ id: i, atMs: Date.now() - (120 - i) * 1000, level: i % 9 ? 'info' : 'warning', message: `Log line ${i + 1}` })) as never })), 900);
+  setTimeout(() => document.querySelectorAll('.dock-body').forEach((el) => (el.scrollTop = el.scrollHeight)), 2200);
+}
 const section = params.get('section');
 const part = params.get('part');
 if (section || part) {

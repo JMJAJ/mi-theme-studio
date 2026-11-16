@@ -83,7 +83,7 @@ export function PhoneView() {
               </div>
               {project && (
                 <p className="ph-note">
-                  <Info /> Try on phone adds the theme to Theme Manager and applies it; each try replaces the previous one. Pick another theme in Theme Manager to switch back.
+                  <Info /> Try on phone adds the theme to Theme Manager and applies it; each try replaces the previous one. On global HyperOS, Theme Manager wants a Xiaomi license for icons, lock screen and system UI, which Xiaomi only gives to unchanged store themes.
                 </p>
               )}
             </div>

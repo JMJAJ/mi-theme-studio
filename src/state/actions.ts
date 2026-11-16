@@ -1026,7 +1026,15 @@ export async function tryOnPhone() {
     else toast('warning', 'The theme is open in Theme Manager on the phone. Tap Apply there to finish.');
   } catch (error) {
     if (errorCode(error) === 'cancelled') log('info', 'Try on cancelled');
-    else toast('error', `Try on phone: ${errorMessage(error)}`);
+    else if (errorCode(error) === 'license') {
+      log('warning', `Try on: ${errorMessage(error)}`);
+      await choiceDialog({
+        title: 'Theme Manager needs a Xiaomi license for this theme',
+        message:
+          'On global HyperOS, Theme Manager only applies icons, lock screens, system UI and other parts when Xiaomi’s server issues a license for them. Xiaomi only licenses unmodified store themes, so it refuses edited or new ones; that is the “downloadRight” error on the phone. Unchanged store themes still try on fine, and the phone panel mockup and live mirror keep working for your own theme. Chinese Theme Manager builds (with the editor entry point) or rooted phones can apply custom themes. Mi Theme Studio does not fake licenses.',
+        choices: [{ id: 'ok', label: 'OK', primary: true }],
+      });
+    } else toast('error', `Try on phone: ${errorMessage(error)}`);
   } finally {
     operations.delete(opId);
     setState({ busy: null, exportProgress: null });

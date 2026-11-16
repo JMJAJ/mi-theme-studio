@@ -32,6 +32,12 @@ const MARKER: &str = "mtsTryOn";
 const APPLY_BUTTON_ID: &str = "com.android.thememanager:id/applyBtn";
 const MAX_PART_BYTES: u64 = 128 * 1024 * 1024;
 
+/// Parts Theme Manager applies without a Xiaomi-issued license
+/// (`ThemeResourceConstants.kB`). Everything else (icons, lock screen,
+/// system UI, fonts…) needs a signed rights file that Xiaomi's server only
+/// issues for unmodified store themes.
+pub const LICENSE_FREE_PARTS: [&str; 7] = ["audioeffect", "wallpaper", "lockscreen", "ringtone", "alarm", "notification", "bootaudio"];
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TryOnResult {
@@ -126,7 +132,7 @@ fn sha1_hex(data: &[u8]) -> String {
 
 /// Writes the library records for `package` into `stage` (laid out like
 /// `.data`). Returns the theme ID and the part codes.
-pub fn stage_library(package: &[u8], title: &str, author: &str, stage: &Path) -> AppResult<(String, Vec<String>)> {
+pub fn stage_library(package: &[u8], title: &str, author: &str, stage: &Path, license_free_only: bool) -> AppResult<(String, Vec<String>)> {
     let io = |e: std::io::Error| AppError::io("Could not stage the theme for the phone", e);
     let mut zip = ZipArchive::new(Cursor::new(package))?;
     let theme_id = new_id();
@@ -156,6 +162,9 @@ pub fn stage_library(package: &[u8], title: &str, author: &str, stage: &Path) ->
             continue;
         }
         let Some(code) = resource_code(&name) else { continue };
+        if license_free_only && !LICENSE_FREE_PARTS.contains(&code.as_str()) {
+            continue;
+        }
         if codes.contains(&code) {
             continue;
         }
@@ -173,7 +182,11 @@ pub fn stage_library(package: &[u8], title: &str, author: &str, stage: &Path) ->
         codes.push(code);
     }
     if codes.is_empty() {
-        return Err(AppError::invalid("The theme has no parts Theme Manager can apply."));
+        return Err(AppError::invalid(if license_free_only {
+            "The theme has no wallpapers or sounds to try on."
+        } else {
+            "The theme has no parts Theme Manager can apply."
+        }));
     }
     theme["subResources"] = Value::Array(subs);
     if !previews.is_empty() {
@@ -217,7 +230,38 @@ pub fn enabled_node(xml: &str, resource_id: &str) -> Option<(i32, i32)> {
     find_node(xml, resource_id)
 }
 
+/// Theme Manager logs `DownloadRightsTask return: <code>`; anything but
+/// 100000 means the license request failed. Returns the server's code.
+pub fn refused_license(log: &str) -> Option<String> {
+    let failed = log.lines().any(|l| l.split("DownloadRightsTask return: ").nth(1).is_some_and(|c| c.trim() != "100000"));
+    if !failed {
+        return None;
+    }
+    let code = log
+        .lines()
+        .rev()
+        .find_map(|l| l.split("downloadRights, resultCode=").nth(1))
+        .map(|c| c.trim().to_string())
+        .unwrap_or_else(|| "an error".into());
+    Some(code)
+}
+
 impl Adb {
+    fn device_time(&self, serial: &str) -> Option<String> {
+        // adb joins arguments with spaces, so the format is quoted as one shell word.
+        let out = self.shell(serial, &["date '+%m-%d %H:%M:%S.000'"], Duration::from_secs(10), None).ok()?;
+        let t = out.stdout_text().trim().to_string();
+        let ok = t.len() == 18 && t.bytes().all(|b| b.is_ascii_digit() || b" -:.".contains(&b));
+        ok.then_some(t)
+    }
+
+    /// Whether Theme Manager's license request failed since `since` (device time).
+    fn license_refused(&self, serial: &str, since: &str) -> Option<String> {
+        let command = format!("logcat -d -t '{since}' -s ThemeDebug:I DrmService:I");
+        let out = self.shell(serial, &[&command], Duration::from_secs(10), None).ok()?;
+        refused_license(&out.stdout_text())
+    }
+
     /// Modification time of the active theme folder (seconds).
     fn theme_stamp(&self, serial: &str) -> Option<String> {
         let out = self.shell(serial, &["stat", "-c", "%Y", "/data/system/theme", "/data/system/theme/config.config"], Duration::from_secs(10), None).ok()?;
@@ -275,6 +319,7 @@ impl Adb {
         package: &[u8],
         title: &str,
         stage: &Path,
+        license_free_only: bool,
         cancel: Option<Arc<AtomicBool>>,
     ) -> AppResult<TryOnResult> {
         valid_serial(serial)?;
@@ -286,7 +331,7 @@ impl Adb {
 
         let _ = std::fs::remove_dir_all(stage);
         std::fs::create_dir_all(stage).map_err(|e| AppError::io("Could not prepare the staging folder", e))?;
-        let (local_id, parts) = stage_library(package, title, "Mi Theme Studio", stage)?;
+        let (local_id, parts) = stage_library(package, title, "Mi Theme Studio", stage, license_free_only)?;
         steps.push(format!("Prepared {} parts: {}", parts.len(), parts.join(", ")));
 
         let removed = self.remove_previous_try_ons(serial);
@@ -315,6 +360,7 @@ impl Adb {
         // The active theme lives in /data/system/theme; its timestamp changes when
         // Theme Manager finishes applying. That is the success signal.
         let before = self.theme_stamp(serial);
+        let since = self.device_time(serial);
         let mut applied = false;
         let mut pressed = false;
         for attempt in 0..3 {
@@ -347,6 +393,17 @@ impl Adb {
                 if before.is_some() && self.theme_stamp(serial) != before {
                     applied = true;
                     break;
+                }
+                if let Some(code) = since.as_deref().and_then(|t| self.license_refused(serial, t)) {
+                    // Theme Manager asked Xiaomi for a license and was refused.
+                    let _ = self.shell(serial, &["input", "keyevent", "KEYCODE_BACK"], Duration::from_secs(10), None);
+                    self.remove_previous_try_ons(serial);
+                    return Err(AppError::new(
+                        "license",
+                        format!(
+                            "Theme Manager would only apply this theme with a license from Xiaomi, and Xiaomi only issues licenses for unmodified store themes (server answered {code}). The in-app preview and mirror still work, and unchanged store themes can be tried on."
+                        ),
+                    ));
                 }
                 if self.ui_dump(serial).is_ok_and(|xml| xml.contains("Applying") || xml.contains("applying")) {
                     started = true;
@@ -421,7 +478,7 @@ mod tests {
         }
         let package = w.finish().unwrap().into_inner();
         let stage = std::env::temp_dir().join(format!("mts-stage-{}", new_id()));
-        let (id, codes) = stage_library(&package, "Test", "Me", &stage).unwrap();
+        let (id, codes) = stage_library(&package, "Test", "Me", &stage, false).unwrap();
         assert_eq!(codes, vec!["icons", "launcher"]);
         let theme: Value = serde_json::from_slice(&std::fs::read(stage.join(format!("meta/theme/{id}.mrm"))).unwrap()).unwrap();
         assert_eq!(theme["titles"]["fallback"], "Test");
@@ -431,7 +488,20 @@ mod tests {
         let sub = theme["subResources"][1]["localId"].as_str().unwrap();
         assert_eq!(std::fs::read(stage.join(format!("content/launcher/{sub}.mrc"))).unwrap(), b"PK\x03\x04home");
         assert!(stage.join(format!("preview/theme/{id}/en_US_icons_0.jpg")).exists());
-        std::fs::remove_dir_all(stage).unwrap();
+        std::fs::remove_dir_all(&stage).unwrap();
+        assert!(stage_library(&package, "Test", "Me", &stage, true).is_err());
+        let _ = std::fs::remove_dir_all(&stage);
+    }
+
+    #[test]
+    fn spots_refused_licenses_in_the_log() {
+        let log = "I/DrmService( 1): downloadRights, resultCode=413
+I/ThemeDebug( 1): DownloadRightsTask return: 100004
+";
+        assert_eq!(refused_license(log).as_deref(), Some("413"));
+        assert_eq!(refused_license("I/ThemeDebug( 1): DownloadRightsTask return: 100000
+"), None);
+        assert_eq!(refused_license(""), None);
     }
 }
 
@@ -448,7 +518,7 @@ mod live {
         let adb = Adb { path: path.into(), log: Arc::new(|_| {}) };
         let package = std::fs::read(&mtz).unwrap();
         let stage = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/tmp/try-on");
-        let result = adb.try_on(&serial, &package, "MTS Try-on Test", &stage, None).expect("try on");
+        let result = adb.try_on(&serial, &package, "MTS Try-on Test", &stage, std::env::var("MTS_FREE_ONLY").is_ok(), None).expect("try on");
         for step in &result.steps {
             println!("  {step}");
         }

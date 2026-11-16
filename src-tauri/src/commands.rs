@@ -1211,7 +1211,7 @@ pub async fn adb_try_on(
         let built = build_package(state, Some(app))?;
         let stage = state.paths.staging_dir().join("try-on");
         let cancel = register_op(state, &op_id);
-        let result = adb.try_on(&serial, &built.data, &title, &stage, cancel);
+        let result = adb.try_on(&serial, &built.data, &title, &stage, false, cancel);
         finish_op(state, &op_id);
         let _ = std::fs::remove_dir_all(&stage);
         result

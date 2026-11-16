@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   windows-installer:
@@ -30,8 +30,8 @@ jobs:
           npm test
       - name: Test native backend
         run: cargo test --manifest-path src-tauri/Cargo.toml
-      - name: Build NSIS installer
-        run: npm run build:win
+      - name: Build NSIS installer (version from package.json)
+        run: npm run build:win:ci
       - uses: actions/upload-artifact@v7
         with:
           name: mi-theme-studio-windows
@@ -39,3 +39,15 @@ jobs:
             release/*.exe
             release/*.zip
           if-no-files-found: error
+      - name: Publish GitHub release for this version
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          tag="v$version"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists; the build is kept as a workflow artifact only."
+          else
+            gh release create "$tag" release/*.exe release/*.zip               --target "$GITHUB_SHA"               --title "Mi Theme Studio $tag"               --generate-notes               --latest
+          fi

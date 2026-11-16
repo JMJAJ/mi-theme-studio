@@ -19,7 +19,8 @@
     "tauri": "tauri",
     "fetch:scrcpy": "node scripts/fetch-scrcpy.mjs",
     "version:bump": "node scripts/bump-version.mjs",
-    "build:win": "node scripts/bump-version.mjs && node scripts/fetch-scrcpy.mjs && tauri build --bundles nsis && node scripts/stage-windows-installer.mjs"
+    "build:win": "node scripts/bump-version.mjs && node scripts/fetch-scrcpy.mjs && tauri build --bundles nsis && node scripts/stage-windows-installer.mjs",
+    "build:win:ci": "node scripts/fetch-scrcpy.mjs && tauri build --bundles nsis && node scripts/stage-windows-installer.mjs"
   },
   "dependencies": {
     "@codemirror/lang-xml": "^6.1.0",

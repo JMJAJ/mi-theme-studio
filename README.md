@@ -49,7 +49,7 @@ Requirements: Node.js 22.12+, Rust (stable, MSVC toolchain), Visual Studio C++ b
 ```sh
 npm install
 npm start            # tauri dev: Vite dev server + native app
-npm run build:win    # release build + NSIS installer in src-tauri/target/release/bundle/nsis/
+npm run build:win    # release build + installer in release/
 ```
 
 Tests and checks:

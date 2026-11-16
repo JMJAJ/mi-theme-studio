@@ -954,12 +954,10 @@ export function CatalogView() {
   return (
     <div className="center-body">
       <div className="toolbar">
-        {stack.length > 0 ? (
+        {stack.length > 0 && (
           <button className="btn btn-ghost btn-sm" onClick={back} title="Back">
             <ArrowLeft /> Back
           </button>
-        ) : (
-          <Sparkles width={16} className="muted" />
         )}
         <div className="segmented" role="group" aria-label="Store section">
           <button aria-pressed={tab === 'discover' && !stack.length} onClick={() => switchTab('discover')}>

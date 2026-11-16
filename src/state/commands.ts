@@ -40,6 +40,8 @@ import * as A from './actions';
 import { DEFAULT_LAYOUT, getState, setState, updateLayout, type StoreState } from './store';
 import { parentOf } from '../lib/paths';
 import { resetZoom, zoomIn, zoomOut } from './zoom';
+import { stopStream, useMirrorStream } from './mirrorStream';
+import { startInAppMirror } from '../components/common/MirrorButton';
 
 export interface Command {
   id: string;
@@ -131,7 +133,8 @@ export const COMMANDS: Command[] = [
   { id: 'device.refresh', group: 'Device', label: 'Refresh devices', icon: RefreshCw, run: () => A.refreshAdb(false, true) },
   { id: 'device.screenshot', group: 'Device', label: 'Capture device screenshot', shortcut: 'Ctrl+Alt+S', icon: Camera, enabled: deviceReady, run: async () => { const shot = await A.captureScreenshot(); if (shot) A.openSingleton('preview'); } },
   { id: 'device.send', group: 'Device', label: 'Copy package to device…', icon: Send, enabled: (s) => hasProject(s) && deviceReady(s), run: A.sendToDevice },
-  { id: 'device.mirror', group: 'Device', label: 'Mirror screen (live)', icon: Smartphone, enabled: deviceReady, run: () => (A.mirrorRunning() ? A.stopMirror() : A.startMirror()) },
+  { id: 'device.mirror', group: 'Device', label: 'Mirror screen (live)', icon: Smartphone, enabled: deviceReady, run: () => (useMirrorStream.getState().status === 'live' ? void stopStream() : startInAppMirror()) },
+  { id: 'device.mirrorWindow', group: 'Device', label: 'Mirror screen in a separate window', icon: Smartphone, enabled: deviceReady, run: () => (A.mirrorRunning() ? A.stopMirror() : A.startMirror()) },
   { id: 'device.restart', group: 'Device', label: 'Restart ADB server', icon: RefreshCw, enabled: (s) => !!s.adb?.location, run: A.restartAdb },
   { id: 'device.locate', group: 'Device', label: 'Set adb.exe location…', icon: Wrench, run: A.chooseAdbPath },
 

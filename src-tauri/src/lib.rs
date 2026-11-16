@@ -102,6 +102,11 @@ pub fn run() {
             commands::mirror_start,
             commands::mirror_stop,
             commands::mirror_status,
+            commands::stream_start,
+            commands::stream_stop,
+            commands::stream_touch,
+            commands::stream_scroll,
+            commands::stream_key,
             commands::ninepatch_info,
             commands::ninepatch_update,
             commands::project_search,
@@ -122,6 +127,7 @@ pub fn run() {
                 // Close a running scrcpy window with the app.
                 let state = app.state::<AppState>();
                 state::lock(&state.mirror).take();
+                state::lock(&state.stream).take();
             }
         });
 }

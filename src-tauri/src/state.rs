@@ -58,6 +58,8 @@ pub struct AppState {
     pub last_autosave: Mutex<Option<Option<u64>>>,
     pub paths: AppPaths,
     pub mirror: Mutex<Option<crate::adb::mirror::Mirror>>,
+    /// In-app mirror stream.
+    pub stream: Mutex<Option<crate::adb::stream::Stream>>,
     /// Bundled resources (scrcpy).
     pub resource_dir: Option<std::path::PathBuf>,
 }
@@ -74,6 +76,7 @@ impl AppState {
             last_autosave: Mutex::new(None),
             paths,
             mirror: Mutex::new(None),
+            stream: Mutex::new(None),
             resource_dir: None,
         }
     }

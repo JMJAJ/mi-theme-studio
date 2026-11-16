@@ -1,12 +1,11 @@
 // Always-visible phone on the right: the theme being edited rendered on a
 // phone frame, or the real connected phone (screenshot / live mirror).
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Camera, ChevronLeft, ChevronRight, Lock, MonitorSmartphone, Send, Smartphone, Sparkles, Usb, X } from 'lucide-react';
+import { Camera, ChevronLeft, ChevronRight, Circle, ExternalLink, Loader2, Lock, MonitorPlay, MonitorSmartphone, Send, Smartphone, Sparkles, Square, Usb, X } from 'lucide-react';
 import { resourceUrl, screenshotUrl } from '../../lib/api';
 import { fileName } from '../../lib/paths';
-import { formatTime } from '../../lib/format';
 import { findWallpaper, pickIcons } from '../views/PreviewView';
-import { MirrorButton } from '../common/MirrorButton';
+import { attachCanvas, startStream, stopStream, streamKey, streamScroll, streamTouch, useMirrorStream } from '../../state/mirrorStream';
 import * as A from '../../state/actions';
 import { updateLayout, useStore } from '../../state/store';
 import { useDeviceSummary } from './deviceSummary';
@@ -115,6 +114,63 @@ function ThemeScreen({ screen, box, ratio, previewIndex }: { screen: Screen; box
   );
 }
 
+/** The decoded mirror; pointer and wheel input go back to the phone as touches and scrolls. */
+function LiveCanvas() {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const down = useRef(false);
+  const pending = useRef<{ x: number; y: number } | null>(null);
+  const raf = useRef(0);
+  useEffect(() => {
+    attachCanvas(ref.current);
+    return () => attachCanvas(null);
+  }, []);
+  const toVideo = (e: { clientX: number; clientY: number }) => {
+    const el = ref.current!;
+    const r = el.getBoundingClientRect();
+    const { width, height } = useMirrorStream.getState();
+    return { x: ((e.clientX - r.left) / r.width) * width, y: ((e.clientY - r.top) / r.height) * height };
+  };
+  const release = (e: React.PointerEvent) => {
+    if (!down.current) return;
+    down.current = false;
+    const p = toVideo(e);
+    streamTouch(1, p.x, p.y);
+  };
+  return (
+    <canvas
+      ref={ref}
+      className="fill pp-canvas"
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        down.current = true;
+        const p = toVideo(e);
+        streamTouch(0, p.x, p.y);
+      }}
+      onPointerMove={(e) => {
+        if (!down.current) return;
+        pending.current = toVideo(e);
+        if (!raf.current) {
+          raf.current = requestAnimationFrame(() => {
+            raf.current = 0;
+            if (pending.current) streamTouch(2, pending.current.x, pending.current.y);
+          });
+        }
+      }}
+      onPointerUp={release}
+      onPointerCancel={release}
+      onWheel={(e) => {
+        const p = toVideo(e);
+        streamScroll(p.x, p.y, -Math.sign(e.deltaY) * Math.min(3, Math.max(1, Math.abs(e.deltaY) / 100)));
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        streamKey('back');
+      }}
+    />
+  );
+}
+
 export function PhonePanel() {
   const project = useStore((s) => s.project);
   const screenshots = useStore((s) => s.screenshots);
@@ -144,6 +200,12 @@ export function PhonePanel() {
   const ratio = deviceSize ? deviceSize.height / deviceSize.width : 2400 / 1080;
   const shot = screenshots[screenshots.length - 1];
   const effectiveMode: Mode = project ? mode : 'live';
+  const stream = useMirrorStream();
+  const streaming = stream.status === 'live' || stream.status === 'starting';
+  // A running mirror always shows here.
+  useEffect(() => {
+    if (streaming) setMode('live');
+  }, [streaming]);
 
   // Show the real screen right away instead of an empty frame.
   const autoShot = useRef(false);
@@ -219,24 +281,36 @@ export function PhonePanel() {
             <span className={`dot dot-${device.tone}`} />
             <span className="grow ellipsis">
               <strong>{device.ready ? device.label : device.label === 'No device' ? 'No phone connected' : device.label}</strong>
-              <span className="faint">{device.ready ? ` · ${details?.hyperosVersion ? `HyperOS ${details.hyperosVersion}` : details?.miuiVersion ? `MIUI ${details.miuiVersion}` : 'connected'}` : ''}</span>
+              <span className="faint">
+                {device.ready ? ` · ${details?.hyperosVersion ? `HyperOS ${details.hyperosVersion}` : details?.miuiVersion ? `MIUI ${details.miuiVersion}` : 'connected'}` : ''}
+              </span>
             </span>
-            <button className="btn btn-ghost btn-sm" onClick={() => A.goTo('phone')}>
-              Details
-            </button>
+            {streaming && <span className="pp-live">{stream.status === 'live' ? `Live · ${stream.fps} fps` : 'Starting…'}</span>}
           </div>
           <div className="pp-stage" ref={stageRef}>
             {device.ready ? (
-              <Frame ratio={shot?.width && shot.height ? shot.height / shot.width : ratio} box={box} camera={false}>
-                {shot ? (
-                  <img className="fill" src={screenshotUrl(shot.id)} alt="Phone screenshot" style={{ objectFit: 'contain' }} />
-                ) : (
-                  <div className="pp-empty">
-                    <Camera />
-                    Capture the phone screen, or mirror it live.
+              streaming ? (
+                <Frame ratio={stream.width && stream.height ? stream.height / stream.width : ratio} box={box} camera={false}>
+                  <LiveCanvas />
+                  {stream.status === 'starting' && (
+                    <div className="pp-empty pp-overlay">
+                      <Loader2 className="spin" />
+                      Starting the mirror on the phone…
+                    </div>
+                  )}
+                </Frame>
+              ) : (
+                <Frame ratio={shot?.width && shot.height ? shot.height / shot.width : ratio} box={box} camera={false}>
+                  {shot && <img className="fill" src={screenshotUrl(shot.id)} alt="Phone screenshot" style={{ objectFit: 'contain' }} />}
+                  <div className={`pp-empty ${shot ? 'pp-overlay is-soft' : ''}`}>
+                    {stream.status === 'error' && <span className="err pp-note">{stream.error}</span>}
+                    <button className="btn btn-primary" onClick={() => void startStream()}>
+                      <MonitorPlay /> Mirror live
+                    </button>
+                    <span className="pp-note">See and use the phone right here.</span>
                   </div>
-                )}
-              </Frame>
+                </Frame>
+              )
             ) : (
               <div className="pp-connect">
                 <Usb />
@@ -254,16 +328,42 @@ export function PhonePanel() {
           </div>
           {device.ready && (
             <div className="pp-actions">
-              <button className="btn btn-sm" disabled={capturing || !!busy} onClick={() => void capture()}>
-                <Camera /> {capturing ? 'Capturing…' : 'Screenshot'}
-              </button>
-              <MirrorButton className="btn btn-sm" />
-              {project && (
-                <button className="btn btn-sm btn-primary" disabled={!!busy} onClick={() => void A.sendToDevice()} title="Export the theme and copy it to the phone">
-                  <Send /> Send theme
-                </button>
+              {streaming ? (
+                <>
+                  <div className="pp-nav" role="group" aria-label="Phone buttons">
+                    <button className="tb-icon" title="Back" aria-label="Back" onClick={() => streamKey('back')}>
+                      <ChevronLeft />
+                    </button>
+                    <button className="tb-icon" title="Home" aria-label="Home" onClick={() => streamKey('home')}>
+                      <Circle />
+                    </button>
+                    <button className="tb-icon" title="Recent apps" aria-label="Recent apps" onClick={() => streamKey('recents')}>
+                      <Square />
+                    </button>
+                  </div>
+                  <span className="grow" />
+                  <button className="btn btn-sm" disabled={capturing || !!busy} onClick={() => void capture()} title="Save a full-resolution screenshot" aria-label="Screenshot">
+                    <Camera />
+                  </button>
+                  <button className="btn btn-sm" onClick={() => void stopStream()}>
+                    <X /> Stop
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button className="btn btn-sm" disabled={capturing || !!busy} onClick={() => void capture()}>
+                    <Camera /> {capturing ? 'Capturing…' : 'Screenshot'}
+                  </button>
+                  <button className="btn btn-sm btn-ghost btn-icon" onClick={() => void A.startMirror()} title="Open the phone in a separate window" aria-label="Open the phone in a separate window">
+                    <ExternalLink />
+                  </button>
+                  {project && (
+                    <button className="btn btn-sm btn-primary" disabled={!!busy} onClick={() => void A.sendToDevice()} title="Export the theme and copy it to the phone">
+                      <Send /> Send theme
+                    </button>
+                  )}
+                </>
               )}
-              {shot && <span className="faint pp-note">Captured {formatTime(shot.atMs)}</span>}
             </div>
           )}
         </>

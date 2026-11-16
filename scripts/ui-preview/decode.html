@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="UTF-8" /><title>Mirror decode test</title>
+  <style>body{margin:0;background:#111;color:#eee;font:14px sans-serif;display:flex;gap:16px;padding:16px}canvas{height:640px;background:#000}</style></head>
+  <body>
+    <canvas id="c"></canvas>
+    <pre id="log"></pre>
+    <script type="module">
+      import { attachCanvas, __feedForTest, useMirrorStream } from '/src/state/mirrorStream.ts';
+      import { useStore } from '/src/state/store.ts';
+      const log = (t) => (document.getElementById('log').textContent += t + '\n');
+      attachCanvas(document.getElementById('c'));
+      const buf = new Uint8Array(await (await fetch('/__fixture/stream.bin')).arrayBuffer());
+      let at = 0, n = 0;
+      const view = new DataView(buf.buffer);
+      const msgs = [];
+      while (at + 4 <= buf.length) { const len = view.getUint32(at); msgs.push(buf.subarray(at + 4, at + 4 + len)); at += 4 + len; }
+      log('messages: ' + msgs.length + ' VideoDecoder: ' + (typeof VideoDecoder));
+      for (const m of msgs) { if (m[0] === 3) continue; __feedForTest(m.slice()); n++; if (n % 10 === 0) await new Promise((r) => setTimeout(r, 15)); }
+      setTimeout(() => { const s = useMirrorStream.getState(); log('state: ' + JSON.stringify(s)); const c = document.getElementById('c'); log('canvas: ' + c.width + 'x' + c.height); log('app log: ' + JSON.stringify(useStore.getState().logs.slice(-5).map((l) => l.message))); }, 2500);
+    </script>
+  </body>
+</html>

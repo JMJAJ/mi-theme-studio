@@ -1220,6 +1220,96 @@ pub async fn mirror_stop(app: AppHandle) -> AppResult<adb::mirror::MirrorStatus>
     .await
 }
 
+// ----- in-app mirror (scrcpy protocol) ---------------------------------------------
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StreamInfo {
+    serial: String,
+    width: u32,
+    height: u32,
+}
+
+/// Start streaming the phone screen into the app. Binary messages (see
+/// `adb::stream::MSG_*`) arrive on `channel` until the stream ends.
+#[tauri::command]
+pub async fn stream_start(
+    app: AppHandle,
+    serial: String,
+    max_size: Option<u32>,
+    channel: tauri::ipc::Channel<tauri::ipc::InvokeResponseBody>,
+) -> AppResult<StreamInfo> {
+    blocking(app, move |state, app| {
+        let jar = state
+            .resource_dir
+            .as_deref()
+            .map(|r| r.join("scrcpy").join("scrcpy-server"))
+            .filter(|p| p.is_file())
+            .ok_or_else(|| AppError::not_found("The bundled mirror server is missing. Reinstall Mi Theme Studio."))?;
+        let adb = adb_for(state, app)?;
+        lock(&state.stream).take();
+        let stream = adb::stream::start(
+            adb::stream::StartOptions { adb: &adb.path, server_jar: &jar, serial: &serial, max_size: max_size.unwrap_or(1280), log: adb.log.clone() },
+            move |message| {
+                let _ = channel.send(tauri::ipc::InvokeResponseBody::Raw(message));
+            },
+        )?;
+        let info = StreamInfo { serial: stream.serial.clone(), width: stream.width, height: stream.height };
+        *lock(&state.stream) = Some(stream);
+        Ok(info)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn stream_stop(app: AppHandle) -> AppResult<()> {
+    blocking(app, |state, _| {
+        lock(&state.stream).take();
+        Ok(())
+    })
+    .await
+}
+
+fn with_stream(state: &AppState, message: &[u8]) -> AppResult<()> {
+    let guard = lock(&state.stream);
+    let stream = guard.as_ref().ok_or_else(|| AppError::new("mirror", "The mirror is not running."))?;
+    stream.send(message)
+}
+
+/// Touch at (x, y) in video pixels; `width`/`height` is the current video size.
+#[tauri::command]
+pub fn stream_touch(app: AppHandle, action: u8, x: i32, y: i32, width: u16, height: u16) -> AppResult<()> {
+    if action > adb::stream::ACTION_MOVE {
+        return Err(AppError::invalid("Invalid touch action."));
+    }
+    with_stream(&app.state::<AppState>(), &adb::stream::touch_message(action, x, y, width, height))
+}
+
+#[tauri::command]
+pub fn stream_scroll(app: AppHandle, x: i32, y: i32, width: u16, height: u16, hscroll: f32, vscroll: f32) -> AppResult<()> {
+    with_stream(&app.state::<AppState>(), &adb::stream::scroll_message(x, y, width, height, hscroll, vscroll))
+}
+
+/// Press a phone button: back, home, recents, power, volumeUp, volumeDown.
+#[tauri::command]
+pub fn stream_key(app: AppHandle, key: String) -> AppResult<()> {
+    let state = app.state::<AppState>();
+    if key == "back" {
+        with_stream(&state, &adb::stream::back_message(adb::stream::ACTION_DOWN))?;
+        return with_stream(&state, &adb::stream::back_message(adb::stream::ACTION_UP));
+    }
+    let code = match key.as_str() {
+        "home" => 3,
+        "recents" => 187,
+        "power" => 26,
+        "volumeUp" => 24,
+        "volumeDown" => 25,
+        _ => return Err(AppError::invalid("Unknown key.")),
+    };
+    with_stream(&state, &adb::stream::key_message(adb::stream::ACTION_DOWN, code))?;
+    with_stream(&state, &adb::stream::key_message(adb::stream::ACTION_UP, code))
+}
+
 // ----- nine-patch -------------------------------------------------------------------
 
 #[tauri::command]

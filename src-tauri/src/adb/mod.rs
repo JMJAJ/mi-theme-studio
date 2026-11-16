@@ -7,6 +7,7 @@
 //! docs/device-integration.md.
 
 pub mod mirror;
+pub mod stream;
 pub mod parse;
 pub mod runner;
 pub mod theme_apply;

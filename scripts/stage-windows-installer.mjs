@@ -1,4 +1,5 @@
-import { copyFile, cp, lstat, mkdir, readFile, readdir, rm } from 'node:fs/promises';
+import { copyFile, cp, lstat, mkdir, readFile, readdir, realpath, rename, rm, symlink } from 'node:fs/promises';
+import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,10 +18,36 @@ if (!installerStat?.isFile()) {
   throw new Error(`Expected Windows installer was not produced: ${installerPath}`);
 }
 
-await mkdir(outputDir, { recursive: true });
-const outputStat = await lstat(outputDir);
-if (!outputStat.isDirectory() || outputStat.isSymbolicLink()) {
-  throw new Error(`Installer output must be a real directory: ${outputDir}`);
+// On Windows, `release` is a junction to a folder outside the project.
+// Programs that live inside the project folder can be barred from writing to
+// %TEMP% by workspace sandboxes, and an NSIS setup must unpack there; through
+// the junction the setup's real location is outside the project, so it runs.
+// CI keeps a plain folder.
+const externalDir = process.env.MTS_RELEASE_DIR ?? path.join(os.homedir(), `${tauriConfig.productName} Releases`);
+const useJunction = process.platform === 'win32' && !process.env.CI;
+if (useJunction) {
+  await mkdir(externalDir, { recursive: true });
+  const current = await lstat(outputDir).catch(() => null);
+  if (current && !current.isSymbolicLink()) {
+    if (!current.isDirectory()) throw new Error(`Not a directory: ${outputDir}`);
+    for (const entry of await readdir(outputDir)) {
+      await rename(path.join(outputDir, entry), path.join(externalDir, entry)).catch(async () => {
+        await cp(path.join(outputDir, entry), path.join(externalDir, entry), { recursive: true });
+      });
+    }
+    await rm(outputDir, { recursive: true, force: true });
+  }
+  if (!(await lstat(outputDir).catch(() => null))) await symlink(externalDir, outputDir, 'junction');
+  const target = await realpath(outputDir);
+  if (target.toLowerCase() !== (await realpath(externalDir)).toLowerCase()) {
+    throw new Error(`${outputDir} points to ${target}, expected ${externalDir}. Remove it and build again.`);
+  }
+} else {
+  await mkdir(outputDir, { recursive: true });
+  const outputStat = await lstat(outputDir);
+  if (!outputStat.isDirectory() || outputStat.isSymbolicLink()) {
+    throw new Error(`Installer output must be a real directory: ${outputDir}`);
+  }
 }
 
 for (const entry of await readdir(outputDir, { withFileTypes: true })) {
@@ -33,7 +60,7 @@ for (const entry of await readdir(outputDir, { withFileTypes: true })) {
   if (!isOldBuildOutput) continue;
 
   const oldPath = path.resolve(outputDir, entry.name);
-  if (path.dirname(oldPath) !== outputDir) {
+  if (path.dirname(oldPath) !== path.resolve(outputDir)) {
     throw new Error(`Refusing to remove a path outside the release directory: ${oldPath}`);
   }
   await rm(oldPath, { recursive: entry.isDirectory() || entry.isSymbolicLink(), force: true });

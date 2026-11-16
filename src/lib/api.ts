@@ -2,6 +2,8 @@
 // device work happens in Rust; the UI only calls these.
 import { invoke } from '@tauri-apps/api/core';
 import type {
+  ApplyResult,
+  ThemeManagerSupport,
   MediaTarget,
   NinePatch,
   NinePatchUpdate,
@@ -144,6 +146,10 @@ export const api = {
   adbSendPackage: (serial: string, opId: string) =>
     call<SendResult>('adb_send_package', { serial, confirmed: true, opId }),
 
+  adbThemeSupport: (serial: string) => call<ThemeManagerSupport>('adb_theme_support', { serial }),
+  adbOpenStoreItem: (serial: string, moduleId: string) => call<void>('adb_open_store_item', { serial, moduleId }),
+  adbOpenThemeSettings: (serial: string) => call<void>('adb_open_theme_settings', { serial }),
+  adbApplyTheme: (serial: string, opId: string) => call<ApplyResult>('adb_apply_theme', { serial, confirmed: true, opId }),
   ninepatchInfo: (slot: Slot, path: string) => call<NinePatch>('ninepatch_info', { slot, path }),
   ninepatchUpdate: (path: string, update: NinePatchUpdate) => call<ProjectSnapshot>('ninepatch_update', { path, update }),
   projectSearch: (options: SearchOptions) => call<SearchResult>('project_search', { options }),

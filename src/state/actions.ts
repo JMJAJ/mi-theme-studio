@@ -931,6 +931,69 @@ export async function sendToDevice() {
   }
 }
 
+/** Open a store item's page in Theme Manager on the selected phone. */
+export async function openStoreItemOnDevice(moduleId: string, name: string) {
+  const device = readyDevice();
+  if (!device) {
+    toast('warning', 'Connect and authorize a phone first.');
+    return;
+  }
+  const ok = await guard('Open on phone', () => api.adbOpenStoreItem(device.serial, moduleId));
+  if (ok !== undefined) toast('success', `Opened “${name}” in Theme Manager on the phone`);
+}
+
+export async function openThemeSettingsOnDevice() {
+  const device = readyDevice();
+  if (!device) return;
+  const ok = await guard('Open Theme Manager', () => api.adbOpenThemeSettings(device.serial));
+  if (ok !== undefined) toast('success', 'Opened Theme Manager on the phone');
+}
+
+/**
+ * Apply the open project on the phone through Theme Manager's editor entry
+ * point (only offered when the phone supports it), then capture a screenshot
+ * so the result can be checked.
+ */
+export async function applyOnDevice() {
+  const device = readyDevice();
+  const project = getState().project;
+  if (!device || !project) {
+    toast('warning', 'Open a package and connect an authorized device first.');
+    return;
+  }
+  if (!(await applyAllDrafts())) return;
+  const details = getState().deviceDetails[device.serial];
+  const name = details?.marketName ?? details?.model ?? device.model ?? device.serial;
+  const ok = await confirmDialog({
+    title: `Apply “${project.title}” on ${name}?`,
+    message: 'The current package is exported, copied to the phone and handed to Theme Manager, which applies it as the active theme.',
+    detail: [
+      'This uses the same entry point as Xiaomi’s desktop theme editor. No root is used and no system settings are changed.',
+      'To go back, pick your previous theme in Theme Manager → My themes (it stays installed).',
+      'A screenshot is taken afterwards so you can check the result.',
+    ],
+    confirmLabel: 'Apply on phone',
+  });
+  if (!ok) return;
+  const opId = newOpId('apply');
+  operations.set(opId, 'Applying on phone');
+  setState({ busy: 'Applying theme on the phone…' });
+  try {
+    const result = await api.adbApplyTheme(device.serial, opId);
+    for (const step of result.steps) log('info', `Apply: ${step}`);
+    toast('success', `Sent to Theme Manager (${formatBytes(result.bytes)}). Check the phone.`);
+    await new Promise((r) => setTimeout(r, 2500));
+    const shot = await captureScreenshot();
+    if (shot) openSingleton('preview');
+  } catch (error) {
+    if (errorCode(error) === 'cancelled') log('info', 'Apply cancelled');
+    else toast('error', `Apply on phone: ${errorMessage(error)}`);
+  } finally {
+    operations.delete(opId);
+    setState({ busy: null, exportProgress: null });
+  }
+}
+
 // ---------------------------------------------------------------------------
 // settings & recovery
 

@@ -29,8 +29,8 @@
 ## Device
 
 - [ ] Live screen mirroring (evaluate an optional `scrcpy` integration); today the preview uses screenshots and says so.
-- [ ] Investigate supported Theme Manager intents for opening/applying a pushed `.mtz` without root.
-- [ ] Apply flow only with explicit confirmation, a way back to the previous theme, and verification on the device.
+- [x] Theme Manager intents investigated (docs/device-integration.md): editor apply entry point (absent in global builds), deep links to store items and settings.
+- [x] Apply on phone where Theme Manager supports it: confirmation, verified push, screenshot afterwards; previous theme stays in My themes. Not yet exercised on a supporting (China) build.
 - [ ] Device-resolution preview of individual resources (e.g. icon masks at the device's density).
 
 ## Editor and package quality

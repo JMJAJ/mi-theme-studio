@@ -21,7 +21,21 @@ The **Online themes → On device** tab browses themes already cached on the sel
 
 **Open as reference** reads supported `.mrc` modules that are already in the Theme Manager cache and assembles them into a temporary in-memory MTZ view. It maps known resource codes to common MTZ paths, preserves theme title and author, and warns about missing or unsupported modules. The reference stays read-only; selected files can be copied into the active project through the existing attribution workflow. This does not modify the phone, call store download or rights endpoints, or read/change `.mra` rights records. Unknown resource types still need mapping work.
 
+## Applying themes and opening Theme Manager
+
+Findings (Theme Manager global 3.0.5.19, verified read-only on a HyperOS 3.0 / Android 16 phone):
+
+- **Xiaomi's desktop editor** applies themes by pushing the package and starting `com.android.thememanager/com.android.thememanager.ApplyThemeForScreenshot` with `-e api_called_from ThemeEditor -e theme_file_path <path>`. Builds that declare `com.android.thememanager.support3.0` use a two-step flow: remove `/sdcard/Download/auto/temp.mtz`, start with `-e ver2_step ver2_step_init`, wait a second, push to `/sdcard/Android/data/com.android.thememanager/files/temp.mtz`, start again with `-e ver2_step ver2_step_apply`. Older builds push to `/sdcard/temp.mtz` and start once.
+- **That activity is not in the global build.** `cmd package resolve-activity --components -n …ApplyThemeForScreenshot` returns "No activity found" and the support marker is absent, so desktop apply is not possible there.
+- **Deep links** (`theme://zhuti.xiaomi.com/…`) are exported and resolve: `/detail/<moduleId>` (store item page), `/settingstheme`, `/settingsfont`, `/settingswallpaper`, `/search`, `/uipages/…`. `ViewLocalResource://view.local.resource#<localId>` opens an already-imported theme by Theme Manager's own local ID, not by file path.
+- Local imports go through `theme/.data/import/theme/` pairs of metadata records written by Theme Manager itself; the app does not fabricate those.
+
+What the app does:
+
+- **Device → Apply on phone** is shown only when `ApplyThemeForScreenshot` resolves. It asks for confirmation, exports the project, runs the flow above with a verified push, then takes a screenshot so the result can be checked. The previous theme stays installed and can be re-applied from Theme Manager → My themes; the app does not try to switch back automatically (that would need Theme Manager's private state). On builds without the entry point the button is disabled and explained. The apply flow follows Xiaomi's tool but has not been exercised on a phone that supports it.
+- **Open Theme Manager on phone** and, in the store, **Open in Theme Manager on phone** start the deep links above. Paid themes can be bought there.
+- Support detection is read-only: `dumpsys package com.android.thememanager` and `cmd package resolve-activity`.
+
 ## Not implemented (intentionally)
 
-- **Applying a theme.** No supported, verified Theme Manager intent or command for installing/applying an `.mtz` from the desktop is known yet. A future implementation needs: a verified flow on current HyperOS, an explicit confirmation, a way back to the previous theme, and verification that the device actually switched. Until then the app only copies the file and tells the user to open it on the phone.
 - **Live mirroring.** The preview can refresh screenshots every 5 seconds and labels this as not live. A real mirror (for example an optional `scrcpy` integration) is on the roadmap.

@@ -547,6 +547,7 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
   const [error, setError] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<number | null>(null);
   const [picking, setPicking] = useState(false);
+  const phoneReady = useStore((s) => !!s.adb?.devices.some((d) => d.serial === s.selectedSerial && d.state === 'device'));
 
   useEffect(() => {
     let cancelled = false;
@@ -718,6 +719,15 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
                 Saved to the app’s downloads folder and checked against the store’s SHA-1.
               </span>
             </>
+          )}
+          {phoneReady && (
+            <button
+              className="btn btn-ghost btn-sm"
+              title="Opens this item's page in Theme Manager on the connected phone, where you can apply or buy it"
+              onClick={() => void A.openStoreItemOnDevice(detail.moduleId, detail.name)}
+            >
+              <Smartphone /> Open in Theme Manager on phone
+            </button>
           )}
         </aside>
       </div>

@@ -1119,6 +1119,57 @@ pub async fn adb_send_package(
     .await
 }
 
+// ----- Theme Manager on the phone ------------------------------------------------
+
+#[tauri::command]
+pub async fn adb_theme_support(app: AppHandle, serial: String) -> AppResult<adb::theme_apply::ThemeManagerSupport> {
+    blocking(app, move |state, app| adb_for(state, app)?.theme_manager_support(&serial)).await
+}
+
+#[tauri::command]
+pub async fn adb_open_store_item(app: AppHandle, serial: String, module_id: String) -> AppResult<()> {
+    blocking(app, move |state, app| adb_for(state, app)?.open_store_item(&serial, &module_id)).await
+}
+
+#[tauri::command]
+pub async fn adb_open_theme_settings(app: AppHandle, serial: String) -> AppResult<()> {
+    blocking(app, move |state, app| adb_for(state, app)?.open_theme_settings(&serial)).await
+}
+
+/// Build the open project and apply it with Theme Manager's editor entry
+/// point. Requires explicit confirmation and Theme Manager support.
+#[tauri::command]
+pub async fn adb_apply_theme(
+    app: AppHandle,
+    serial: String,
+    confirmed: bool,
+    op_id: Option<String>,
+) -> AppResult<adb::theme_apply::ApplyResult> {
+    blocking(app, move |state, app| {
+        if !confirmed {
+            return Err(AppError::new("unconfirmed", "Applying a theme on the phone requires confirmation."));
+        }
+        let adb = adb_for(state, app)?;
+        let support = adb.theme_manager_support(&serial)?;
+        if !support.can_apply {
+            return Err(AppError::new(
+                "unsupported",
+                "This phone's Theme Manager has no editor apply entry point. Copy the package to the phone and apply it from Theme Manager instead.",
+            ));
+        }
+        let built = build_package(state, Some(app))?;
+        let staging = state.paths.staging_dir();
+        let local = staging.join("apply-temp.mtz");
+        storage::atomic_write(&local, &built.data)?;
+        let cancel = register_op(state, &op_id);
+        let result = adb.apply_theme(&serial, &local, &support, cancel);
+        finish_op(state, &op_id);
+        let _ = std::fs::remove_file(&local);
+        result
+    })
+    .await
+}
+
 // ----- nine-patch -------------------------------------------------------------------
 
 #[tauri::command]

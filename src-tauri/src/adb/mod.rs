@@ -1,12 +1,14 @@
 //! Android Debug Bridge integration. All device access goes through this
 //! module and the process runner; the web UI never gets shell access.
 //!
-//! Only read-only queries, screenshots and an explicitly confirmed,
-//! verified file copy are implemented. Applying a theme on the device is
-//! intentionally not automated (see docs/device-integration.md).
+//! Read-only queries, screenshots, an explicitly confirmed verified file
+//! copy, opening Theme Manager pages, and (where Theme Manager supports it)
+//! a confirmed apply through its editor entry point; see `theme_apply` and
+//! docs/device-integration.md.
 
 pub mod parse;
 pub mod runner;
+pub mod theme_apply;
 pub mod theme_cache;
 
 use crate::error::{AppError, AppResult};

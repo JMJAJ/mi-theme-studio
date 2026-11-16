@@ -465,3 +465,19 @@ export interface NinePatchUpdate {
   yDivs: [number, number][];
   padding: [number, number, number, number] | null;
 }
+
+// ----- Theme Manager on the phone -----
+
+export interface ThemeManagerSupport {
+  installed: boolean;
+  version: string | null;
+  canApply: boolean;
+  twoStep: boolean;
+  canOpenStore: boolean;
+}
+
+export interface ApplyResult {
+  remotePath: string;
+  bytes: number;
+  steps: string[];
+}

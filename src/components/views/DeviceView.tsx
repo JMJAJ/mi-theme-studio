@@ -1,8 +1,10 @@
-import { AlertTriangle, Camera, CircleCheck, FolderSearch, Info, Lock, RefreshCw, RotateCcw, Send, Smartphone, Unplug } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { AlertTriangle, Camera, CircleCheck, FolderSearch, Info, Lock, Palette, Play, RefreshCw, RotateCcw, Send, Smartphone, Unplug } from 'lucide-react';
+import { api } from '../../lib/api';
 import { useStore } from '../../state/store';
 import * as A from '../../state/actions';
 import { relativeTime } from '../../lib/format';
-import type { DeviceEntry } from '../../lib/types';
+import type { DeviceEntry, ThemeManagerSupport } from '../../lib/types';
 
 const SOURCE_LABEL: Record<string, string> = {
   settings: 'Set in Settings',
@@ -24,6 +26,64 @@ function stateBadge(device: DeviceEntry) {
     default:
       return <span className="badge badge-outline">{device.state}</span>;
   }
+}
+
+function ThemeManagerActions({ serial, hasProject, busy }: { serial: string; hasProject: boolean; busy: boolean }) {
+  const [support, setSupport] = useState<ThemeManagerSupport | null>(null);
+  const [checking, setChecking] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setChecking(true);
+    api
+      .adbThemeSupport(serial)
+      .then((s) => !cancelled && setSupport(s))
+      .catch(() => !cancelled && setSupport(null))
+      .finally(() => !cancelled && setChecking(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [serial]);
+  if (checking && !support) {
+    return (
+      <p className="muted row" style={{ fontSize: 13 }}>
+        <RefreshCw width={13} className="spin" /> Checking Theme Manager…
+      </p>
+    );
+  }
+  if (!support?.installed) return null;
+  return (
+    <>
+      <button
+        className="btn"
+        style={{ justifyContent: 'flex-start' }}
+        disabled={!hasProject || busy || !support.canApply}
+        onClick={() => void A.applyOnDevice()}
+        title={support.canApply ? undefined : 'This Theme Manager build has no editor apply entry point'}
+      >
+        <Play /> Apply on phone…
+      </button>
+      {support.canOpenStore && (
+        <button className="btn" style={{ justifyContent: 'flex-start' }} disabled={busy} onClick={() => void A.openThemeSettingsOnDevice()}>
+          <Palette /> Open Theme Manager on phone
+        </button>
+      )}
+      <div className="banner" style={{ marginTop: 4 }}>
+        <Info />
+        <span>
+          {support.canApply ? (
+            <>
+              Theme Manager {support.version} supports applying from the desktop ({support.twoStep ? 'two-step' : 'legacy'} editor flow). You confirm before anything is applied, and a screenshot is taken afterwards.
+            </>
+          ) : (
+            <>
+              Theme Manager {support.version ?? ''} on this phone has no editor apply entry point (global builds don’t include it), so themes can’t be applied from the desktop here. Copy the
+              package to the phone and apply it in Theme Manager, or open store themes on the phone from the Theme store.
+            </>
+          )}
+        </span>
+      </div>
+    </>
+  );
 }
 
 export function DeviceView() {
@@ -231,13 +291,10 @@ export function DeviceView() {
                 <button className="btn" style={{ justifyContent: 'flex-start' }} disabled={!project || !!busy} onClick={() => void A.sendToDevice()} title={project ? undefined : 'Open a package first'}>
                   <Send /> Copy package to device…
                 </button>
-                <div className="banner" style={{ marginTop: 4 }}>
-                  <Info />
-                  <span>
-                    Copying places the exported .mtz in <code>/sdcard/Download/MiThemeStudio/</code> and verifies its size. Installing or applying a theme from the desktop is not implemented: no
-                    supported, verified Theme Manager command for it is known yet. Open the file on the phone to try it.
-                  </span>
-                </div>
+                <p className="faint" style={{ fontSize: 12.5 }}>
+                  Copying places the exported .mtz in <code>/sdcard/Download/MiThemeStudio/</code> and verifies its size.
+                </p>
+                {details?.themeManagerInstalled && device?.state === 'device' && <ThemeManagerActions serial={device.serial} hasProject={!!project} busy={!!busy} />}
                 {details?.themeManagerInstalled && (
                   <p className="muted row" style={{ fontSize: 13 }}>
                     <CircleCheck width={13} className="ok" /> Theme Manager is installed on this device.

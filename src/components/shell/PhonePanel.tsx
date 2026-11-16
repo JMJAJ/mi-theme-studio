@@ -145,6 +145,15 @@ export function PhonePanel() {
   const shot = screenshots[screenshots.length - 1];
   const effectiveMode: Mode = project ? mode : 'live';
 
+  // Show the real screen right away instead of an empty frame.
+  const autoShot = useRef(false);
+  useEffect(() => {
+    if (effectiveMode === 'live' && device.ready && !shot && !autoShot.current && !busy) {
+      autoShot.current = true;
+      void A.captureScreenshot(true);
+    }
+  }, [effectiveMode, device.ready, shot, busy]);
+
   const capture = async () => {
     setCapturing(true);
     await A.captureScreenshot();

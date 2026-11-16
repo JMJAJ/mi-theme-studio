@@ -2,37 +2,49 @@
 // the middle, and the actions that matter for a theme (phone, export, save)
 // on the right. The full menu lives behind one button.
 import { useRef, useState } from 'react';
-import { Clock3, Download, Menu, PanelRight, Redo2, Save, Search, Smartphone, Undo2 } from 'lucide-react';
-import { MenuPopup, type MenuItem } from '../common/Menu';
-import { MENUS, commandById, isEnabled, runCommand } from '../../state/commands';
+import { Clock3, Download, FilePen, XCircle, Menu, PanelRight, Redo2, Save, Search, Smartphone, Undo2 } from 'lucide-react';
+import { MenuPopup, type MenuAction, type MenuItem } from '../common/Menu';
+import { commandById, isEnabled, runCommand } from '../../state/commands';
 import { setState, updateLayout, useStore } from '../../state/store';
 import { goTo, openPackage } from '../../state/actions';
 import { useDeviceSummary } from './deviceSummary';
 
-function allMenuItems(): MenuItem[] {
+/**
+ * The app menu: the handful of things people reach for. Everything else is a
+ * keystroke away in the command palette (Ctrl+K), so it is not repeated here.
+ */
+function appMenuItems(): MenuItem[] {
   const state = useStore.getState();
-  const items: MenuItem[] = [];
-  for (const menu of MENUS) {
-    if (items.length) items.push('separator');
-    items.push({ heading: menu.label });
-    for (const entry of menu.items) {
-      if (entry === '-') continue;
-      if (typeof entry === 'object') {
-        items.push(entry);
-        continue;
-      }
-      if (entry === 'recent') {
-        for (const item of (state.settings?.recent ?? []).slice(0, 5)) {
-          items.push({ label: item.name, icon: Clock3, onSelect: () => openPackage(item.path) });
-        }
-        continue;
-      }
-      const command = commandById.get(entry);
-      if (!command) continue;
-      items.push({ label: command.label, icon: command.icon, shortcut: command.shortcut, disabled: !isEnabled(command, state), onSelect: () => runCommand(command.id) });
-    }
+  const hasProject = !!state.project;
+  const cmd = (id: string, label?: string, icon?: MenuAction['icon']): MenuItem | null => {
+    const command = commandById.get(id);
+    if (!command || !isEnabled(command, state)) return null;
+    return { label: label ?? command.label, icon: icon ?? command.icon, shortcut: command.shortcut, onSelect: () => runCommand(command.id) };
+  };
+  const recent = (state.settings?.recent ?? []).filter((r) => r.path !== state.project?.sourcePath).slice(0, 4);
+  const items: (MenuItem | null)[] = [
+    cmd('file.new', 'New theme…'),
+    cmd('file.open', 'Open theme…'),
+    ...(recent.length
+      ? [{ heading: 'Recent' } as MenuItem, ...recent.map((r): MenuItem => ({ label: r.name.replace(/\.(mtz|zip)$/i, ''), icon: Clock3, onSelect: () => openPackage(r.path) }))]
+      : []),
+    ...(hasProject ? ['separator' as const, cmd('file.save'), cmd('file.saveAs', undefined, FilePen), cmd('file.exportCopy', 'Export a copy…'), cmd('file.close', 'Close theme', XCircle)] : []),
+    'separator',
+    cmd('edit.palette', 'Search commands…'),
+    cmd('tools.settings', 'Settings'),
+    cmd('help.shortcuts'),
+    'separator',
+    cmd('help.about', 'About Mi Theme Studio'),
+  ];
+  // Drop empty entries and doubled or dangling separators.
+  const out: MenuItem[] = [];
+  for (const item of items) {
+    if (!item) continue;
+    if (item === 'separator' && (out.length === 0 || out[out.length - 1] === 'separator')) continue;
+    out.push(item);
   }
-  return items;
+  while (out[out.length - 1] === 'separator') out.pop();
+  return out;
 }
 
 export function TitleBar() {
@@ -51,7 +63,7 @@ export function TitleBar() {
       <button ref={menuButton} className="tb-icon" aria-label="Menu" aria-haspopup="menu" aria-expanded={menu} title="Menu" onClick={() => setMenu((v) => !v)}>
         <Menu />
       </button>
-      {menu && rect && <MenuPopup items={allMenuItems()} x={rect.left} y={rect.bottom + 4} anchor={menuButton.current} label="Menu" onClose={() => setMenu(false)} />}
+      {menu && rect && <MenuPopup items={appMenuItems()} x={rect.left} y={rect.bottom + 4} anchor={menuButton.current} label="Menu" onClose={() => setMenu(false)} />}
 
       <button className="tb-theme" onClick={() => project && goTo('design')} disabled={!project} title={project?.sourcePath ?? undefined}>
         <span className="tb-mark">mi</span>

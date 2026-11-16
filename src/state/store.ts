@@ -144,7 +144,7 @@ export type DialogState =
       resolve: (value: string) => void;
     }
   | { type: 'copyPlan'; paths: string[]; policy?: ConflictPolicy; title?: string }
-  | { type: 'settings' }
+  | { type: 'settings'; section?: 'general' | 'appearance' | 'phone' | 'store' | 'keys' | 'about' }
   | { type: 'shortcuts' }
   | { type: 'about' }
   | { type: 'move'; paths: string[] };

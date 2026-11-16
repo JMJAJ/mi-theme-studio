@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CircleCheck, CircleX, Copy, Info, Loader2, ZoomIn, ZoomOut } from 'lucide-react';
+import { AlertTriangle, CircleCheck, CircleX, Copy, Info, Loader2 } from 'lucide-react';
 import { api, errorMessage } from '../../lib/api';
 import { buildTree, folderOptions } from '../../lib/tree';
 import { displayFolder } from '../../lib/paths';
@@ -7,8 +7,7 @@ import { formatBytes, plural } from '../../lib/format';
 import type { ConflictPolicy, CopyPlanItem } from '../../lib/types';
 import { closeDialog, useStore, type DialogState } from '../../state/store';
 import * as A from '../../state/actions';
-import { COMMANDS } from '../../state/commands';
-import { MAX_ZOOM, MIN_ZOOM, resetZoom, setZoom, useZoom, zoomIn, zoomOut } from '../../state/zoom';
+import { SettingsPanel } from './SettingsPanel';
 import { Modal } from '../common/Modal';
 
 function ConfirmDialog({ dialog }: { dialog: Extract<DialogState, { type: 'confirm' }> }) {
@@ -280,156 +279,9 @@ function MoveDialog({ paths }: { paths: string[] }) {
   );
 }
 
-function ZoomSetting() {
-  const zoom = useZoom((s) => s.zoom);
-  return (
-    <div className="field">
-      <span className="field-label">Interface zoom</span>
-      <div className="row">
-        <div className="segmented" role="group" aria-label="Interface zoom">
-          <button onClick={zoomOut} disabled={zoom <= MIN_ZOOM} title="Zoom out (Ctrl+-)" aria-label="Zoom out">
-            <ZoomOut />
-          </button>
-          <button onClick={resetZoom} title="Reset to 100% (Ctrl+0)" style={{ minWidth: 64, justifyContent: 'center' }} className="mono">
-            {Math.round(zoom * 100)}%
-          </button>
-          <button onClick={zoomIn} disabled={zoom >= MAX_ZOOM} title="Zoom in (Ctrl+=)" aria-label="Zoom in">
-            <ZoomIn />
-          </button>
-        </div>
-        <input
-          type="range"
-          className="grow"
-          min={MIN_ZOOM}
-          max={MAX_ZOOM}
-          step={0.05}
-          value={zoom}
-          onChange={(e) => setZoom(Number(e.target.value))}
-          aria-label="Interface zoom level"
-        />
-      </div>
-      <span className="field-hint">Ctrl+mouse wheel, Ctrl+= and Ctrl+- also change it. Ctrl+0 resets.</span>
-    </div>
-  );
-}
 
-function SettingsDialog() {
-  const settings = useStore((s) => s.settings);
-  const appInfo = useStore((s) => s.appInfo);
-  if (!settings) return null;
-  return (
-    <Modal title="Settings" onClose={closeDialog} footer={<button className="btn btn-primary" onClick={closeDialog}>Done</button>}>
-      <ZoomSetting />
-      <label className="check">
-        <input type="checkbox" checked={settings.autosaveEnabled} onChange={(e) => void A.updateSettings({ autosaveEnabled: e.target.checked })} />
-        Keep a recovery copy of unsaved work
-      </label>
-      <div className="field">
-        <label htmlFor="autosave-interval">Recovery copy interval (seconds)</label>
-        <input
-          id="autosave-interval"
-          className="input"
-          type="number"
-          min={15}
-          max={3600}
-          defaultValue={settings.autosaveIntervalSeconds}
-          onBlur={(e) => void A.updateSettings({ autosaveIntervalSeconds: Number(e.target.value) || 60 })}
-          style={{ width: 120 }}
-        />
-        <span className="field-hint">Written to the app data folder, never over your package file.</span>
-      </div>
-      <label className="check">
-        <input type="checkbox" checked={settings.backupsEnabled} onChange={(e) => void A.updateSettings({ backupsEnabled: e.target.checked })} />
-        Back up existing files before overwriting them (last 10 per package)
-      </label>
-      <div className="field">
-        <span className="field-label">adb.exe</span>
-        <div className="row">
-          <span className="mono ellipsis grow" title={settings.adbPath ?? ''}>
-            {settings.adbPath ?? 'Automatic search'}
-          </span>
-          <button className="btn btn-sm" onClick={() => void A.chooseAdbPath()}>
-            Choose…
-          </button>
-          {settings.adbPath && (
-            <button className="btn btn-sm" onClick={() => void A.resetAdbPath()}>
-              Reset
-            </button>
-          )}
-        </div>
-      </div>
-      {appInfo && (
-        <div className="field">
-          <span className="field-label">App data</span>
-          <div className="row">
-            <span className="mono ellipsis grow">{appInfo.dataDir}</span>
-            <button className="btn btn-sm" onClick={() => void A.revealPath(appInfo.dataDir)}>
-              Show
-            </button>
-          </div>
-        </div>
-      )}
-    </Modal>
-  );
-}
 
-function ShortcutsDialog() {
-  const groups = useMemo(() => {
-    const map = new Map<string, typeof COMMANDS>();
-    for (const c of COMMANDS.filter((c) => c.shortcut)) map.set(c.group, [...(map.get(c.group) ?? []), c]);
-    return [...map.entries()];
-  }, []);
-  return (
-    <Modal wide title="Keyboard shortcuts" onClose={closeDialog} footer={<button className="btn btn-primary" onClick={closeDialog}>Close</button>}>
-      <div style={{ columns: 2, columnGap: 28 }}>
-        {groups.map(([group, commands]) => (
-          <div key={group} style={{ breakInside: 'avoid', marginBottom: 14 }}>
-            <div className="field-label" style={{ marginBottom: 6 }}>
-              {group}
-            </div>
-            {commands.map((c) => (
-              <div key={c.id} className="row" style={{ justifyContent: 'space-between', padding: '2px 0' }}>
-                <span>{c.label}</span>
-                <kbd>{c.shortcut}</kbd>
-              </div>
-            ))}
-          </div>
-        ))}
-        <div style={{ breakInside: 'avoid' }}>
-          <div className="field-label" style={{ marginBottom: 6 }}>
-            Explorer
-          </div>
-          {[
-            ['Move / extend selection', '↑ ↓ / Shift+↑ ↓'],
-            ['Expand / collapse', '→ / ←'],
-            ['Open file', 'Enter'],
-            ['Toggle selection', 'Ctrl+Click'],
-            ['Select range', 'Shift+Click'],
-            ['Apply text edits', 'Ctrl+Enter'],
-          ].map(([label, key]) => (
-            <div key={label} className="row" style={{ justifyContent: 'space-between', padding: '2px 0' }}>
-              <span>{label}</span>
-              <kbd>{key}</kbd>
-            </div>
-          ))}
-        </div>
-      </div>
-    </Modal>
-  );
-}
 
-function AboutDialog() {
-  const info = useStore((s) => s.appInfo);
-  return (
-    <Modal title="Mi Theme Studio" onClose={closeDialog} footer={<button className="btn btn-primary" onClick={closeDialog}>Close</button>}>
-      <p>Version {info?.version ?? '—'} · Tauri + React desktop editor for MIUI / HyperOS theme packages.</p>
-      <p className="muted">
-        An independent, unofficial tool. It is not affiliated with or endorsed by Xiaomi. It contains no Xiaomi application code or assets; the online catalog view loads public data on request.
-      </p>
-      <p className="muted">MIT License.</p>
-    </Modal>
-  );
-}
 
 export function DialogHost() {
   const dialog = useStore((s) => s.dialog);
@@ -446,11 +298,11 @@ export function DialogHost() {
     case 'move':
       return <MoveDialog paths={dialog.paths} />;
     case 'settings':
-      return <SettingsDialog />;
+      return <SettingsPanel initial={dialog.section} />;
     case 'shortcuts':
-      return <ShortcutsDialog />;
+      return <SettingsPanel initial="keys" />;
     case 'about':
-      return <AboutDialog />;
+      return <SettingsPanel initial="about" />;
   }
 }
 

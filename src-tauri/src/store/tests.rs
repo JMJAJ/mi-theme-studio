@@ -275,6 +275,8 @@ fn export_store_fixture() {
     let ua = "MiThemeStudio/test";
     let home = fetch_page(&StoreQuery::Home { product: ProductKind::Theme }, 0, Some("IN"), ua).unwrap();
     std::fs::write(std::path::Path::new(&out).join("store-home.json"), serde_json::to_string(&home).unwrap()).unwrap();
+    let cats = fetch_page(&StoreQuery::Categories, 0, Some("IN"), ua).unwrap();
+    std::fs::write(std::path::Path::new(&out).join("store-categories.json"), serde_json::to_string(&cats).unwrap()).unwrap();
     let id = home.sections.iter().flat_map(|s| &s.products).next().unwrap().module_id.clone();
     let detail = fetch_detail(&id, Some("IN"), ua).unwrap();
     std::fs::write(std::path::Path::new(&out).join("store-detail.json"), serde_json::to_string(&detail).unwrap()).unwrap();

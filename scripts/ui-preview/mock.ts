@@ -12,6 +12,7 @@ localStorage.setItem('mts.catalog.consent.v1', '1');
 const fixture = await fetch('/__fixture/snapshot.json').then((r) => r.json());
 const metadata = await fetch('/__fixture/metadata.json').then((r) => r.json());
 const storeHome = await fetch('/__fixture/store-home.json').then((r) => r.json()).catch(() => ({ title: null, hasMore: false, nextStart: 0, sections: [], fetchedAtMs: 0, durationMs: 0 }));
+const storeCategories = await fetch('/__fixture/store-categories.json').then((r) => r.json()).catch(() => storeHome);
 const storeDetail = await fetch('/__fixture/store-detail.json').then((r) => r.json()).catch(() => null);
 
 const device = { serial: '595e1e14', state: 'device', model: '2510DPC44G', product: 'annibale_eea', device: 'annibale', transportId: '3' };
@@ -35,7 +36,7 @@ const details = {
 };
 
 mockWindows('main');
-mockIPC((cmd) => {
+mockIPC((cmd, args) => {
   switch (cmd) {
     case 'app_info':
       return { version: '0.3.0', dataDir: 'C:/Users/me/AppData/Roaming/mi-theme-studio', recovery: null, settings: { adbPath: null, recent: [{ name: 'Glass Flower.mtz', path: 'C:/Themes/Glass Flower.mtz', openedAtMs: Date.now() }], autosaveEnabled: true, autosaveIntervalSeconds: 60, backupsEnabled: true } };
@@ -61,7 +62,7 @@ mockIPC((cmd) => {
     case 'project_validate':
       return { issues: [], errors: 0, warnings: 0, checkedFiles: fixture.files.length, durationMs: 12 };
     case 'store_page':
-      return storeHome;
+      return (args as { query?: { kind?: string } })?.query?.kind === 'categories' ? storeCategories : storeHome;
     case 'store_detail':
       return storeDetail;
     case 'plugin:event|listen':
@@ -72,6 +73,19 @@ mockIPC((cmd) => {
 });
 
 await import('../../src/main');
+const dialog = params.get('dialog');
+if (dialog) {
+  const { useStore } = await import('../../src/state/store');
+  setTimeout(() => useStore.setState({ dialog: { type: 'settings', section: dialog as never } }), 900);
+}
+if (params.get('menu')) setTimeout(() => (document.querySelector('[aria-label="Menu"]') as HTMLButtonElement | null)?.click(), 1200);
+const click = params.get('click');
+if (click) {
+  setTimeout(() => {
+    const target = [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === click);
+    target?.click();
+  }, 1600);
+}
 const section = params.get('section');
 const part = params.get('part');
 if (section || part) {

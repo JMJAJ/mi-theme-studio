@@ -265,7 +265,12 @@ function StoreList({
         <div className="store-sections">
         {sections.map((section, i) => (
           <div
-            className={`section ${section.products.length > 0 && section.products.length <= 4 && !section.links.length ? 'shelf-card' : 'shelf-wide'}`}
+            className={`section ${
+              (section.products.length > 0 && section.products.length <= 4 && !section.links.length) ||
+              (!section.products.length && section.links.length > 0 && section.links.length <= 2 && !section.links.some((l) => l.icon))
+                ? 'shelf-card'
+                : 'shelf-wide'
+            }`}
             key={`${section.id ?? 's'}-${i}`}
           >
             {(section.title || section.subjectId) && section.products.length > 0 && (
@@ -297,7 +302,10 @@ function StoreList({
               </div>
             )}
             {section.links.length > 0 && (
-              <div className={section.links.every((l) => l.icon) ? 'icon-links' : 'catalog-grid'}>
+              <div
+                className={section.links.every((l) => l.icon) ? 'icon-links' : 'catalog-grid'}
+                style={!section.products.length && section.links.length <= 2 && !section.links.some((l) => l.icon) ? { gridTemplateColumns: `repeat(${section.links.length}, minmax(0, 1fr))` } : undefined}
+              >
                 {section.links.map((l, j) => (
                   <LinkTile key={`${l.pageId ?? l.moduleId}-${j}`} link={l} onOpen={() => openLink(l)} />
                 ))}

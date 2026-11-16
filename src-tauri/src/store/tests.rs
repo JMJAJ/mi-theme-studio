@@ -64,7 +64,7 @@ const DETAIL: &str = r#"{
     ],
     "extraInfo": {"themeDetail": {
       "name": "Glass Flower", "moduleId": "mod-1", "productId": "prod-1", "designer": "Evanc", "author": "Evanc",
-      "description": "Slide up to unlock", "tags": "AI Generated;Widget;", "fileSize": 9447242, "version": "V15",
+      "description": "Slide up to unlock", "moneyInfo": "inr", "tags": "AI Generated;Widget;", "fileSize": 9447242, "version": "V15",
       "uiVersion": 15, "downloads": 185431, "score": 2.0, "productPrice": 0, "productBought": false,
       "downloadUrlRoot": "https://t17.market.mi-img.com/thumbnail/"
     }}
@@ -91,6 +91,7 @@ fn paid_detail_is_not_free() {
     let d = parse_detail(&paid, "mod-1").unwrap();
     assert!(!d.free);
     assert_eq!(d.price_cents, 199);
+    assert_eq!(d.currency.as_deref(), Some("INR"));
 }
 
 #[test]

@@ -136,6 +136,8 @@ pub struct StoreProduct {
     pub image_url: Option<String>,
     pub second_image_url: Option<String>,
     pub price_cents: u64,
+    /// ISO currency code for `price_cents` (`moneyInfo`).
+    pub currency: Option<String>,
     pub size_bytes: Option<u64>,
     pub tags: Vec<String>,
 }
@@ -195,6 +197,7 @@ pub struct ThemeDetail {
     pub downloads: Option<u64>,
     pub score: Option<f64>,
     pub price_cents: u64,
+    pub currency: Option<String>,
     pub bought: bool,
     pub free: bool,
     pub web_url: String,
@@ -286,6 +289,13 @@ fn file_root(data: &Value) -> String {
     IMAGE_ROOT.to_string()
 }
 
+fn currency_of(value: &Value) -> Option<String> {
+    text(value, "moneyInfo")
+        .or_else(|| text(value, "currency"))
+        .filter(|c| c.len() == 3 && c.chars().all(|ch| ch.is_ascii_alphabetic()))
+        .map(|c| c.to_ascii_uppercase())
+}
+
 fn tags_of(value: &Value) -> Vec<String> {
     match value.get("metaTags").or_else(|| value.get("tags")) {
         Some(Value::Array(list)) => list.iter().filter_map(Value::as_str).map(str::to_string).collect(),
@@ -316,6 +326,7 @@ fn parse_product(value: &Value, root: &str) -> Option<StoreProduct> {
         image_url: image(text(value, "imageUrl"), root),
         second_image_url: image(text(value, "secondImageUrl"), root),
         price_cents: price,
+        currency: currency_of(value),
         size_bytes: number(value, "fileSizeInKB").filter(|n| *n > 0),
         tags: tags_of(value),
     })
@@ -484,6 +495,7 @@ pub fn parse_detail(body: &str, requested: &str) -> AppResult<ThemeDetail> {
         downloads: number(detail, "downloads"),
         score: detail.get("score").and_then(Value::as_f64).filter(|s| *s > 0.0),
         price_cents: price,
+        currency: currency_of(detail),
         bought,
         free: price == 0,
         web_url: format!("https://zhuti.xiaomi.com/detail/{module_id}"),

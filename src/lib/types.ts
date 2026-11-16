@@ -321,6 +321,7 @@ export interface StoreProduct {
   imageUrl: string | null;
   secondImageUrl: string | null;
   priceCents: number;
+  currency: string | null;
   sizeBytes: number | null;
   tags: string[];
 }
@@ -369,6 +370,7 @@ export interface ThemeDetail {
   downloads: number | null;
   score: number | null;
   priceCents: number;
+  currency: string | null;
   bought: boolean;
   free: boolean;
   webUrl: string;

@@ -441,8 +441,12 @@ p { margin: 0; }
 /* ---------- code editor ---------- */
 .editor-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .editor-wrap .cm-theme, .editor-wrap .cm-editor { height: 100%; }
-.editor-host { flex: 1; min-height: 0; overflow: hidden; }
-.cm-editor { font-size: 12.5px; background: var(--bg-1); }
+.editor-host { flex: 1; min-height: 0; overflow: hidden; position: relative; }
+.editor-host > .cm-theme, .editor-host > div { position: absolute; inset: 0; height: 100%; }
+.editor-host .cm-editor { height: 100%; }
+.editor-host .cm-scroller { overflow: auto; }
+.cm-editor, .cm-content, .cm-line { user-select: text; -webkit-user-select: text; }
+.cm-editor { background: var(--bg-1); }
 .cm-editor.cm-focused { outline: none; }
 
 /* ---------- form ---------- */

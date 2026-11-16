@@ -35,7 +35,10 @@ import * as A from '../../state/actions';
 import { setState, useStore } from '../../state/store';
 import {
   REGIONS,
+  REGION_NOTES,
   cancelDownload,
+  formatPrice,
+  setFreeOnly,
   downloadTheme,
   refreshDownloads,
   removeDownload,
@@ -104,7 +107,7 @@ function ProductCard({ product, onOpen }: { product: StoreProduct; onOpen: () =>
         <span className="sub">
           {product.priceCents > 0 ? (
             <span className="badge badge-warn">
-              <Lock /> Paid
+              <Lock /> {formatPrice(product.priceCents, product.currency)}
             </span>
           ) : (
             <span className="badge badge-ok">Free</span>
@@ -154,6 +157,7 @@ function StoreList({
   navigate: (route: Route) => void;
 }) {
   const region = useThemeStore((s) => s.region);
+  const freeOnly = useThemeStore((s) => s.freeOnly);
   const [pages, setPages] = useState<StorePage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -181,7 +185,12 @@ function StoreList({
     void load(false);
   }, [JSON.stringify(query), region, refreshKey]);
 
-  const sections = pages.flatMap((p) => p.sections);
+  const visible = (p: StoreProduct) => !freeOnly || p.priceCents === 0;
+  const sections = pages
+    .flatMap((p) => p.sections)
+    .map((s) => ({ ...s, products: s.products.filter(visible) }))
+    .filter((s) => s.products.length > 0 || s.links.length > 0);
+  const hiddenPaid = freeOnly ? pages.flatMap((p) => p.sections).reduce((n, s) => n + s.products.filter((p) => p.priceCents > 0).length, 0) : 0;
   const last = pages[pages.length - 1];
   const openProduct = (p: StoreProduct) => navigate({ type: 'detail', moduleId: p.moduleId, name: p.name });
   const openLink = (l: StoreLink) => {
@@ -218,7 +227,13 @@ function StoreList({
         <div className="empty">
           <Globe />
           <h3>{query.kind === 'search' ? `No themes match “${query.keywords}”` : 'Nothing here yet'}</h3>
-          <p>{query.kind === 'search' ? 'Try another word, or switch region.' : 'The store returned an empty page for this region. Try another region.'}</p>
+          <p>
+            {hiddenPaid
+              ? `${plural(hiddenPaid, 'paid theme')} hidden by “Free only”.`
+              : query.kind === 'search'
+                ? 'Try another word, or switch region.'
+                : 'The store returned an empty page for this region. Try another region.'}
+          </p>
         </div>
       )}
       {flat ? (
@@ -597,7 +612,7 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
           )}
           {detail.description && <p className="description selectable">{detail.description}</p>}
           <div className="facts">
-            <Fact label="Price">{detail.free ? 'Free' : detail.bought ? 'Purchased' : `Paid (${(detail.priceCents / 100).toFixed(2)})`}</Fact>
+            <Fact label="Price">{detail.free ? 'Free' : detail.bought ? 'Purchased' : formatPrice(detail.priceCents, detail.currency)}</Fact>
             {detail.sizeBytes ? <Fact label="Size">{formatBytes(detail.sizeBytes)}</Fact> : null}
             {detail.version ? <Fact label="Version">{detail.version}</Fact> : null}
             {detail.uiVersion ? <Fact label="UI version">{detail.uiVersion}</Fact> : null}
@@ -615,7 +630,10 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
             <>
               <div className="banner banner-warn">
                 <Lock />
-                <span>Paid theme. Mi Theme Studio only downloads themes the store lists as free; buy it in Theme Manager on your phone, then import it from the “On device” tab.</span>
+                <span>
+                  Paid theme ({formatPrice(detail.priceCents, detail.currency)}). Mi Theme Studio only downloads themes the store lists as free. Buy it in Theme Manager on your
+                  phone, then import it from the “On device” tab.
+                </span>
               </div>
             </>
           ) : progress ? (
@@ -760,6 +778,7 @@ const ROOTS: Record<'discover' | 'categories', Route> = {
 
 export function CatalogView() {
   const region = useThemeStore((s) => s.region);
+  const freeOnly = useThemeStore((s) => s.freeOnly);
   const [tab, setTab] = useState<Tab>('discover');
   const [stack, setStack] = useState<Route[]>([]);
   const [consent, setConsent] = useState(readConsent);
@@ -838,10 +857,21 @@ export function CatalogView() {
           <input className="input" placeholder="Search themes…" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search themes" />
         </form>
         <span className="grow" />
-        <select className="select" value={region} onChange={(e) => setRegion(e.target.value)} aria-label="Store region" title="Store region" style={{ width: 'auto' }}>
+        <label className="check" title="Hide paid themes (only free themes can be downloaded)">
+          <input type="checkbox" checked={freeOnly} onChange={(e) => setFreeOnly(e.target.checked)} /> Free only
+        </label>
+        <select
+          className="select"
+          value={region}
+          onChange={(e) => setRegion(e.target.value)}
+          aria-label="Store region"
+          title="Store region: changes which themes and prices the store returns"
+          style={{ width: 'auto' }}
+        >
           {REGIONS.map((r) => (
             <option key={r} value={r}>
               {r}
+              {REGION_NOTES[r] ? ` · ${REGION_NOTES[r]}` : ''}
             </option>
           ))}
         </select>

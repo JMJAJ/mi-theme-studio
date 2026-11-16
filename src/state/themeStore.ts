@@ -7,7 +7,41 @@ import type { DownloadedTheme, DownloadProgress } from '../lib/types';
 import { log, toast } from './store';
 
 export const REGIONS = ['US', 'GB', 'DE', 'FR', 'ES', 'IT', 'RU', 'IN', 'ID', 'MY', 'PH', 'TH', 'VN', 'TR', 'BR', 'MX'] as const;
+/** Regions whose catalog differs in a way worth naming in the picker. */
+export const REGION_NOTES: Partial<Record<string, string>> = { IN: 'largest catalog', US: 'free only', RU: 'mostly paid' };
+export const DEFAULT_REGION = 'IN';
 const REGION_KEY = 'mts.store.region.v1';
+const FREE_ONLY_KEY = 'mts.store.freeOnly.v1';
+
+function loadFreeOnly(): boolean {
+  try {
+    return localStorage.getItem(FREE_ONLY_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setFreeOnly(freeOnly: boolean) {
+  useThemeStore.setState({ freeOnly });
+  try {
+    localStorage.setItem(FREE_ONLY_KEY, freeOnly ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Price in the store's currency, e.g. `₹41.00`. */
+export function formatPrice(cents: number, currency: string | null): string {
+  const amount = cents / 100;
+  if (currency) {
+    try {
+      return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount);
+    } catch {
+      return `${amount.toFixed(2)} ${currency}`;
+    }
+  }
+  return amount.toFixed(2);
+}
 
 function loadRegion(): string {
   try {
@@ -16,11 +50,12 @@ function loadRegion(): string {
   } catch {
     /* ignore */
   }
-  return 'US';
+  return DEFAULT_REGION;
 }
 
 interface ThemeStoreState {
   region: string;
+  freeOnly: boolean;
   downloads: DownloadedTheme[];
   loaded: boolean;
   progress: Record<string, { received: number; total: number }>;
@@ -28,6 +63,7 @@ interface ThemeStoreState {
 
 export const useThemeStore = create<ThemeStoreState>(() => ({
   region: loadRegion(),
+  freeOnly: loadFreeOnly(),
   downloads: [],
   loaded: false,
   progress: {},

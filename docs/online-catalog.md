@@ -10,7 +10,11 @@ Product lists are only filled when a request carries the client parameters Theme
 
 `device=generic, region=<chosen>, isGlobal=true, system=miui, alpha=false, language=en_US, capability=w,b,s,m,h5,v:8,vw, apk=3000519, devicePixel=1080, miuiUIVersion=V160, isSupportWidget=true`
 
-`miuiUIVersion` is the one that matters: without it, home shelves drop from ~128 products to a handful. No account, device identifier, user ID or package data is sent. The region is chosen in the store toolbar (default `US`).
+`miuiUIVersion` is the one that matters: without it, home shelves drop from ~128 products to a handful. No account, device identifier, user ID or package data is sent. The region is chosen in the store toolbar (default `IN`).
+
+The region changes the catalog itself. In a November 2026 sample of the first two home pages: `US` returned 281 products, all free (paid themes are hidden there); `IN` returned 597 (46 paid); EU regions about 261 (around 50 paid, EUR prices); `RU` returned only paid themes. Prices come as cents plus an ISO currency (`moneyInfo`). The *Free only* toggle hides paid themes client-side.
+
+The download-ticket route also answers for paid themes without authentication. Mi Theme Studio does not use that: the backend checks the detail's `productPrice`/`productBought` and refuses paid themes before requesting a ticket.
 
 ## Routes
 

@@ -439,3 +439,21 @@ export interface ReplaceResult {
   invalidXml: string[];
   stale: string[];
 }
+
+// ----- Nine-patch -----
+
+export interface NinePatch {
+  kind: 'compiled' | 'source' | 'none';
+  width: number;
+  height: number;
+  xDivs: [number, number][];
+  yDivs: [number, number][];
+  padding: [number, number, number, number] | null;
+  layoutBounds: boolean;
+}
+
+export interface NinePatchUpdate {
+  xDivs: [number, number][];
+  yDivs: [number, number][];
+  padding: [number, number, number, number] | null;
+}

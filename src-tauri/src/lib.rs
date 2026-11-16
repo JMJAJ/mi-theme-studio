@@ -87,6 +87,8 @@ pub fn run() {
             commands::adb_cancel,
             commands::adb_log,
             commands::adb_send_package,
+            commands::ninepatch_info,
+            commands::ninepatch_update,
             commands::project_search,
             commands::project_replace,
             commands::store_page,

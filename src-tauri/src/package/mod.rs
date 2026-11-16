@@ -3,4 +3,5 @@
 pub mod archive;
 pub mod blob;
 pub mod metadata;
+pub mod ninepatch;
 pub mod paths;

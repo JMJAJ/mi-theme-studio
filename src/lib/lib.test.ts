@@ -136,3 +136,19 @@ describe('interface zoom', () => {
     expect(parseShortcut('Ctrl++').key).toBe('+');
   });
 });
+
+describe('nine-patch math', () => {
+  it('normalizes ranges and stretches segments', async () => {
+    const { normalizeRanges, stretchSegments } = await import('../components/views/NinePatchEditor');
+    expect(normalizeRanges([[5, 3], [1, 2], [2, 4], [9, 20], [7, 7]], 10)).toEqual([[1, 5], [9, 10]]);
+    const segs = stretchSegments([[2, 4]], 6, 10);
+    expect(segs.map((s) => [s.from, s.to, s.stretch, s.destLen])).toEqual([
+      [0, 2, false, 2],
+      [2, 4, true, 6],
+      [4, 6, false, 2],
+    ]);
+    // Two stretch areas share the free space by their source size.
+    const two = stretchSegments([[0, 1], [3, 6]], 6, 14);
+    expect(two.filter((s) => s.stretch).map((s) => s.destLen)).toEqual([3, 9]);
+  });
+});

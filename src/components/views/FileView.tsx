@@ -6,6 +6,7 @@ import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import { AlertTriangle, Check, Download, FileQuestion, Maximize, Minus, Plus, RefreshCw, RotateCcw, Scan } from 'lucide-react';
 import { api, errorMessage, resourceUrl } from '../../lib/api';
+import { NinePatchEditor } from './NinePatchEditor';
 import { dimensions, formatBytes } from '../../lib/format';
 import { displayFolder, fileName, parentOf } from '../../lib/paths';
 import type { FileInfo, Slot } from '../../lib/types';
@@ -15,6 +16,7 @@ import * as A from '../../state/actions';
 // ---------------------------------------------------------------- image
 
 function ImageViewer({ file, slot }: { file: FileInfo; slot: Slot }) {
+  const [mode, setMode] = useState<'image' | 'ninepatch'>(file.ninePatch ? 'ninepatch' : 'image');
   const [zoom, setZoom] = useState<number | 'fit'>('fit');
   const [bg, setBg] = useState<'checker' | 'bg-dark' | 'bg-light'>('checker');
   const stage = useRef<HTMLDivElement>(null);
@@ -39,6 +41,21 @@ function ImageViewer({ file, slot }: { file: FileInfo; slot: Slot }) {
   return (
     <div className="center-body">
       <div className="toolbar">
+        {file.ninePatch && (
+          <>
+            <div className="segmented" role="group" aria-label="View mode">
+              <button aria-pressed={mode === 'image'} onClick={() => setMode('image')}>
+                Image
+              </button>
+              <button aria-pressed={mode === 'ninepatch'} onClick={() => setMode('ninepatch')}>
+                Nine-patch
+              </button>
+            </div>
+            <span className="sep" />
+          </>
+        )}
+        {mode === 'image' && (
+        <>
         <div className="segmented" role="group" aria-label="Zoom">
           <button onClick={() => setScale(scale / 1.25)} title="Zoom out" aria-label="Zoom out">
             <Minus />
@@ -60,10 +77,12 @@ function ImageViewer({ file, slot }: { file: FileInfo; slot: Slot }) {
           <option value="bg-light">Light</option>
         </select>
         <span className="sep" />
+        </>
+        )}
         <span className="muted nowrap">
           {[file.format, dimensions(file.width, file.height), formatBytes(file.size), file.density].filter(Boolean).join(' · ')}
         </span>
-        {file.ninePatch && <span className="badge badge-info" title="Android nine-patch: the 1px border defines stretch and padding areas">9-patch</span>}
+        {file.ninePatch && <span className="badge badge-info" title="Android nine-patch: stretch and padding areas">9-patch</span>}
         <span className="grow" />
         {slot === 'main' && (
           <button className="btn btn-sm" onClick={() => void A.replaceFile(file.path)}>
@@ -74,6 +93,9 @@ function ImageViewer({ file, slot }: { file: FileInfo; slot: Slot }) {
           <Download /> Export…
         </button>
       </div>
+      {mode === 'ninepatch' ? (
+        <NinePatchEditor file={file} slot={slot} />
+      ) : (
       <div
         ref={stage}
         className={`image-stage ${bg} ${panning ? 'is-panning' : ''}`}
@@ -110,6 +132,7 @@ function ImageViewer({ file, slot }: { file: FileInfo; slot: Slot }) {
           style={w && h ? { width: w * scale, height: h * scale } : undefined}
         />
       </div>
+      )}
     </div>
   );
 }

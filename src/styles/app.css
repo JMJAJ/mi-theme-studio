@@ -676,3 +676,33 @@ button.catalog-card:hover, button.icon-link:hover { border-color: var(--line-str
 .match-text mark { background: rgba(214, 160, 61, 0.32); color: var(--text); border-radius: 2px; padding: 0 1px; }
 .row-action { visibility: hidden; flex: none; }
 .result-file:hover .row-action, .result-match:hover .row-action { visibility: visible; }
+
+/* ---------- nine-patch editor ---------- */
+.np-editor { flex: 1; min-height: 0; display: flex; }
+.np-stage { flex: 1; min-width: 0; overflow: auto; display: grid; place-items: center; padding: 24px; }
+.np-canvas { position: relative; }
+.np-image { position: absolute; overflow: hidden; outline: 1px solid var(--line-strong); }
+.np-image img { position: absolute; max-width: none; }
+.np-image img.pixelated { image-rendering: pixelated; }
+.np-band { position: absolute; pointer-events: none; }
+.np-band-x { top: 0; bottom: 0; background: rgba(240, 136, 62, 0.22); border-left: 1px solid rgba(240, 136, 62, 0.7); border-right: 1px solid rgba(240, 136, 62, 0.7); }
+.np-band-y { left: 0; right: 0; background: rgba(240, 136, 62, 0.22); border-top: 1px solid rgba(240, 136, 62, 0.7); border-bottom: 1px solid rgba(240, 136, 62, 0.7); }
+.np-padding { position: absolute; pointer-events: none; border: 1px dashed rgba(76, 183, 130, 0.95); background: rgba(76, 183, 130, 0.08); }
+.np-ruler { position: relative; background: var(--bg-3); border: 1px solid var(--line-strong); border-radius: 3px; cursor: crosshair; touch-action: none; }
+.np-ruler-x { height: 14px; }
+.np-ruler-y { width: 14px; }
+.np-ruler .np-mark { position: absolute; background: var(--accent); border-radius: 2px; }
+.np-ruler-x .np-mark { top: 2px; bottom: 2px; }
+.np-ruler-y .np-mark { left: 2px; right: 2px; }
+.np-ruler.padding .np-mark { background: var(--ok); }
+.np-ruler .np-mark.is-drag { opacity: 0.6; }
+.np-corner { position: absolute; left: 0; top: 0; width: 14px; height: 14px; }
+.np-side { width: 300px; flex: none; border-left: 1px solid var(--line); background: var(--bg-1); padding: 12px; display: flex; flex-direction: column; gap: 14px; overflow: auto; }
+.np-range { gap: 6px; }
+.np-range .input { width: 70px; }
+.np-pad-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
+.np-pad-grid .input { width: 100%; }
+.np-size { gap: 8px; font-size: var(--fs-xs); }
+.np-size .mono { width: 34px; text-align: right; }
+.np-preview { border: 1px solid var(--line); border-radius: 6px; padding: 10px; overflow: auto; max-height: 320px; display: grid; place-items: center; }
+.np-preview canvas { display: block; }

@@ -8,6 +8,7 @@ use crate::store::{self, DownloadProgress, DownloadedTheme, StorePage, StoreQuer
 use crate::error::{AppError, AppResult};
 use crate::package::archive::{self, Limits, WriteEntry};
 use crate::package::metadata::{self, FieldUpdate, MetadataView, DESCRIPTION_PATH};
+use crate::package::ninepatch::{self, NinePatch, NinePatchUpdate};
 use crate::package::paths;
 use crate::project::history::History;
 use crate::project::snapshot::{snapshot, ProjectSnapshot};
@@ -1113,6 +1114,39 @@ pub async fn adb_send_package(
         Ok(SendResult {
             push: result?,
             package_entries: built.entries,
+        })
+    })
+    .await
+}
+
+// ----- nine-patch -------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn ninepatch_info(app: AppHandle, slot: Option<String>, path: String) -> AppResult<NinePatch> {
+    blocking(app, move |state, _| {
+        let guard = if slot.as_deref() == Some("ref") { lock(&state.reference) } else { lock(&state.main) };
+        let project = guard.as_ref().ok_or_else(AppError::no_project)?;
+        let blob = project
+            .files
+            .get(&path)
+            .ok_or_else(|| AppError::not_found(format!("`{path}` is not in the package.")))?;
+        ninepatch::read(&blob.data)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn ninepatch_update(app: AppHandle, path: String, update: NinePatchUpdate) -> AppResult<ProjectSnapshot> {
+    blocking(app, move |state, _| {
+        with_main(state, |project| {
+            let blob = project
+                .files
+                .get(&path)
+                .cloned()
+                .ok_or_else(|| AppError::not_found(format!("`{path}` is not in the package.")))?;
+            let bytes = ninepatch::write(&blob.data, &update)?;
+            project.put_file(&path, bytes, &format!("Edit nine-patch {}", paths::file_name(&path)))?;
+            Ok(snapshot(project, "main"))
         })
     })
     .await

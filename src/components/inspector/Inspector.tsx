@@ -73,7 +73,7 @@ function FileDetails({ file, slot }: { file: FileInfo; slot: Slot }) {
         <div className="insp-section">
           <h3>Problems</h3>
           {issues.map((issue, i) => (
-            <div key={i} className="row" style={{ alignItems: 'flex-start', marginBottom: 6, fontSize: 12 }}>
+            <div key={i} className="row" style={{ alignItems: 'flex-start', marginBottom: 6, fontSize: 13 }}>
               <span style={{ width: 14, flex: 'none' }}>{issueIcon(issue)}</span>
               <span>{issue.message}</span>
             </div>
@@ -201,7 +201,7 @@ export function Inspector() {
           <dt>Components</dt>
           <dd>{project.containers.length} archives</dd>
         </dl>
-        <p className="faint" style={{ marginTop: 12, fontSize: 12 }}>Select a file or folder to see its properties.</p>
+        <p className="faint" style={{ marginTop: 12, fontSize: 13 }}>Select a file or folder to see its properties.</p>
       </div>
     );
   } else if (selection.length === 1) {

@@ -96,7 +96,7 @@ export function Welcome() {
                     <div className="ellipsis">{item.name}</div>
                     <div className="path ellipsis">{item.path}</div>
                   </div>
-                  <span className="faint nowrap" style={{ fontSize: 11 }}>
+                  <span className="faint nowrap" style={{ fontSize: 12 }}>
                     {relativeTime(item.openedAtMs)}
                   </span>
                   <button

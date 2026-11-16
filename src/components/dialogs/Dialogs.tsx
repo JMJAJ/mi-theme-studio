@@ -33,7 +33,7 @@ function ConfirmDialog({ dialog }: { dialog: Extract<DialogState, { type: 'confi
     >
       <p className="message">{dialog.message}</p>
       {dialog.detail && dialog.detail.length > 0 && (
-        <ul className="mono" style={{ fontSize: 12 }}>
+        <ul className="mono" style={{ fontSize: 13 }}>
           {dialog.detail.map((d) => (
             <li key={d}>{d}</li>
           ))}

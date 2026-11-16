@@ -333,7 +333,7 @@ export function PreviewView() {
             ) : (
               <p className="muted">No wallpaper/ images in this package.</p>
             )}
-            <p className="faint" style={{ marginTop: 10, fontSize: 11.5, lineHeight: 1.5 }}>
+            <p className="faint" style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.5 }}>
               The mockup places package images on a generic layout. It does not run lock screen MAML, theme fonts or system UI overlays, so the phone will look different.
             </p>
           </div>
@@ -373,7 +373,7 @@ export function PreviewView() {
                 </div>
               </>
             )}
-            <p className="faint" style={{ marginTop: 10, fontSize: 11.5, lineHeight: 1.5 }}>
+            <p className="faint" style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.5 }}>
               Screenshots are captured with <code>adb exec-out screencap</code>. A black image usually means the screen is off or the app blocks capture.
             </p>
           </div>

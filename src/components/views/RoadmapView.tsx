@@ -70,7 +70,7 @@ export function RoadmapView() {
                     <Icon width={15} className={status === 'done' ? 'ok' : status === 'partial' ? 'warn' : 'faint'} style={{ marginTop: 2, flex: 'none' }} />
                     <div className="grow">
                       <div>{title}</div>
-                      {note && <div className="muted" style={{ fontSize: 12 }}>{note}</div>}
+                      {note && <div className="muted" style={{ fontSize: 13 }}>{note}</div>}
                     </div>
                     <span className={`badge ${BADGE[status]}`}>{LABEL[status]}</span>
                   </div>

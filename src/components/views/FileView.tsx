@@ -118,7 +118,7 @@ function ImageViewer({ file, slot }: { file: FileInfo; slot: Slot }) {
 
 const editorTheme = EditorView.theme(
   {
-    '&': { backgroundColor: 'var(--bg-1)', color: 'var(--text)', height: '100%' },
+    '&': { backgroundColor: 'var(--bg-1)', color: 'var(--text)', height: '100%', fontSize: '13.5px' },
     '.cm-content': { fontFamily: 'var(--mono)', caretColor: 'var(--accent)' },
     '.cm-gutters': { backgroundColor: 'var(--bg-1)', color: 'var(--faint)', border: 'none', borderRight: '1px solid var(--line)' },
     '.cm-activeLine': { backgroundColor: 'rgba(255,255,255,0.03)' },

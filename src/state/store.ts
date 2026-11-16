@@ -70,8 +70,8 @@ export const DEFAULT_LAYOUT: Layout = {
   sidebar: true,
   inspector: true,
   dock: true,
-  sidebarWidth: 300,
-  inspectorWidth: 320,
+  sidebarWidth: 320,
+  inspectorWidth: 340,
   dockHeight: 210,
   navHeight: 300,
 };

@@ -496,7 +496,7 @@ export function CatalogView() {
                   </button>
                 </div>
               )}
-              <p className="faint" style={{ marginTop: 18, fontSize: 11.5 }}>
+              <p className="faint" style={{ marginTop: 18, fontSize: 12.5 }}>
                 Source: <code>{last?.endpoint}</code>
               </p>
             </>

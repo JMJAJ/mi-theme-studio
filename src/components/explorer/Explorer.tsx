@@ -28,7 +28,7 @@ import * as A from '../../state/actions';
 import { openContextMenu, type MenuItem } from '../common/Menu';
 import { kindIcon } from '../common/icons';
 
-const ROW = 24;
+const ROW = 28;
 type Filter = 'images' | 'xml' | 'changed' | 'problems';
 
 function dropFolderOf(node: TreeNode): string {

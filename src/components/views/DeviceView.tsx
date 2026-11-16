@@ -239,7 +239,7 @@ export function DeviceView() {
                   </span>
                 </div>
                 {details?.themeManagerInstalled && (
-                  <p className="muted row" style={{ fontSize: 12 }}>
+                  <p className="muted row" style={{ fontSize: 13 }}>
                     <CircleCheck width={13} className="ok" /> Theme Manager is installed on this device.
                   </p>
                 )}

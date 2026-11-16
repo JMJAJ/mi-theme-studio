@@ -36,6 +36,8 @@ The repository contains a fresh implementation. It does not include the bundled 
 
 See [the reverse-engineering notes](docs/reverse-engineering.md) for the format and application structure observations that informed this project.
 
+The planned online catalog, theme remixing, and ADB device preview work is tracked in [TODO.md](TODO.md). Application implementation files are in `source/`.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

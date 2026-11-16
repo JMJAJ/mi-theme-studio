@@ -1,5 +1,6 @@
+import { TryOnButton } from '../common/TryOnButton';
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Camera, CircleCheck, FolderSearch, Info, Lock, Palette, Play, RefreshCw, RotateCcw, Send, Smartphone, Unplug } from 'lucide-react';
+import { AlertTriangle, Camera, CircleCheck, FolderSearch, Info, Lock, Palette, RefreshCw, RotateCcw, Send, Smartphone, Unplug } from 'lucide-react';
 import { api } from '../../lib/api';
 import { MirrorButton } from '../common/MirrorButton';
 import { useStore } from '../../state/store';
@@ -55,15 +56,7 @@ function ThemeManagerActions({ serial, hasProject, busy }: { serial: string; has
   if (!support?.installed) return null;
   return (
     <>
-      <button
-        className="btn"
-        style={{ justifyContent: 'flex-start' }}
-        disabled={!hasProject || busy || !support.canApply}
-        onClick={() => void A.applyOnDevice()}
-        title={support.canApply ? undefined : 'This Theme Manager build has no editor apply entry point'}
-      >
-        <Play /> Apply on phone…
-      </button>
+      {hasProject && <TryOnButton className="btn" />}
       {support.canOpenStore && (
         <button className="btn" style={{ justifyContent: 'flex-start' }} disabled={busy} onClick={() => void A.openThemeSettingsOnDevice()}>
           <Palette /> Open Theme Manager on phone
@@ -71,18 +64,7 @@ function ThemeManagerActions({ serial, hasProject, busy }: { serial: string; has
       )}
       <div className="banner" style={{ marginTop: 4 }}>
         <Info />
-        <span>
-          {support.canApply ? (
-            <>
-              Theme Manager {support.version} supports applying from the desktop ({support.twoStep ? 'two-step' : 'legacy'} editor flow). You confirm before anything is applied, and a screenshot is taken afterwards.
-            </>
-          ) : (
-            <>
-              Theme Manager {support.version ?? ''} on this phone has no editor apply entry point (global builds don’t include it), so themes can’t be applied from the desktop here. Copy the
-              package to the phone and apply it in Theme Manager, or open store themes on the phone from the Theme store.
-            </>
-          )}
-        </span>
+        <span>Try on phone adds the theme to Theme Manager {support.version ?? ''} on the phone and presses Apply there. No root is needed; each try replaces the previous one.</span>
       </div>
     </>
   );

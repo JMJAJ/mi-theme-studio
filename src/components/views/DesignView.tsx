@@ -1,8 +1,9 @@
 // Design: the home of a theme. An overview of every part of the theme as
 // visual cards (wallpapers, lock screen, icons, fonts, sounds…), and a part
 // view with the part's assets next to the details panel.
+import { TryOnButton } from '../common/TryOnButton';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Download, FolderTree, PackageCheck, Pencil, Plus, ShoppingBag, Smartphone } from 'lucide-react';
+import { ArrowLeft, Download, FolderTree, PackageCheck, Pencil, Plus, ShoppingBag } from 'lucide-react';
 import { api, resourceUrl } from '../../lib/api';
 import { fileName } from '../../lib/paths';
 import { formatBytes, plural } from '../../lib/format';
@@ -205,9 +206,7 @@ function Overview() {
                 <PackageCheck />
                 {validation ? (validation.errors ? `${plural(validation.errors, 'problem')}` : validation.warnings ? plural(validation.warnings, 'warning') : 'Ready to export') : 'Check'}
               </button>
-              <button className="btn" onClick={() => A.goTo('phone')}>
-                <Smartphone /> Try on phone
-              </button>
+              <TryOnButton className="btn" />
               <button className="btn btn-ghost" onClick={() => runCommand('file.exportCopy')}>
                 <Download /> Export .mtz
               </button>

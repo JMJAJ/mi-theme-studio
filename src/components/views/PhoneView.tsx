@@ -1,8 +1,9 @@
 // Phone: the connected device first (what it is, what you can do with it),
 // then the themes already on it, then connection details for when ADB needs
 // attention.
+import { TryOnButton } from '../common/TryOnButton';
 import { useEffect, useState } from 'react';
-import { Camera, ChevronDown, ChevronRight, Info, Palette, Play, Send, Smartphone, Usb } from 'lucide-react';
+import { Camera, ChevronDown, ChevronRight, Info, Palette, Send, Smartphone, Usb } from 'lucide-react';
 import { api, screenshotUrl } from '../../lib/api';
 import type { ThemeManagerSupport } from '../../lib/types';
 import * as A from '../../state/actions';
@@ -66,27 +67,23 @@ export function PhoneView() {
                 {support?.version && <span>Theme Manager {support.version}</span>}
               </div>
               <div className="hero-actions">
-                <MirrorButton className="btn btn-primary" />
+                <TryOnButton className="btn btn-primary" />
+                <MirrorButton className="btn" />
                 <button className="btn" disabled={!!busy} onClick={() => void A.captureScreenshot()}>
                   <Camera /> Screenshot
                 </button>
-                <button className="btn" disabled={!project || !!busy} onClick={() => void A.sendToDevice()} title={project ? 'Export the theme and copy it to the phone' : 'Open a theme first'}>
-                  <Send /> Send theme
+                <button className="btn" disabled={!project || !!busy} onClick={() => void A.sendToDevice()} title={project ? "Copy the .mtz to the phone's Download folder without applying it" : 'Open a theme first'}>
+                  <Send /> Copy file to phone
                 </button>
-                {support?.canApply && (
-                  <button className="btn" disabled={!project || !!busy} onClick={() => void A.applyOnDevice()}>
-                    <Play /> Apply on phone
-                  </button>
-                )}
                 {support?.canOpenStore && (
                   <button className="btn btn-ghost" disabled={!!busy} onClick={() => void A.openThemeSettingsOnDevice()}>
                     <Palette /> Open Theme Manager
                   </button>
                 )}
               </div>
-              {support && !support.canApply && (
+              {project && (
                 <p className="ph-note">
-                  <Info /> This Theme Manager build can’t apply themes sent from a computer. Send the theme, then apply it in Theme Manager on the phone.
+                  <Info /> Try on phone adds the theme to Theme Manager and applies it; each try replaces the previous one. Pick another theme in Theme Manager to switch back.
                 </p>
               )}
             </div>

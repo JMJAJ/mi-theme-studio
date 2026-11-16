@@ -45,7 +45,7 @@ pub struct ApplyResult {
 }
 
 /// `am start` prints errors on stdout with exit code 0.
-fn am_failed(output: &str) -> Option<String> {
+pub(super) fn am_failed(output: &str) -> Option<String> {
     output
         .lines()
         .map(str::trim)

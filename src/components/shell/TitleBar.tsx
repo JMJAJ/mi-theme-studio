@@ -1,6 +1,7 @@
 // Title bar: theme identity and save state on the left, a command search in
 // the middle, and the actions that matter for a theme (phone, export, save)
 // on the right. The full menu lives behind one button.
+import { TryOnButton } from '../common/TryOnButton';
 import { useRef, useState } from 'react';
 import { Clock3, Download, FilePen, XCircle, Menu, PanelRight, Redo2, Save, Search, Smartphone, Undo2 } from 'lucide-react';
 import { MenuPopup, type MenuAction, type MenuItem } from '../common/Menu';
@@ -96,6 +97,7 @@ export function TitleBar() {
       </button>
 
       <div className="tb-actions">
+        {device.ready && <TryOnButton className="btn" />}
         <button className={`tb-phone tone-${device.tone}`} onClick={() => goTo('phone')} title={device.title}>
           <span className={`dot dot-${device.tone}`} />
           <Smartphone />

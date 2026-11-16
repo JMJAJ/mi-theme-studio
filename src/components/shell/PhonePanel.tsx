@@ -5,6 +5,7 @@ import { Camera, ChevronLeft, ChevronRight, Circle, ExternalLink, Loader2, Lock,
 import { resourceUrl, screenshotUrl } from '../../lib/api';
 import { fileName } from '../../lib/paths';
 import { findWallpaper, pickIcons } from '../views/PreviewView';
+import { TryOnButton } from '../common/TryOnButton';
 import { attachCanvas, startStream, stopStream, streamKey, streamScroll, streamTouch, useMirrorStream } from '../../state/mirrorStream';
 import * as A from '../../state/actions';
 import { updateLayout, useStore } from '../../state/store';
@@ -274,6 +275,12 @@ export function PhonePanel() {
               <span className="faint pp-note">Live mockup of your wallpaper{screen === 'home' ? ' and icons' : ' and clock'}. Lock screen layouts (MAML) render on the real phone.</span>
             )}
           </div>
+          {device.ready && (
+            <div className="pp-actions">
+              <span className="faint pp-note grow">See it on {device.label}</span>
+              <TryOnButton />
+            </div>
+          )}
         </>
       ) : (
         <>
@@ -345,9 +352,10 @@ export function PhonePanel() {
                   <button className="btn btn-sm" disabled={capturing || !!busy} onClick={() => void capture()} title="Save a full-resolution screenshot" aria-label="Screenshot">
                     <Camera />
                   </button>
-                  <button className="btn btn-sm" onClick={() => void stopStream()}>
+                  <button className="btn btn-sm" onClick={() => void stopStream()} title="Stop mirroring">
                     <X /> Stop
                   </button>
+                  <TryOnButton compact />
                 </>
               ) : (
                 <>
@@ -358,10 +366,12 @@ export function PhonePanel() {
                     <ExternalLink />
                   </button>
                   {project && (
-                    <button className="btn btn-sm btn-primary" disabled={!!busy} onClick={() => void A.sendToDevice()} title="Export the theme and copy it to the phone">
-                      <Send /> Send theme
+                    <button className="btn btn-sm btn-ghost btn-icon" disabled={!!busy} onClick={() => void A.sendToDevice()} title="Copy the .mtz to the phone's Download folder without applying it" aria-label="Copy theme file to phone">
+                      <Send />
                     </button>
                   )}
+                  <span className="grow" />
+                  <TryOnButton />
                 </>
               )}
             </div>

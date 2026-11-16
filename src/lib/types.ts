@@ -476,6 +476,14 @@ export interface ThemeManagerSupport {
   canOpenStore: boolean;
 }
 
+export interface TryOnResult {
+  localId: string;
+  parts: string[];
+  bytes: number;
+  applied: boolean;
+  steps: string[];
+}
+
 export interface ApplyResult {
   remotePath: string;
   bytes: number;

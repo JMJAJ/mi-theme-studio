@@ -1,7 +1,7 @@
 // Typed wrappers over the native commands. All file system, archive and
 // device work happens in Rust; the UI only calls these.
 import { invoke } from '@tauri-apps/api/core';
-import type {
+import type { TryOnResult,
   MirrorStatus,
   ApplyResult,
   ThemeManagerSupport,
@@ -138,6 +138,7 @@ export const api = {
     call<number[]>('adb_cached_theme_preview', { serial, localId }),
   adbCachedThemeReference: (serial: string, localId: string) =>
     call<ProjectSnapshot>('adb_cached_theme_reference', { serial, localId }),
+  adbTryOn: (serial: string, opId: string) => call<TryOnResult>('adb_try_on', { serial, opId }),
   adbCachedThemeOpen: (serial: string, localId: string) =>
     call<ProjectSnapshot>('adb_cached_theme_open', { serial, localId }),
   adbScreenshot: (serial: string, model: string | null, opId: string) =>

@@ -12,6 +12,7 @@ pub mod parse;
 pub mod runner;
 pub mod theme_apply;
 pub mod theme_cache;
+pub mod theme_install;
 
 use crate::error::{AppError, AppResult};
 use parse::{DeviceEntry, Size};

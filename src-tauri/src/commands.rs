@@ -1194,6 +1194,31 @@ pub async fn adb_apply_theme(
     .await
 }
 
+/// "Try on phone": export the project, add it to Theme Manager's library on the
+/// phone and press Apply there. Earlier try-ons are replaced.
+#[tauri::command]
+pub async fn adb_try_on(
+    app: AppHandle,
+    serial: String,
+    op_id: Option<String>,
+) -> AppResult<adb::theme_install::TryOnResult> {
+    blocking(app, move |state, app| {
+        let adb = adb_for(state, app)?;
+        let title = lock(&state.main)
+            .as_ref()
+            .map(|p| p.title())
+            .ok_or_else(|| AppError::invalid("Open a theme first."))?;
+        let built = build_package(state, Some(app))?;
+        let stage = state.paths.staging_dir().join("try-on");
+        let cancel = register_op(state, &op_id);
+        let result = adb.try_on(&serial, &built.data, &title, &stage, cancel);
+        finish_op(state, &op_id);
+        let _ = std::fs::remove_dir_all(&stage);
+        result
+    })
+    .await
+}
+
 // ----- screen mirroring (bundled scrcpy) ------------------------------------------
 
 fn mirror_status_of(state: &AppState) -> adb::mirror::MirrorStatus {

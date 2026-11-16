@@ -7,6 +7,7 @@ import { api, errorCode, errorMessage, newOpId } from '../lib/api';
 import { fileName, joinPath, parentOf, validateName } from '../lib/paths';
 import type { AdbLogEntry, ConflictPolicy, DownloadedTheme, MediaTarget, ExportProgress, ProjectSnapshot, SaveResult, Slot } from '../lib/types';
 import { formatBytes, plural } from '../lib/format';
+import { useMirrorStream } from './mirrorStream';
 import {
   choiceDialog,
   confirmDialog,
@@ -959,6 +960,73 @@ export async function sendToDevice() {
   } catch (error) {
     if (errorCode(error) === 'cancelled') log('info', 'Send cancelled');
     else toast('error', `Send to device: ${errorMessage(error)}`);
+  } finally {
+    operations.delete(opId);
+    setState({ busy: null, exportProgress: null });
+  }
+}
+
+const TRY_ON_OK_KEY = 'mts.tryOnConfirmed';
+export const TRY_ON_BUSY = 'Applying the theme on the phone…';
+
+/**
+ * Try on phone: export the theme, add it to Theme Manager's library on the
+ * phone and press Apply there, so the phone switches to it right away.
+ */
+export async function tryOnPhone() {
+  const device = readyDevice();
+  const project = getState().project;
+  if (!device || !project) {
+    toast('warning', 'Open a theme and connect an authorized phone first.');
+    return;
+  }
+  if (getState().busy) return;
+  if (!(await applyAllDrafts())) return;
+  let confirmed = false;
+  try {
+    confirmed = localStorage.getItem(TRY_ON_OK_KEY) === '1';
+  } catch {
+    /* ignore */
+  }
+  if (!confirmed) {
+    const details = getState().deviceDetails[device.serial];
+    const name = details?.marketName ?? details?.model ?? device.model ?? device.serial;
+    const ok = await confirmDialog({
+      title: `Try “${project.title}” on ${name}?`,
+      message: 'The theme is added to Theme Manager on the phone and applied right away, as if you had pressed Apply there.',
+      detail: [
+        'No root is used. Theme Manager does the applying.',
+        'Each try replaces the previous one, so Theme Manager keeps only your latest try-on.',
+        'To go back, pick another theme in Theme Manager → My themes.',
+        'Keep the phone unlocked while it applies.',
+      ],
+      confirmLabel: 'Try on phone',
+    });
+    if (!ok) return;
+    try {
+      localStorage.setItem(TRY_ON_OK_KEY, '1');
+    } catch {
+      /* ignore */
+    }
+  }
+  const opId = newOpId('tryon');
+  operations.set(opId, 'Trying on phone');
+  setState({ busy: TRY_ON_BUSY });
+  try {
+    const result = await api.adbTryOn(device.serial, opId);
+    for (const step of result.steps) log('info', `Try on: ${step}`);
+    if (result.applied) {
+      toast('success', `“${project.title}” is now on the phone (${plural(result.parts.length, 'part')})`);
+      // Without a live mirror, refresh the phone screenshot so the result shows here.
+      if (useMirrorStream.getState().status !== 'live') {
+        await new Promise((r) => setTimeout(r, 1500));
+        await captureScreenshot();
+      }
+    }
+    else toast('warning', 'The theme is open in Theme Manager on the phone. Tap Apply there to finish.');
+  } catch (error) {
+    if (errorCode(error) === 'cancelled') log('info', 'Try on cancelled');
+    else toast('error', `Try on phone: ${errorMessage(error)}`);
   } finally {
     operations.delete(opId);
     setState({ busy: null, exportProgress: null });

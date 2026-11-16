@@ -1,8 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { TopBar } from './components/shell/TopBar';
-import { Navigator } from './components/shell/Navigator';
+import { TitleBar } from './components/shell/TitleBar';
+import { Rail } from './components/shell/Rail';
+import { PhonePanel } from './components/shell/PhonePanel';
+import { DesignView } from './components/views/DesignView';
+import { CatalogView } from './components/views/CatalogView';
+import { PhoneView } from './components/views/PhoneView';
+import { BuildView } from './components/views/BuildView';
 import { StatusBar } from './components/shell/StatusBar';
 import { Explorer } from './components/explorer/Explorer';
 import { Workspace } from './components/views/Workspace';
@@ -166,8 +171,60 @@ function useBackgroundTasks() {
   }, [title]);
 }
 
+/** Files: the advanced, file-level editor (explorer, tabs, inspector). */
+function FilesSection() {
+  const layout = useStore((s) => s.layout);
+  return (
+    <div className="files-section">
+      {layout.sidebar && (
+        <>
+          <aside className="sidebar" style={{ width: layout.sidebarWidth }} aria-label="Files">
+            <ErrorBoundary name="Explorer">
+              <Explorer />
+            </ErrorBoundary>
+          </aside>
+          <Splitter orientation="vertical" label="Resize file list" value={layout.sidebarWidth} min={220} max={560} onChange={(sidebarWidth) => updateLayout({ sidebarWidth })} />
+        </>
+      )}
+      <div className="files-main">
+        <ErrorBoundary name="Editor">
+          <Workspace />
+        </ErrorBoundary>
+      </div>
+      {layout.inspector && (
+        <>
+          <Splitter orientation="vertical" label="Resize details" value={layout.inspectorWidth} min={240} max={520} direction={-1} onChange={(inspectorWidth) => updateLayout({ inspectorWidth })} />
+          <div style={{ width: layout.inspectorWidth, display: 'flex', minHeight: 0 }}>
+            <ErrorBoundary name="Details">
+              <Inspector />
+            </ErrorBoundary>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function SectionView() {
+  const section = useStore((s) => s.section);
+  const project = useStore((s) => s.project);
+  switch (section) {
+    case 'files':
+      return project ? <FilesSection /> : <DesignView />;
+    case 'store':
+      return <CatalogView />;
+    case 'phone':
+      return <PhoneView />;
+    case 'check':
+      return project ? <BuildView /> : <DesignView />;
+    default:
+      return <DesignView />;
+  }
+}
+
 export function App() {
   const layout = useStore((s) => s.layout);
+  const section = useStore((s) => s.section);
   const started = useRef(false);
   useGlobalShortcuts();
   useInterfaceZoom();
@@ -183,45 +240,32 @@ export function App() {
 
   return (
     <div className="app">
-      <TopBar />
+      <TitleBar />
       <div className="main">
-        {layout.sidebar && (
+        <Rail />
+        <div className="stage">
+          <main className="center">
+            <ErrorBoundary key={section} name="This section">
+              <SectionView />
+            </ErrorBoundary>
+            {layout.dock && (
+              <>
+                <Splitter orientation="horizontal" label="Resize bottom panel" value={layout.dockHeight} min={90} max={560} direction={-1} onChange={(dockHeight) => updateLayout({ dockHeight })} />
+                <div style={{ height: layout.dockHeight, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                  <ErrorBoundary name="Bottom panel">
+                    <Dock />
+                  </ErrorBoundary>
+                </div>
+              </>
+            )}
+          </main>
+        </div>
+        {layout.phone && (
           <>
-            <aside className="sidebar" style={{ width: layout.sidebarWidth }} aria-label="Sidebar">
-              <div style={{ height: layout.navHeight, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                <ErrorBoundary name="Navigation">
-                  <Navigator />
-                </ErrorBoundary>
-              </div>
-              <Splitter orientation="horizontal" label="Resize navigation" value={layout.navHeight} min={120} max={640} onChange={(navHeight) => updateLayout({ navHeight })} />
-              <ErrorBoundary name="Explorer">
-                <Explorer />
-              </ErrorBoundary>
-            </aside>
-            <Splitter orientation="vertical" label="Resize sidebar" value={layout.sidebarWidth} min={220} max={560} onChange={(sidebarWidth) => updateLayout({ sidebarWidth })} />
-          </>
-        )}
-        <main className="center">
-          <ErrorBoundary name="Editor">
-            <Workspace />
-          </ErrorBoundary>
-          {layout.dock && (
-            <>
-              <Splitter orientation="horizontal" label="Resize bottom panel" value={layout.dockHeight} min={90} max={560} direction={-1} onChange={(dockHeight) => updateLayout({ dockHeight })} />
-              <div style={{ height: layout.dockHeight, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                <ErrorBoundary name="Bottom panel">
-                  <Dock />
-                </ErrorBoundary>
-              </div>
-            </>
-          )}
-        </main>
-        {layout.inspector && (
-          <>
-            <Splitter orientation="vertical" label="Resize inspector" value={layout.inspectorWidth} min={240} max={520} direction={-1} onChange={(inspectorWidth) => updateLayout({ inspectorWidth })} />
-            <div style={{ width: layout.inspectorWidth, display: 'flex', minHeight: 0 }}>
-              <ErrorBoundary name="Inspector">
-                <Inspector />
+            <Splitter orientation="vertical" label="Resize phone preview" value={layout.phoneWidth} min={300} max={620} direction={-1} onChange={(phoneWidth) => updateLayout({ phoneWidth })} />
+            <div style={{ width: layout.phoneWidth, display: 'flex', minHeight: 0 }}>
+              <ErrorBoundary name="Phone preview">
+                <PhonePanel />
               </ErrorBoundary>
             </div>
           </>

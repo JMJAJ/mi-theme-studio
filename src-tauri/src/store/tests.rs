@@ -265,3 +265,17 @@ fn live() {
         remove_download(&dir, &record.module_id).unwrap();
     }
 }
+
+/// Live store pages for the UI preview harness:
+/// `MTS_STORE_LIVE=1 MTS_FIXTURE_OUT=<dir> cargo test store::tests::export_store_fixture -- --ignored`
+#[test]
+#[ignore]
+fn export_store_fixture() {
+    let (Ok(_), Ok(out)) = (std::env::var("MTS_STORE_LIVE"), std::env::var("MTS_FIXTURE_OUT")) else { return };
+    let ua = "MiThemeStudio/test";
+    let home = fetch_page(&StoreQuery::Home { product: ProductKind::Theme }, 0, Some("IN"), ua).unwrap();
+    std::fs::write(std::path::Path::new(&out).join("store-home.json"), serde_json::to_string(&home).unwrap()).unwrap();
+    let id = home.sections.iter().flat_map(|s| &s.products).next().unwrap().module_id.clone();
+    let detail = fetch_detail(&id, Some("IN"), ua).unwrap();
+    std::fs::write(std::path::Path::new(&out).join("store-detail.json"), serde_json::to_string(&detail).unwrap()).unwrap();
+}

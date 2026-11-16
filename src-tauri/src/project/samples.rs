@@ -166,3 +166,30 @@ fn real_packages_round_trip() {
     assert!(failures.is_empty(), "round-trip failures:\n{}", failures.join("\n"));
     println!("{} samples round-tripped", list.len());
 }
+
+/// Export a UI fixture (snapshot + resource files) for the browser preview
+/// harness in scripts/ui-preview:
+/// `MTS_FIXTURE_IN=<theme.mtz> MTS_FIXTURE_OUT=<dir> cargo test export_ui_fixture -- --ignored`
+#[test]
+#[ignore]
+fn export_ui_fixture() {
+    let (Ok(input), Ok(out)) = (std::env::var("MTS_FIXTURE_IN"), std::env::var("MTS_FIXTURE_OUT")) else { return };
+    let data = std::fs::read(&input).unwrap();
+    let name = std::path::Path::new(&input).file_name().unwrap().to_string_lossy().into_owned();
+    let project = Project::from_bytes(&data, &name, None, Limits::default()).unwrap();
+    let out = PathBuf::from(out);
+    let files_dir = out.join("files");
+    std::fs::create_dir_all(&files_dir).unwrap();
+    let mut index = serde_json::Map::new();
+    for (i, (path, blob)) in project.files.iter().enumerate() {
+        let file = format!("{i}.bin");
+        std::fs::write(files_dir.join(&file), &blob.data).unwrap();
+        index.insert(path.clone(), serde_json::Value::String(file));
+    }
+    let snap = super::snapshot::snapshot(&project, "main");
+    std::fs::write(out.join("snapshot.json"), serde_json::to_string(&snap).unwrap()).unwrap();
+    std::fs::write(out.join("index.json"), serde_json::to_string(&index).unwrap()).unwrap();
+    let meta = crate::package::metadata::parse(project.text(crate::package::metadata::DESCRIPTION_PATH).as_deref());
+    std::fs::write(out.join("metadata.json"), serde_json::to_string(&meta).unwrap()).unwrap();
+    println!("fixture: {} files", project.files.len());
+}

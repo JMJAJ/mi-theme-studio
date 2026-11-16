@@ -1,4 +1,6 @@
 import { FileDown, Globe, Info, LayoutDashboard, Map, MonitorSmartphone, Smartphone, X } from 'lucide-react';
+import { FolderTree } from 'lucide-react';
+import { goTo } from '../../state/actions';
 import { useStore, type Tab } from '../../state/store';
 import { closeTab } from '../../state/actions';
 import { openContextMenu } from '../common/Menu';
@@ -91,7 +93,19 @@ function TabStrip() {
 function ActiveView() {
   const tab = useStore((s) => s.tabs.find((t) => t.id === s.activeTab));
   const project = useStore((s) => s.project);
-  if (!tab) return project ? <Dashboard /> : <Welcome />;
+  if (!tab)
+    return project ? (
+      <div className="empty" style={{ flex: 1 }}>
+        <FolderTree />
+        <h3>Pick a file to edit</h3>
+        <p>Every file in the theme is listed on the left. Images, XML, fonts and sounds open in their own editors. Most work is easier from Design.</p>
+        <button className="btn" onClick={() => goTo('design')}>
+          Back to Design
+        </button>
+      </div>
+    ) : (
+      <Welcome />
+    );
   switch (tab.kind) {
     case 'dashboard':
       return project ? <Dashboard /> : <Welcome />;

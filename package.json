@@ -1,6 +1,6 @@
 {
   "name": "mi-theme-studio",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "author": "JMJAJ",
@@ -18,7 +18,8 @@
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "tauri": "tauri",
     "fetch:scrcpy": "node scripts/fetch-scrcpy.mjs",
-    "build:win": "node scripts/fetch-scrcpy.mjs && tauri build --bundles nsis && node scripts/stage-windows-installer.mjs"
+    "version:bump": "node scripts/bump-version.mjs",
+    "build:win": "node scripts/bump-version.mjs && node scripts/fetch-scrcpy.mjs && tauri build --bundles nsis && node scripts/stage-windows-installer.mjs"
   },
   "dependencies": {
     "@codemirror/lang-xml": "^6.1.0",

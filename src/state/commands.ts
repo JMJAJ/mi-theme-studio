@@ -92,7 +92,15 @@ export const COMMANDS: Command[] = [
   { id: 'edit.delete', group: 'Edit', label: 'Delete', shortcut: 'Delete', icon: Trash2, enabled: hasSelection, run: () => A.deletePaths(getState().selection) },
   { id: 'edit.findInFiles', group: 'Edit', label: 'Find in files', shortcut: 'Ctrl+Shift+F', icon: Search, enabled: hasProject, run: () => setState((s) => ({ sideTab: 'search', layout: { ...s.layout, sidebar: true } })), global: true },
   { id: 'edit.goToFile', group: 'Edit', label: 'Go to file…', shortcut: 'Ctrl+P', icon: Search, enabled: hasProject, run: () => setState({ palette: 'files' }), global: true },
-  { id: 'edit.palette', group: 'Edit', label: 'Command palette…', shortcut: 'Ctrl+Shift+P', icon: Search, run: () => setState({ palette: 'commands' }), global: true },
+  { id: 'edit.palette', group: 'Edit', label: 'Command palette…', shortcut: 'Ctrl+K', alt: ['Ctrl+Shift+P'], icon: Search, run: () => setState({ palette: 'commands' }), global: true },
+
+  // Go to
+  { id: 'go.design', group: 'Go', label: 'Design', shortcut: 'Ctrl+1', run: () => A.goTo('design'), global: true },
+  { id: 'go.files', group: 'Go', label: 'Files', shortcut: 'Ctrl+2', run: () => A.goTo('files'), global: true },
+  { id: 'go.store', group: 'Go', label: 'Theme store', shortcut: 'Ctrl+3', run: () => A.goTo('store'), global: true },
+  { id: 'go.phone', group: 'Go', label: 'Phone', shortcut: 'Ctrl+4', run: () => A.goTo('phone'), global: true },
+  { id: 'go.check', group: 'Go', label: 'Check & export', shortcut: 'Ctrl+5', run: () => A.goTo('check'), global: true },
+  { id: 'view.phone', group: 'View', label: 'Toggle phone preview', shortcut: 'Ctrl+Alt+P', run: () => updateLayout({ phone: !getState().layout.phone }), global: true },
 
   // View
   { id: 'view.sidebar', group: 'View', label: 'Toggle sidebar', shortcut: 'Ctrl+B', icon: PanelLeft, run: () => toggle('sidebar'), global: true },
@@ -158,7 +166,8 @@ export type MenuEntry = string | '-' | { heading: string };
 export const MENUS: { label: string; items: MenuEntry[] }[] = [
   { label: 'File', items: ['file.new', 'file.open', 'recent', '-', 'file.save', 'file.saveAs', 'file.exportCopy', 'file.report', '-', 'file.openReference', '-', 'file.close'] },
   { label: 'Edit', items: ['edit.undo', 'edit.redo', '-', 'edit.rename', 'edit.duplicate', 'edit.move', 'edit.delete', '-', 'edit.findInFiles', 'edit.goToFile', 'edit.palette'] },
-  { label: 'View', items: ['view.sidebar', 'view.inspector', 'view.dock', '-', 'view.problems', 'view.output', 'view.adbLog', 'view.history', '-', 'view.zoomIn', 'view.zoomOut', 'view.zoomReset', '-', 'view.resetLayout'] },
+  { label: 'Go', items: ['go.design', 'go.files', 'go.store', 'go.phone', 'go.check'] },
+  { label: 'View', items: ['view.phone', 'view.sidebar', 'view.inspector', 'view.dock', '-', 'view.problems', 'view.output', 'view.adbLog', 'view.history', '-', 'view.zoomIn', 'view.zoomOut', 'view.zoomReset', '-', 'view.resetLayout'] },
   { label: 'Project', items: ['project.details', 'project.addFiles', 'project.newComponent', '-', 'project.validate', 'project.build'] },
   { label: 'Tools', items: ['tools.catalog', '-', 'tools.settings'] },
   { label: 'Device', items: ['device.manager', 'device.refresh', '-', 'device.screenshot', 'device.mirror', 'device.send', '-', 'device.restart', 'device.locate'] },

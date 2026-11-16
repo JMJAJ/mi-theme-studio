@@ -29,7 +29,7 @@ export function BuildView() {
       <div className="view-pad">
         <div className="view-header">
           <div>
-            <h1>Build & export</h1>
+            <h1>Check & export</h1>
             <div className="sub">Packages are written atomically, re-read and verified entry by entry. Existing files are backed up first{settings?.backupsEnabled ? '' : ' (backups are off in Settings)'}.</div>
           </div>
           <div className="actions">

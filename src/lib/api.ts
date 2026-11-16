@@ -171,9 +171,11 @@ export const api = {
 
 // Windows/Android webviews reach custom protocols as http://<scheme>.localhost.
 const RESOURCE_BASE =
-  typeof navigator !== 'undefined' && /Windows|Android/i.test(navigator.userAgent)
+  // The browser UI preview harness (scripts/ui-preview) serves resources itself.
+  (globalThis as { __MTS_RESOURCE_BASE__?: string }).__MTS_RESOURCE_BASE__ ??
+  (typeof navigator !== 'undefined' && /Windows|Android/i.test(navigator.userAgent)
     ? 'http://themeres.localhost'
-    : 'themeres://localhost';
+    : 'themeres://localhost');
 
 /** URL for a package resource served by the native `themeres:` protocol. */
 export function resourceUrl(slot: Slot, path: string, rev: number): string {

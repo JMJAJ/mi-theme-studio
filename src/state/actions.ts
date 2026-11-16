@@ -17,9 +17,11 @@ import {
   pathExists,
   promptDialog,
   setState,
+  type Section,
   type Tab,
   type TabKind,
   toast,
+  updateLayout,
 } from './store';
 
 const PACKAGE_FILTERS = [
@@ -136,13 +138,33 @@ export function openTab(tab: Tab) {
   });
 }
 
+export function goTo(section: Section, part: string | null = null) {
+  setState({ section, part });
+}
+
+/** Views that used to be tabs now map onto app sections. */
 export function openSingleton(kind: TabKind) {
-  openTab({ id: kind, kind, title: SINGLETON_TITLES[kind] ?? kind });
+  switch (kind) {
+    case 'dashboard':
+      return goTo('design');
+    case 'info':
+      return goTo('design', 'info');
+    case 'catalog':
+      return goTo('store');
+    case 'device':
+      return goTo('phone');
+    case 'build':
+      return goTo('check');
+    case 'preview':
+      return updateLayout({ phone: true });
+    default:
+      setState({ section: 'files' });
+      openTab({ id: kind, kind, title: SINGLETON_TITLES[kind] ?? kind });
+  }
 }
 
 export function openComponent(id: string) {
-  const def = getState().project?.components.find((c) => c.id === id);
-  openTab({ id: `component:${id}`, kind: 'component', component: id, title: def?.label ?? id });
+  goTo('design', id === 'metadata' ? 'info' : id);
 }
 
 let revealNonce = 0;
@@ -153,6 +175,7 @@ export function revealInFile(path: string, line: number, column: number, length:
 }
 
 export function openFile(path: string, slot: Slot = 'main') {
+  setState({ section: 'files' });
   openTab({ id: `file:${slot}:${path}`, kind: 'file', path, slot, title: fileName(path) });
   if (slot === 'main') setState({ selection: [path], selectionAnchor: path });
 }

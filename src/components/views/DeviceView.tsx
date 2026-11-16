@@ -14,6 +14,7 @@ const SOURCE_LABEL: Record<string, string> = {
   'user-folder': 'User folder',
   'android-sdk': 'Android SDK (default location)',
   common: 'Common location',
+  bundled: 'Bundled with Mi Theme Studio',
 };
 
 function stateBadge(device: DeviceEntry) {
@@ -87,7 +88,7 @@ function ThemeManagerActions({ serial, hasProject, busy }: { serial: string; has
   );
 }
 
-export function DeviceView() {
+export function DeviceView({ embedded = false }: { embedded?: boolean }) {
   const adb = useStore((s) => s.adb);
   const checking = useStore((s) => s.adbChecking);
   const selected = useStore((s) => s.selectedSerial);
@@ -99,12 +100,12 @@ export function DeviceView() {
   const details = device ? detailsMap[device.serial] : undefined;
 
   return (
-    <div className="view">
-      <div className="view-pad">
-        <div className="view-header">
+    <div className={embedded ? '' : 'view'}>
+      <div className={embedded ? '' : 'view-pad'}>
+        <div className="view-header" style={embedded ? { marginBottom: 4 } : undefined}>
           <div>
-            <h1>Device</h1>
-            <div className="sub">Android Debug Bridge access runs in the native backend. Only read-only queries, screenshots and an explicitly confirmed file copy are performed.</div>
+            {!embedded && <h1>Device</h1>}
+            <div className="sub">ADB runs in the native backend: read-only queries, screenshots, mirroring and confirmed file copies.</div>
           </div>
           <div className="actions">
             <button className="btn" onClick={() => void A.refreshAdb(false, true)} disabled={checking}>

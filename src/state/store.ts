@@ -57,6 +57,9 @@ export interface BuildRecord extends Omit<SaveResult, 'snapshot'> {
 export type DockTab = 'problems' | 'output' | 'adb' | 'build' | 'history';
 export type SideTab = 'files' | 'search' | 'reference';
 
+/** Top-level areas of the app (left rail). */
+export type Section = 'design' | 'files' | 'store' | 'phone' | 'check';
+
 /** A text range to select once its file is open in an editor. */
 export interface Reveal {
   path: string;
@@ -74,17 +77,22 @@ export interface Layout {
   inspectorWidth: number;
   dockHeight: number;
   navHeight: number;
+  /** Phone preview panel on the right. */
+  phone: boolean;
+  phoneWidth: number;
 }
 
-const LAYOUT_KEY = 'mts.layout.v1';
+const LAYOUT_KEY = 'mts.layout.v2';
 export const DEFAULT_LAYOUT: Layout = {
   sidebar: true,
   inspector: true,
-  dock: true,
+  dock: false,
   sidebarWidth: 320,
   inspectorWidth: 340,
   dockHeight: 210,
   navHeight: 300,
+  phone: true,
+  phoneWidth: 380,
 };
 
 function loadLayout(): Layout {
@@ -159,6 +167,9 @@ export interface StoreState {
   layout: Layout;
   dockTab: DockTab;
   sideTab: SideTab;
+  section: Section;
+  /** Theme part open in Design (component id or 'info'); null = overview. */
+  part: string | null;
   mirror: MirrorStatus | null;
   reveal: Reveal | null;
   validation: ValidationReport | null;
@@ -201,6 +212,8 @@ export const useStore = create<StoreState>(() => ({
   layout: loadLayout(),
   dockTab: 'problems',
   sideTab: 'files',
+  section: 'design',
+  part: null,
   mirror: null,
   reveal: null,
   validation: null,

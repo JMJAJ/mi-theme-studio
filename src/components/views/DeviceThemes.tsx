@@ -101,7 +101,7 @@ function DeviceThemeCard({
   );
 }
 
-export function DeviceThemes({ refreshKey }: { refreshKey: number }) {
+export function DeviceThemes({ refreshKey, compact = false }: { refreshKey: number; compact?: boolean }) {
   const selectedSerial = useStore((s) => s.selectedSerial);
   const attachedDevices = useStore((s) => s.adb?.devices ?? NO_DEVICES);
   const [themes, setThemes] = useState<CachedDeviceTheme[]>([]);
@@ -124,7 +124,7 @@ export function DeviceThemes({ refreshKey }: { refreshKey: number }) {
     setError(null);
     try {
       const list = await api.adbCachedThemes(serial);
-      if (id === request.current) setThemes(list);
+      if (id === request.current) setThemes(list ?? []);
     } catch (e) {
       if (id === request.current) setError(errorMessage(e));
     } finally {
@@ -160,10 +160,12 @@ export function DeviceThemes({ refreshKey }: { refreshKey: number }) {
 
   return (
     <>
+      {!compact && (
       <div className="banner banner-info" style={{ marginBottom: 16 }}>
         <Info />
         <span>Themes already cached by Theme Manager on the selected phone. Opening one creates a read-only reference so you can copy parts into your project; the phone cache stays untouched.</span>
       </div>
+      )}
       {referenceError && <div className="banner banner-err" style={{ marginBottom: 14 }}><AlertTriangle /><span>{referenceError}</span></div>}
       {!ready ? (
         <div className="empty">

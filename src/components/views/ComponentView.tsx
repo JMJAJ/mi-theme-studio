@@ -11,7 +11,7 @@ import { componentIcon } from '../common/icons';
 
 type Sort = 'name' | 'size' | 'status';
 
-export function ComponentView({ componentId }: { componentId: string }) {
+export function ComponentView({ componentId, embedded = false }: { componentId: string; embedded?: boolean }) {
   const project = useStore((s) => s.project);
   const selection = useStore((s) => s.selection);
   const [query, setQuery] = useState('');
@@ -68,10 +68,14 @@ export function ComponentView({ componentId }: { componentId: string }) {
   return (
     <div className="center-body">
       <div className="toolbar">
-        <Icon width={16} height={16} className="muted" />
-        <strong>{def.label}</strong>
-        <span className="muted">{plural(files.length, 'file')}</span>
-        <span className="sep" />
+        {!embedded && (
+          <>
+            <Icon width={16} height={16} className="muted" />
+            <strong>{def.label}</strong>
+            <span className="muted">{plural(files.length, 'file')}</span>
+            <span className="sep" />
+          </>
+        )}
         <div className="search" style={{ width: 200 }}>
           <Search />
           <input className="input" placeholder={`Filter ${def.label.toLowerCase()}`} value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Filter" />
@@ -116,7 +120,7 @@ export function ComponentView({ componentId }: { componentId: string }) {
           </button>
         )}
         {(folders.length > 0 || containers.length > 0) && (
-          <select className="select" value={destination} onChange={(e) => setFolder(e.target.value)} aria-label="Destination folder" title="Folder new files are added to">
+          <select className="select" style={{ maxWidth: 220 }} value={destination} onChange={(e) => setFolder(e.target.value)} aria-label="Destination folder" title="Folder new files are added to">
             {[...new Set([...(containers.map((c) => `${c.name}!/`)), ...folders, ...(def.defaultRoot ? [def.defaultRoot] : [])])].map((f) => (
               <option key={f} value={f}>
                 Add to: {displayFolder(f)}

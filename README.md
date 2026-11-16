@@ -4,6 +4,17 @@ Mi Theme Studio is a local desktop studio for creating, inspecting, previewing a
 
 It is an independent, unofficial tool and is not affiliated with Xiaomi.
 
+## How the app is laid out
+
+- **Design**: the home of a theme. Every part (wallpapers, lock screen, icons, home screen, status bar, fonts, clocks, sounds, previews…) is a visual card built from the theme's own artwork; open one to browse, replace or add its assets.
+- **Phone panel** (right, always there): the theme on a phone frame (lock, home, designer previews) that follows the part you edit, or the real connected phone with screenshot, live mirror and send.
+- **Files**: the full file tree with text/XML, image, nine-patch, font and audio editors, find and replace, and reference packages.
+- **Store**: browse, search and download free themes, fonts, wallpapers and ringtones, and apply parts of them.
+- **Phone**: the connected device, its actions, and the themes already on it; ADB details are tucked away.
+- **Check**: validation and export.
+
+Ctrl+K searches commands and files; Ctrl+1…5 switch sections; Ctrl+Alt+P toggles the phone panel.
+
 ## What works today
 
 **Packages**
@@ -74,6 +85,15 @@ MTS_STORE_LIVE=1 cargo test --manifest-path src-tauri/Cargo.toml --lib store::te
 ```
 
 Windows installers are built by the GitHub Actions workflow and published on the [Releases page](https://github.com/JMJAJ/mi-theme-studio/releases). The installer is per-user. The first Tauri installer replaces the previous Electron install in its existing per-user folder; later updates reuse the registered Tauri install folder, even if the install-directory page is changed.
+
+UI preview in a browser (real UI, Tauri IPC mocked, data exported from a real theme):
+
+```sh
+MTS_FIXTURE_IN=path/to/theme.mtz MTS_FIXTURE_OUT=src-tauri/target/ui-fixture cargo test --manifest-path src-tauri/Cargo.toml --lib export_ui_fixture -- --ignored
+npx vite --config scripts/ui-preview/vite.config.ts   # open http://localhost:5199/scripts/ui-preview/index.html
+```
+
+Every `npm run build:win` bumps the patch version so the installer always replaces the installed copy (`npm run version:bump minor` for a minor bump).
 
 ## Project layout
 

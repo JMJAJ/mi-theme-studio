@@ -46,7 +46,7 @@ function stem(path: string) {
   return fileName(path).replace(/\.(png|webp|jpg|jpeg)$/i, '');
 }
 
-function pickIcons(files: FileInfo[]) {
+export function pickIcons(files: FileInfo[]) {
   const icons = files.filter((f) => f.component === 'icons' && f.kind === 'image' && !f.ninePatch);
   const byStem = new Map<string, FileInfo>();
   // Prefer the highest density variant of each icon.
@@ -75,7 +75,7 @@ function pickIcons(files: FileInfo[]) {
   return matched;
 }
 
-function findWallpaper(files: FileInfo[], lock: boolean) {
+export function findWallpaper(files: FileInfo[], lock: boolean) {
   const walls = files.filter((f) => f.kind === 'image' && f.component === 'wallpapers');
   const pick = (re: RegExp) => walls.find((f) => re.test(fileName(f.path)));
   return lock ? pick(/lock/i) ?? pick(/default_wallpaper/i) ?? walls[0] : pick(/^default_wallpaper/i) ?? walls.find((f) => !/lock/i.test(f.path)) ?? walls[0];

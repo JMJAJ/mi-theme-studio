@@ -35,5 +35,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: mi-theme-studio-windows
-          path: release/*.exe
+          path: |
+            release/*.exe
+            release/*.zip
           if-no-files-found: error

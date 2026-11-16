@@ -1,4 +1,5 @@
-import { copyFile, lstat, mkdir, readFile, readdir, rm } from 'node:fs/promises';
+import { copyFile, cp, lstat, mkdir, readFile, readdir, rm } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -28,7 +29,7 @@ for (const entry of await readdir(outputDir, { withFileTypes: true })) {
     entry.name === 'builder-debug.yml' ||
     entry.name === 'latest.yml' ||
     ((entry.name.startsWith(`${productName}_`) || entry.name.startsWith(`${productName} `)) &&
-      (entry.name.endsWith('.exe') || entry.name.endsWith('.blockmap')));
+      (entry.name.endsWith('.exe') || entry.name.endsWith('.blockmap') || entry.name.endsWith('.zip')));
   if (!isOldBuildOutput) continue;
 
   const oldPath = path.resolve(outputDir, entry.name);
@@ -40,3 +41,17 @@ for (const entry of await readdir(outputDir, { withFileTypes: true })) {
 
 await copyFile(installerPath, path.join(outputDir, installerName));
 console.log(`Windows installer staged at ${path.join(outputDir, installerName)}`);
+
+// Portable build: the app and its bundled resources in a zip. Needs no
+// installer and never unpacks into %TEMP% (useful when a sandbox or security
+// tool stops setup programs from writing there).
+const releaseDir = path.join(projectRoot, 'src-tauri', 'target', 'release');
+const portableName = `${productName}_${packageJson.version}_x64-portable.zip`;
+const stagingDir = path.join(projectRoot, 'src-tauri', 'target', 'portable', productName);
+await rm(path.dirname(stagingDir), { recursive: true, force: true });
+await mkdir(stagingDir, { recursive: true });
+await copyFile(path.join(releaseDir, 'mi-theme-studio.exe'), path.join(stagingDir, `${productName}.exe`));
+await cp(path.join(releaseDir, 'scrcpy'), path.join(stagingDir, 'scrcpy'), { recursive: true });
+const tarExe = process.platform === 'win32' ? path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
+execFileSync(tarExe, ['-a', '-c', '-f', path.join(outputDir, portableName), '-C', path.dirname(stagingDir), productName], { stdio: 'inherit' });
+console.log(`Portable build staged at ${path.join(outputDir, portableName)}`);

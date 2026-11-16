@@ -93,7 +93,7 @@ MTS_FIXTURE_IN=path/to/theme.mtz MTS_FIXTURE_OUT=src-tauri/target/ui-fixture car
 npx vite --config scripts/ui-preview/vite.config.ts   # open http://localhost:5199/scripts/ui-preview/index.html
 ```
 
-Every `npm run build:win` bumps the patch version so the installer always replaces the installed copy (`npm run version:bump minor` for a minor bump).
+`npm run build:win` also writes a portable zip next to the installer (unzip and run `Mi Theme Studio.exe`; no setup, nothing unpacked to %TEMP%). Every `npm run build:win` bumps the patch version so the installer always replaces the installed copy (`npm run version:bump minor` for a minor bump).
 
 ## Project layout
 

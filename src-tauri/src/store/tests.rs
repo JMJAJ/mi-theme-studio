@@ -12,14 +12,15 @@ const HOME: &str = r#"{
        "products": [
          {"uuid": "mod-1", "productUuid": "prod-1", "productType": 1, "name": "Glass", "originPriceInCent": 0,
           "imageUrl": "thumbnail/webp/w480q70/ThemeMarket/x", "fileSizeInKB": 9447242, "metaTags": ["Widget", "Pink"]},
-         {"uuid": "mod-2", "productType": 2, "name": "A font"},
+         {"uuid": "mod-2", "productType": 7, "name": "A font"},
+         {"uuid": "mod-3", "productType": 99, "name": "Unknown type"},
          {"uuid": "../evil", "productType": 1, "name": "Bad id"},
          {"uuid": "mod-1", "productType": 1, "name": "Duplicate"}
        ]},
       {"cardUuid": "c2", "title": "Empty shelf", "subjectUuid": "subj-2", "products": []},
       {"cardUuid": "c3", "gridBanners": [
         {"imageUrl": "https://evil.example.com/x.png", "link": {"title": "Dark", "link": "page-2", "type": 1, "productType": 1}},
-        {"imageUrl": "thumbnail/y", "link": {"title": "Fonts", "link": "page-3", "type": 1, "productType": 2}},
+        {"imageUrl": "thumbnail/y", "link": {"title": "Odd", "link": "page-3", "type": 1, "productType": 42}},
         {"imageUrl": "thumbnail/z", "link": {"title": "App", "link": "widget://x", "type": 3}}
       ]}
     ]
@@ -42,8 +43,10 @@ fn parses_shelves_links_and_products() {
     );
     let shelf = &page.sections[1];
     assert_eq!(shelf.subject_id.as_deref(), Some("subj-1"));
-    assert_eq!(shelf.products.len(), 1, "fonts, bad ids and duplicates are skipped");
+    assert_eq!(shelf.products.len(), 2, "unknown types, bad ids and duplicates are skipped");
+    assert_eq!(shelf.products[1].kind, ProductKind::Font);
     let p = &shelf.products[0];
+    assert_eq!(p.kind, ProductKind::Theme);
     assert_eq!(p.module_id, "mod-1");
     assert_eq!(p.product_id.as_deref(), Some("prod-1"));
     assert_eq!(p.price_cents, 0);
@@ -140,11 +143,33 @@ fn download_ticket_checks_host_and_hash() {
 #[test]
 fn urls_validate_input() {
     assert!(query_url(&StoreQuery::Page { id: "../x".into() }, 0, "US").is_err());
-    assert!(query_url(&StoreQuery::Search { keywords: "  ".into() }, 0, "US").is_err());
-    let search = query_url(&StoreQuery::Search { keywords: "cat & dog".into() }, 1, "US").unwrap();
+    assert!(query_url(&StoreQuery::Search { keywords: "  ".into(), product: ProductKind::Theme }, 0, "US").is_err());
+    let search = query_url(&StoreQuery::Search { keywords: "cat & dog".into(), product: ProductKind::Theme }, 1, "US").unwrap();
     assert!(search.starts_with("https://thm.market.intl.xiaomi.com/thm/search/v2/npage?keywords=cat%20%26%20dog&"));
-    let home = query_url(&StoreQuery::Home, 20, region_of(Some("XX"))).unwrap();
+    let home = query_url(&StoreQuery::Home { product: ProductKind::Theme }, 20, region_of(Some("XX"))).unwrap();
+    let fonts = query_url(&StoreQuery::Home { product: ProductKind::Font }, 0, "IN").unwrap();
+    assert!(fonts.contains("pageCategory=FONT"));
+    let rings = query_url(&StoreQuery::Search { keywords: "piano".into(), product: ProductKind::Ringtone }, 0, "IN").unwrap();
+    assert!(rings.contains("category=RingtoneUnion"));
+    let q: StoreQuery = serde_json::from_str(r#"{"kind":"home"}"#).unwrap();
+    assert_eq!(q, StoreQuery::Home { product: ProductKind::Theme }, "product defaults to themes");
     assert!(home.contains("cardStart=20") && home.contains("region=US") && home.contains("miuiUIVersion=V160"));
+}
+
+#[test]
+fn ringtone_detail_has_free_preview_only() {
+    let ring = r#"{"apiCode":"0","apiData":{"cards":[],"extraInfo":{"themeDetail":{
+        "name":"Sweet Dreams","moduleId":"r-1","productType":6,"productPrice":0,
+        "downloadUrl":"ThemeMarket/abc/Sweet Dreams.mp3","downloadUrlRootAudio":"https://t17.market.mi-img.com/download/"}}}}"#;
+    let d = parse_detail(ring, "r-1").unwrap();
+    assert_eq!(d.kind, ProductKind::Ringtone);
+    assert_eq!(d.audio_url.as_deref(), Some("https://t17.market.mi-img.com/download/ThemeMarket/abc/Sweet%20Dreams.mp3"));
+    let paid = ring.replace("\"productPrice\":0", "\"productPrice\":100");
+    assert!(parse_detail(&paid, "r-1").unwrap().audio_url.is_none());
+    let font = r#"{"apiCode":"0","apiData":{"cards":[],"extraInfo":{"themeDetail":{"name":"F","moduleId":"f-1","category":"Font","productType":7}}}}"#;
+    assert_eq!(parse_detail(font, "f-1").unwrap().kind, ProductKind::Font);
+    assert_eq!(extension_of_url("https://x.miui.com/a/Sweet+Dreams.MP3?t=1&s=2").as_deref(), Some("mp3"));
+    assert_eq!(extension_of_url("https://x.miui.com/a/noext?t=1"), None);
 }
 
 #[test]
@@ -164,6 +189,7 @@ fn downloads_index_round_trip() {
     let record = DownloadedTheme {
         module_id: "mod-1".into(),
         product_id: None,
+        kind: ProductKind::Theme,
         name: "Glass".into(),
         designer: None,
         cover: None,
@@ -189,14 +215,14 @@ fn live() {
         return;
     }
     let ua = "MiThemeStudio/test";
-    let home = fetch_page(&StoreQuery::Home, 0, None, ua).unwrap();
+    let home = fetch_page(&StoreQuery::Home { product: ProductKind::Theme }, 0, None, ua).unwrap();
     let products: Vec<_> = home.sections.iter().flat_map(|s| &s.products).collect();
     println!("home: {} sections, {} products", home.sections.len(), products.len());
     assert!(!products.is_empty());
     let subject = home.sections.iter().find_map(|s| s.subject_id.clone()).unwrap();
     let shelf = fetch_page(&StoreQuery::Subject { id: subject }, 0, None, ua).unwrap();
     println!("shelf: {} products", shelf.sections.iter().map(|s| s.products.len()).sum::<usize>());
-    let search = fetch_page(&StoreQuery::Search { keywords: "cat".into() }, 0, None, ua).unwrap();
+    let search = fetch_page(&StoreQuery::Search { keywords: "cat".into(), product: ProductKind::Theme }, 0, None, ua).unwrap();
     println!("search: {} products", search.sections.iter().map(|s| s.products.len()).sum::<usize>());
     let cats = fetch_page(&StoreQuery::Categories, 0, None, ua).unwrap();
     println!("categories: {} links", cats.sections.iter().map(|s| s.links.len()).sum::<usize>());
@@ -215,4 +241,27 @@ fn live() {
     println!("opened: {} files, components {:?}", project.files.len(), project.containers.keys().collect::<Vec<_>>());
     assert!(!project.containers.is_empty());
     remove_download(&dir, &detail.module_id).unwrap();
+
+    for (kind, word) in [(ProductKind::Font, "bold"), (ProductKind::Ringtone, "piano"), (ProductKind::Wallpaper, "flower")] {
+        let home = fetch_page(&StoreQuery::Home { product: kind }, 0, Some("IN"), ua).unwrap();
+        let home_products = home.sections.iter().map(|s| s.products.len()).sum::<usize>();
+        let home_links = home.sections.iter().map(|s| s.links.len()).sum::<usize>();
+        let found = fetch_page(&StoreQuery::Search { keywords: word.into(), product: kind }, 0, Some("IN"), ua).unwrap();
+        let items: Vec<_> = found.sections.iter().flat_map(|s| s.products.clone()).collect();
+        println!("{kind:?}: home {home_products} products / {home_links} links, search {} items", items.len());
+        assert!(items.iter().all(|p| p.kind == kind), "{kind:?} search returns only that kind");
+        if kind == ProductKind::Font {
+            continue;
+        }
+        let free = items.iter().find(|p| p.price_cents == 0).expect("a free item");
+        let d = fetch_detail(&free.module_id, Some("IN"), ua).unwrap();
+        assert_eq!(d.kind, kind);
+        if kind == ProductKind::Ringtone {
+            assert!(d.audio_url.is_some(), "free ringtone has a preview");
+        }
+        let record = download(&free.module_id, Some("IN"), &dir, ua, |_, _| {}).unwrap();
+        println!("  downloaded {} ({} bytes) as {}", record.name, record.size_bytes, record.path);
+        assert!(kind.allowed_extensions().contains(&crate::package::paths::extension(&record.path).as_str()));
+        remove_download(&dir, &record.module_id).unwrap();
+    }
 }

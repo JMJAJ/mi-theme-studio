@@ -307,16 +307,21 @@ export interface CachedDeviceTheme {
 
 // ----- Online theme store -----
 
+export type ProductKind = 'theme' | 'font' | 'wallpaper' | 'ringtone';
+
 export type StoreQuery =
-  | { kind: 'home' }
+  | { kind: 'home'; product?: ProductKind }
   | { kind: 'categories' }
   | { kind: 'page'; id: string }
   | { kind: 'subject'; id: string }
-  | { kind: 'search'; keywords: string };
+  | { kind: 'search'; keywords: string; product?: ProductKind };
+
+export type MediaTarget = 'homeWallpaper' | 'lockWallpaper' | 'ringtone' | 'notification' | 'alarm';
 
 export interface StoreProduct {
   moduleId: string;
   productId: string | null;
+  kind: ProductKind;
   name: string;
   imageUrl: string | null;
   secondImageUrl: string | null;
@@ -355,6 +360,7 @@ export interface StorePage {
 export interface ThemeDetail {
   moduleId: string;
   productId: string | null;
+  kind: ProductKind;
   name: string;
   designer: string | null;
   author: string | null;
@@ -374,12 +380,14 @@ export interface ThemeDetail {
   bought: boolean;
   priceKnown: boolean;
   free: boolean;
+  audioUrl: string | null;
   webUrl: string;
 }
 
 export interface DownloadedTheme {
   moduleId: string;
   productId: string | null;
+  kind: ProductKind;
   name: string;
   designer: string | null;
   cover: string | null;

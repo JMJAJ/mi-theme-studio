@@ -1247,6 +1247,62 @@ pub async fn store_remove_download(app: AppHandle, module_id: String) -> AppResu
     blocking(app, move |state, _| store::remove_download(&downloads_dir(state), &module_id)).await
 }
 
+/// Where a downloaded wallpaper or ringtone goes in the theme.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MediaTarget {
+    HomeWallpaper,
+    LockWallpaper,
+    Ringtone,
+    Notification,
+    Alarm,
+}
+
+impl MediaTarget {
+    fn stem(self) -> &'static str {
+        match self {
+            MediaTarget::HomeWallpaper => "wallpaper/default_wallpaper",
+            MediaTarget::LockWallpaper => "wallpaper/default_lock_wallpaper",
+            MediaTarget::Ringtone => "ringtones/ringtone",
+            MediaTarget::Notification => "ringtones/notification",
+            MediaTarget::Alarm => "ringtones/alarm",
+        }
+    }
+
+    fn kind(self) -> store::ProductKind {
+        match self {
+            MediaTarget::HomeWallpaper | MediaTarget::LockWallpaper => store::ProductKind::Wallpaper,
+            _ => store::ProductKind::Ringtone,
+        }
+    }
+}
+
+/// Put a downloaded wallpaper or ringtone into the open project.
+#[tauri::command]
+pub async fn store_apply_media(app: AppHandle, module_id: String, target: MediaTarget) -> AppResult<ProjectSnapshot> {
+    blocking(app, move |state, _| {
+        let record = store::existing(&downloads_dir(state), &module_id)
+            .ok_or_else(|| AppError::not_found("That item is not downloaded."))?;
+        if record.kind != target.kind() {
+            return Err(AppError::invalid("This download cannot be used there."));
+        }
+        let path = PathBuf::from(&record.path);
+        let ext = paths::extension(&record.path);
+        let data = read_limited(&path, MAX_ASSET_BYTES, "The download")?;
+        with_main(state, |project| {
+            project.place_file(
+                target.stem(),
+                &ext,
+                data,
+                &format!("Use “{}” from the theme store", record.name),
+                Some((record.name.clone(), record.designer.clone().unwrap_or_default(), format!("Theme store · {}", record.module_id))),
+            )?;
+            Ok(snapshot(project, "main"))
+        })
+    })
+    .await
+}
+
 /// Open a downloaded theme as an editable, untitled copy: saving asks for a
 /// new location instead of overwriting the cached download.
 #[tauri::command]
@@ -1254,6 +1310,9 @@ pub async fn store_open_project(app: AppHandle, module_id: String) -> AppResult<
     blocking(app, move |state, _| {
         let record = store::existing(&downloads_dir(state), &module_id)
             .ok_or_else(|| AppError::not_found("That theme is not downloaded."))?;
+        if !matches!(record.kind, store::ProductKind::Theme | store::ProductKind::Font) {
+            return Err(AppError::invalid("Only theme and font packages can be opened as a project."));
+        }
         let path = PathBuf::from(&record.path);
         let data = read_limited(&path, MAX_PACKAGE_BYTES, "The package")?;
         let project = Project::from_bytes(&data, &file_name_of(&path), None, Limits::default())?;

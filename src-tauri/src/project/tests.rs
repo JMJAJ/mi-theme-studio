@@ -330,3 +330,27 @@ fn new_project_is_dirty_until_saved() {
     assert!(!project.is_dirty());
     assert_eq!(project.name, "New.mtz");
 }
+
+#[test]
+fn place_file_replaces_same_stem_and_records_source() {
+    let mut project = Project::from_bytes(&sample_package(), "s.mtz", None, Limits::default()).unwrap();
+    assert!(project.files.contains_key("wallpaper/default_wallpaper.jpg"));
+    let path = project
+        .place_file(
+            "wallpaper/default_wallpaper",
+            "PNG",
+            b"\x89PNG new".to_vec(),
+            "Use wallpaper",
+            Some(("Sky".into(), "Ann".into(), "Theme store · w-1".into())),
+        )
+        .unwrap();
+    assert_eq!(path, "wallpaper/default_wallpaper.png");
+    assert!(!project.files.contains_key("wallpaper/default_wallpaper.jpg"), "old extension removed");
+    assert_eq!(project.attributions.last().unwrap().source_title, "Sky");
+    project.undo().unwrap();
+    assert!(project.files.contains_key("wallpaper/default_wallpaper.jpg"));
+    assert!(!project.files.contains_key("wallpaper/default_wallpaper.png"));
+    // New folders work too.
+    let sound = project.place_file("ringtones/ringtone", "mp3", b"ID3".to_vec(), "Use ringtone", None).unwrap();
+    assert_eq!(sound, "ringtones/ringtone.mp3");
+}

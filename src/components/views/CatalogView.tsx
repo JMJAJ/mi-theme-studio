@@ -18,6 +18,14 @@ import {
   LayoutGrid,
   Loader2,
   Lock,
+  Music,
+  Image as ImageIcon,
+  Type,
+  Palette,
+  Bell,
+  AlarmClock,
+  Phone,
+  Monitor,
   PackageOpen,
   RefreshCw,
   Search,
@@ -30,7 +38,7 @@ import {
 import { api, errorMessage } from '../../lib/api';
 import { formatBytes, formatDateTime, plural } from '../../lib/format';
 import { splitNested } from '../../lib/paths';
-import type { DownloadedTheme, ProjectSnapshot, StoreLink, StorePage, StoreProduct, StoreQuery, ThemeDetail } from '../../lib/types';
+import type { DownloadedTheme, ProductKind, ProjectSnapshot, StoreLink, StorePage, StoreProduct, StoreQuery, ThemeDetail } from '../../lib/types';
 import * as A from '../../state/actions';
 import { setState, useStore } from '../../state/store';
 import {
@@ -50,6 +58,15 @@ import { DeviceThemes } from './DeviceThemes';
 const CONSENT_KEY = 'mts.catalog.consent.v1';
 
 type Tab = 'discover' | 'categories' | 'downloads' | 'device';
+
+const KINDS: { kind: ProductKind; label: string; noun: string; icon: typeof Palette }[] = [
+  { kind: 'theme', label: 'Themes', noun: 'theme', icon: Palette },
+  { kind: 'font', label: 'Fonts', noun: 'font', icon: Type },
+  { kind: 'wallpaper', label: 'Wallpapers', noun: 'wallpaper', icon: ImageIcon },
+  { kind: 'ringtone', label: 'Ringtones', noun: 'ringtone', icon: Music },
+];
+const nounOf = (kind: ProductKind) => KINDS.find((k) => k.kind === kind)?.noun ?? 'item';
+const isPackage = (kind: ProductKind) => kind === 'theme' || kind === 'font';
 type Route = { type: 'list'; query: StoreQuery; title: string } | { type: 'detail'; moduleId: string; name: string };
 
 function readConsent() {
@@ -88,7 +105,7 @@ function ProductCard({ product, onOpen }: { product: StoreProduct; onOpen: () =>
   const downloaded = useThemeStore((s) => s.downloads.some((d) => d.moduleId === product.moduleId));
   const progress = useThemeStore((s) => s.progress[product.moduleId]);
   return (
-    <button className="product-card" onClick={onOpen} title={product.name}>
+    <button className={`product-card kind-${product.kind}`} onClick={onOpen} title={product.name}>
       <div className="cover">
         <RemoteImage src={product.imageUrl} alt={product.name} />
         {downloaded && (
@@ -595,7 +612,7 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
               </span>
               <button
                 className="btn btn-ghost btn-sm"
-                onClick={() => navigate({ type: 'list', query: { kind: 'search', keywords: detail.designer! }, title: `Search “${detail.designer}”` })}
+                onClick={() => navigate({ type: 'list', query: { kind: 'search', keywords: detail.designer!, product: detail.kind }, title: `Search “${detail.designer}”` })}
               >
                 <Search /> More like this
               </button>
@@ -604,11 +621,16 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
           {detail.tags.length > 0 && (
             <div className="tags">
               {detail.tags.map((t) => (
-                <button key={t} className="chip" onClick={() => navigate({ type: 'list', query: { kind: 'search', keywords: t }, title: `Search “${t}”` })}>
+                <button key={t} className="chip" onClick={() => navigate({ type: 'list', query: { kind: 'search', keywords: t, product: detail.kind }, title: `Search “${t}”` })}>
                   {t}
                 </button>
               ))}
             </div>
+          )}
+          {detail.audioUrl && (
+            <audio className="store-audio" controls preload="none" src={detail.audioUrl}>
+              Audio preview is not supported.
+            </audio>
           )}
           {detail.description && <p className="description selectable">{detail.description}</p>}
           <div className="facts">
@@ -640,8 +662,8 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
                 <Lock />
                 <span>
                   {detail.priceKnown
-                    ? `Paid theme (${formatPrice(detail.priceCents, detail.currency)}). Mi Theme Studio only downloads themes the store lists as free. Buy it in Theme Manager on your phone, then import it from the “On device” tab.`
-                    : 'The store did not state a price for this theme, so Mi Theme Studio will not download it. Free themes are listed at zero.'}
+                    ? `Paid ${nounOf(detail.kind)} (${formatPrice(detail.priceCents, detail.currency)}). Mi Theme Studio only downloads items the store lists as free. Buy it in Theme Manager on your phone${detail.kind === 'theme' ? ', then import it from the “On device” tab' : ''}.`
+                    : `The store did not state a price for this ${nounOf(detail.kind)}, so Mi Theme Studio will not download it. Free items are listed at zero.`}
                 </span>
               </div>
             </>
@@ -663,15 +685,21 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
               <div className="row ok">
                 <Check width={16} /> <span>Downloaded · verified</span>
               </div>
-              <button className="btn btn-primary" onClick={() => setPicking(true)}>
-                <Layers /> Apply parts to my theme…
-              </button>
-              <button className="btn" onClick={() => void A.openDownloadAsProject(downloaded)}>
-                <PackageOpen /> Open whole theme as project
-              </button>
-              <button className="btn" onClick={() => void A.openDownloadAsReference(downloaded)}>
-                <BookOpen /> Browse files as reference
-              </button>
+              {isPackage(downloaded.kind) ? (
+                <>
+                  <button className="btn btn-primary" onClick={() => setPicking(true)}>
+                    <Layers /> Apply {downloaded.kind === 'font' ? 'font' : 'parts'} to my theme…
+                  </button>
+                  <button className="btn" onClick={() => void A.openDownloadAsProject(downloaded)}>
+                    <PackageOpen /> Open whole {nounOf(downloaded.kind)} as project
+                  </button>
+                  <button className="btn" onClick={() => void A.openDownloadAsReference(downloaded)}>
+                    <BookOpen /> Browse files as reference
+                  </button>
+                </>
+              ) : (
+                <MediaActions item={downloaded} />
+              )}
               <div className="row">
                 <button className="btn btn-ghost btn-sm" onClick={() => void A.revealPath(downloaded.path)}>
                   <FolderOpen /> Show file
@@ -707,6 +735,46 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
   );
 }
 
+function MediaActions({ item, compact = false }: { item: DownloadedTheme; compact?: boolean }) {
+  const hasProject = useStore((s) => !!s.project);
+  const cls = compact ? 'btn btn-sm' : 'btn';
+  if (!hasProject) {
+    return (
+      <span className="faint" style={{ fontSize: 'var(--fs-xs)' }}>
+        Open or create a theme to use this {nounOf(item.kind)}.
+      </span>
+    );
+  }
+  if (item.kind === 'wallpaper') {
+    return (
+      <>
+        <button className={`${cls} ${compact ? '' : 'btn-primary'}`} onClick={() => void A.applyDownloadedMedia(item, ['homeWallpaper', 'lockWallpaper'])}>
+          <ImageIcon /> Use for home &amp; lock
+        </button>
+        <button className={cls} onClick={() => void A.applyDownloadedMedia(item, ['homeWallpaper'])}>
+          <Monitor /> Home only
+        </button>
+        <button className={cls} onClick={() => void A.applyDownloadedMedia(item, ['lockWallpaper'])}>
+          <Lock /> Lock only
+        </button>
+      </>
+    );
+  }
+  return (
+    <>
+      <button className={`${cls} ${compact ? '' : 'btn-primary'}`} onClick={() => void A.applyDownloadedMedia(item, ['ringtone'])}>
+        <Phone /> Use as ringtone
+      </button>
+      <button className={cls} onClick={() => void A.applyDownloadedMedia(item, ['notification'])}>
+        <Bell /> Notification
+      </button>
+      <button className={cls} onClick={() => void A.applyDownloadedMedia(item, ['alarm'])}>
+        <AlarmClock /> Alarm
+      </button>
+    </>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // downloads library
 
@@ -725,8 +793,8 @@ function DownloadsLibrary({ navigate }: { navigate: (route: Route) => void }) {
     return (
       <div className="empty">
         <HardDrive />
-        <h3>No downloaded themes</h3>
-        <p>Download a free theme from Discover or Categories. Downloads stay available offline.</p>
+        <h3>Nothing downloaded yet</h3>
+        <p>Download free themes, fonts, wallpapers or ringtones from Discover. Downloads stay available offline.</p>
       </div>
     );
   }
@@ -740,29 +808,35 @@ function DownloadsLibrary({ navigate }: { navigate: (route: Route) => void }) {
       <div className="section-head">
         <h2>Downloaded</h2>
         <span className="muted">
-          {plural(downloads.length, 'theme')} · {formatBytes(downloads.reduce((n, d) => n + d.sizeBytes, 0))}
+          {plural(downloads.length, 'item')} · {formatBytes(downloads.reduce((n, d) => n + d.sizeBytes, 0))}
         </span>
       </div>
       <div className="download-list surface">
         {downloads.map((d) => (
           <div key={d.moduleId} className="download-row">
-            <button className="thumb" onClick={() => navigate({ type: 'detail', moduleId: d.moduleId, name: d.name })} aria-label={`Open ${d.name}`}>
+            <button className={`thumb kind-${d.kind}`} onClick={() => navigate({ type: 'detail', moduleId: d.moduleId, name: d.name })} aria-label={`Open ${d.name}`}>
               <RemoteImage src={d.cover} alt="" />
             </button>
             <div className="grow" style={{ minWidth: 0 }}>
               <div className="name ellipsis">{d.name}</div>
               <div className="faint ellipsis">
-                {d.designer ? `${d.designer} · ` : ''}
+                <span className="badge badge-outline">{nounOf(d.kind)}</span> {d.designer ? `${d.designer} · ` : ''}
                 {formatBytes(d.sizeBytes)} · {formatDateTime(d.downloadedAtMs)}
               </div>
             </div>
             <div className="row">
-              <button className="btn btn-sm" onClick={() => setPicking(d)}>
-                <Layers /> Apply parts…
-              </button>
-              <button className="btn btn-sm" onClick={() => void A.openDownloadAsProject(d)}>
-                <PackageOpen /> Open
-              </button>
+              {isPackage(d.kind) ? (
+                <>
+                  <button className="btn btn-sm" onClick={() => setPicking(d)}>
+                    <Layers /> Apply parts…
+                  </button>
+                  <button className="btn btn-sm" onClick={() => void A.openDownloadAsProject(d)}>
+                    <PackageOpen /> Open
+                  </button>
+                </>
+              ) : (
+                <MediaActions item={d} compact />
+              )}
               <button className="btn btn-ghost btn-sm" title="Show file" aria-label="Show file" onClick={() => void A.revealPath(d.path)}>
                 <FolderOpen />
               </button>
@@ -780,16 +854,40 @@ function DownloadsLibrary({ navigate }: { navigate: (route: Route) => void }) {
 // ---------------------------------------------------------------------------
 // root
 
-const ROOTS: Record<'discover' | 'categories', Route> = {
-  discover: { type: 'list', query: { kind: 'home' }, title: 'Discover' },
-  categories: { type: 'list', query: { kind: 'categories' }, title: 'Categories' },
-};
+const PRODUCT_KEY = 'mts.store.product.v1';
+function loadProduct(): ProductKind {
+  try {
+    const v = localStorage.getItem(PRODUCT_KEY);
+    if (v && KINDS.some((k) => k.kind === v)) return v as ProductKind;
+  } catch {
+    /* ignore */
+  }
+  return 'theme';
+}
+
+function rootFor(tab: 'discover' | 'categories', product: ProductKind): Route {
+  return tab === 'categories'
+    ? { type: 'list', query: { kind: 'categories' }, title: 'Categories' }
+    : { type: 'list', query: { kind: 'home', product }, title: KINDS.find((k) => k.kind === product)?.label ?? 'Discover' };
+}
 
 export function CatalogView() {
   const region = useThemeStore((s) => s.region);
   const freeOnly = useThemeStore((s) => s.freeOnly);
   const [tab, setTab] = useState<Tab>('discover');
+  const [product, setProductState] = useState<ProductKind>(loadProduct);
   const [stack, setStack] = useState<Route[]>([]);
+  const setProduct = (next: ProductKind) => {
+    setProductState(next);
+    try {
+      localStorage.setItem(PRODUCT_KEY, next);
+    } catch {
+      /* ignore */
+    }
+    if (tab === 'categories' && next !== 'theme') setTab('discover');
+    if (tab === 'device') setTab('discover');
+    setStack([]);
+  };
   const [consent, setConsent] = useState(readConsent);
   const [search, setSearch] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -799,7 +897,7 @@ export function CatalogView() {
     void refreshDownloads();
   }, []);
 
-  const route: Route | null = stack.length ? stack[stack.length - 1] : tab === 'discover' || tab === 'categories' ? ROOTS[tab] : null;
+  const route: Route | null = stack.length ? stack[stack.length - 1] : tab === 'discover' || tab === 'categories' ? rootFor(tab, product) : null;
   useEffect(() => {
     scroller.current?.scrollTo({ top: 0 });
   }, [route && JSON.stringify(route), tab]);
@@ -817,7 +915,7 @@ export function CatalogView() {
     const keywords = search.trim();
     if (!keywords) return;
     if (tab !== 'discover' && tab !== 'categories') setTab('discover');
-    setStack((s) => [...s.filter((r) => !(r.type === 'list' && r.query.kind === 'search')), { type: 'list', query: { kind: 'search', keywords }, title: `Search “${keywords}”` }]);
+    setStack((s) => [...s.filter((r) => !(r.type === 'list' && r.query.kind === 'search')), { type: 'list', query: { kind: 'search', keywords, product }, title: `Search ${KINDS.find((k) => k.kind === product)?.label.toLowerCase()} “${keywords}”` }]);
   };
   const allow = () => {
     try {
@@ -844,7 +942,7 @@ export function CatalogView() {
           <button aria-pressed={tab === 'discover' && !stack.length} onClick={() => switchTab('discover')}>
             <Sparkles /> Discover
           </button>
-          <button aria-pressed={tab === 'categories' && !stack.length} onClick={() => switchTab('categories')}>
+          <button aria-pressed={tab === 'categories' && !stack.length} onClick={() => switchTab('categories')} disabled={product !== 'theme'} title={product !== 'theme' ? 'Categories are available for themes' : undefined}>
             <LayoutGrid /> Categories
           </button>
           <button aria-pressed={tab === 'downloads' && !stack.length} onClick={() => switchTab('downloads')}>
@@ -863,7 +961,7 @@ export function CatalogView() {
           }}
         >
           <Search />
-          <input className="input" placeholder="Search themes…" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search themes" />
+          <input className="input" placeholder={`Search ${KINDS.find((k) => k.kind === product)?.label.toLowerCase()}…`} value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search the store" />
         </form>
         <span className="grow" />
         <label className="check" title="Hide paid themes (only free themes can be downloaded)">
@@ -888,9 +986,18 @@ export function CatalogView() {
           <RefreshCw />
         </button>
       </div>
+      {tab !== 'device' && (
+        <div className="kind-bar" role="tablist" aria-label="Store content type">
+          {KINDS.map(({ kind, label, icon: Icon }) => (
+            <button key={kind} role="tab" aria-selected={product === kind} className={product === kind ? 'is-on' : ''} onClick={() => setProduct(kind)}>
+              <Icon /> {label}
+            </button>
+          ))}
+        </div>
+      )}
       {stack.length > 0 && (
         <div className="crumbs">
-          <button onClick={() => setStack([])}>{tab === 'categories' ? 'Categories' : tab === 'downloads' ? 'Downloaded' : 'Discover'}</button>
+          <button onClick={() => setStack([])}>{tab === 'categories' ? 'Categories' : tab === 'downloads' ? 'Downloaded' : KINDS.find((k) => k.kind === product)?.label}</button>
           {stack.map((r, i) => (
             <span key={i} className="row" style={{ gap: 4 }}>
               <ChevronRight width={13} className="faint" />

@@ -706,3 +706,17 @@ button.catalog-card:hover, button.icon-link:hover { border-color: var(--line-str
 .np-size .mono { width: 34px; text-align: right; }
 .np-preview { border: 1px solid var(--line); border-radius: 6px; padding: 10px; overflow: auto; max-height: 320px; display: grid; place-items: center; }
 .np-preview canvas { display: block; }
+
+/* ---------- store content types ---------- */
+.kind-bar { display: flex; gap: 4px; padding: 6px 14px; border-bottom: 1px solid var(--line); background: var(--bg-1); flex: none; overflow-x: auto; }
+.kind-bar button { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px; border-radius: 14px; border: 1px solid transparent; background: transparent; color: var(--text-2); cursor: pointer; font-size: var(--fs-sm); white-space: nowrap; }
+.kind-bar button svg { width: 15px; height: 15px; }
+.kind-bar button:hover { background: var(--bg-hover); color: var(--text); }
+.kind-bar button.is-on { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent-strong); }
+.product-card.kind-font .cover { aspect-ratio: 4 / 3; }
+.product-card.kind-font .cover img { object-fit: contain; background: var(--bg-2); }
+.product-card.kind-ringtone .cover { aspect-ratio: 1; border-radius: 50%; }
+.product-grid:has(.kind-font) { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+.download-row .thumb.kind-ringtone { aspect-ratio: 1; border-radius: 50%; }
+.download-row .thumb.kind-font { aspect-ratio: 4 / 3; width: 64px; }
+.store-audio { width: 100%; max-width: 460px; margin-top: 14px; display: block; }

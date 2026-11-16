@@ -22,7 +22,7 @@
 - [x] Downloads of free themes, SHA-1 verified; paid themes refused, rights/DRM never bypassed.
 - [x] Open supported modules from an already cached Theme Manager theme as a read-only reference with attribution.
 - [x] Open a downloaded store theme as a reference, apply selected parts, or open it whole as a new project.
-- [ ] Fonts, wallpapers and ringtones from the store (other product types).
+- [x] Fonts, wallpapers and ringtones from the store: browse, search, preview ringtones, download, apply as theme parts.
 - [ ] Extend `.mrc` to MTZ component mapping for more regional resource types and verify licensing terms for reuse/export. The cache reference reads already-present files only; it does not call store download or rights endpoints.
 - [x] Search (`/thm/search/v2/npage`, `category=Compound`).
 

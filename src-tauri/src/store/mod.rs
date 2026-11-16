@@ -43,14 +43,83 @@ static CANCELLED: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
 // ----- query -------------------------------------------------------------------
 
+/// Store product types. Codes and category names come from Theme Manager.
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum ProductKind {
+    #[default]
+    Theme,
+    Font,
+    Wallpaper,
+    Ringtone,
+}
+
+impl ProductKind {
+    pub fn from_code(value: &Value) -> Option<ProductKind> {
+        match value {
+            Value::Number(n) => match n.as_u64()? {
+                1 => Some(ProductKind::Theme),
+                2 => Some(ProductKind::Wallpaper),
+                6 => Some(ProductKind::Ringtone),
+                7 => Some(ProductKind::Font),
+                _ => None,
+            },
+            Value::String(s) => match s.to_ascii_uppercase().as_str() {
+                "1" | "THEME" | "COMPOUND" => Some(ProductKind::Theme),
+                "2" | "WALLPAPER" | "WALLPAPERUNION" => Some(ProductKind::Wallpaper),
+                "6" | "RINGTONE" | "RINGTONEUNION" => Some(ProductKind::Ringtone),
+                "7" | "FONT" => Some(ProductKind::Font),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// `category` for search and download routes.
+    pub fn category(self) -> &'static str {
+        match self {
+            ProductKind::Theme => "Compound",
+            ProductKind::Font => "Font",
+            ProductKind::Wallpaper => "WallpaperUnion",
+            ProductKind::Ringtone => "RingtoneUnion",
+        }
+    }
+
+    /// `pageCategory` for the home page.
+    pub fn page_category(self) -> &'static str {
+        match self {
+            ProductKind::Theme => "THEME",
+            ProductKind::Font => "FONT",
+            ProductKind::Wallpaper => "WALLPAPER",
+            ProductKind::Ringtone => "RINGTONE",
+        }
+    }
+
+    /// File types a download of this kind may have.
+    pub fn allowed_extensions(self) -> &'static [&'static str] {
+        match self {
+            ProductKind::Theme | ProductKind::Font => &["mtz", "zip"],
+            ProductKind::Wallpaper => &["jpg", "jpeg", "png", "webp"],
+            ProductKind::Ringtone => &["mp3", "ogg", "m4a", "wav", "flac"],
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum StoreQuery {
-    Home,
+    Home {
+        #[serde(default)]
+        product: ProductKind,
+    },
     Categories,
     Page { id: String },
     Subject { id: String },
-    Search { keywords: String },
+    Search {
+        keywords: String,
+        #[serde(default)]
+        product: ProductKind,
+    },
 }
 
 fn is_id(value: &str) -> bool {
@@ -99,8 +168,9 @@ fn client_params(region: &str) -> String {
 pub fn query_url(query: &StoreQuery, start: u32, region: &str) -> AppResult<String> {
     let common = client_params(region);
     Ok(match query {
-        StoreQuery::Home => format!(
-            "{V9}/uipages?cardCount={PAGE_SIZE}&pageCategory=THEME&cardStart={start}&isDeep=true&apiVersion=1&{common}"
+        StoreQuery::Home { product } => format!(
+            "{V9}/uipages?cardCount={PAGE_SIZE}&pageCategory={}&cardStart={start}&isDeep=true&apiVersion=1&{common}",
+            product.page_category()
         ),
         StoreQuery::Categories => format!(
             "{V9}/uipages/classification?cardCount={PAGE_SIZE}&pageCategory=HYBRID&cardStart={start}&{common}"
@@ -111,14 +181,15 @@ pub fn query_url(query: &StoreQuery, start: u32, region: &str) -> AppResult<Stri
         StoreQuery::Subject { id } => {
             format!("{V9}/uipages/subjects/{}?cardCount=1&cardStart={start}&apiVersion=1&{common}", check_id(id)?)
         }
-        StoreQuery::Search { keywords } => {
+        StoreQuery::Search { keywords, product } => {
             let keywords = keywords.trim();
             if keywords.is_empty() || keywords.chars().count() > 80 {
                 return Err(AppError::invalid("Enter a search term of up to 80 characters."));
             }
             format!(
-                "{THM}/search/v2/npage?keywords={}&category=Compound&page={start}&{common}",
-                encode(keywords)
+                "{THM}/search/v2/npage?keywords={}&category={}&page={start}&{common}",
+                encode(keywords),
+                product.category()
             )
         }
     })
@@ -132,6 +203,7 @@ pub struct StoreProduct {
     /// Module ID: identifies the downloadable package.
     pub module_id: String,
     pub product_id: Option<String>,
+    pub kind: ProductKind,
     pub name: String,
     pub image_url: Option<String>,
     pub second_image_url: Option<String>,
@@ -182,6 +254,7 @@ pub struct StorePage {
 pub struct ThemeDetail {
     pub module_id: String,
     pub product_id: Option<String>,
+    pub kind: ProductKind,
     pub name: String,
     pub designer: Option<String>,
     pub author: Option<String>,
@@ -203,6 +276,8 @@ pub struct ThemeDetail {
     /// negative or non-numeric, which is treated as "not free" rather than free.
     pub price_known: bool,
     pub free: bool,
+    /// Store preview of a free ringtone (CDN URL).
+    pub audio_url: Option<String>,
     pub web_url: String,
 }
 
@@ -211,6 +286,8 @@ pub struct ThemeDetail {
 pub struct DownloadedTheme {
     pub module_id: String,
     pub product_id: Option<String>,
+    #[serde(default)]
+    pub kind: ProductKind,
     pub name: String,
     pub designer: Option<String>,
     pub cover: Option<String>,
@@ -312,21 +389,17 @@ fn tags_of(value: &Value) -> Vec<String> {
 fn parse_product(value: &Value, root: &str) -> Option<StoreProduct> {
     let module_id = text(value, "uuid").filter(|id| is_id(id))?;
     let name = text(value, "name").or_else(|| text(value, "title"))?;
-    let type_ok = match value.get("productType") {
-        None => true,
-        Some(Value::Number(n)) => n.as_u64() == Some(1),
-        Some(Value::String(s)) => s.eq_ignore_ascii_case("THEME") || s == "1",
-        _ => false,
+    let kind = match value.get("productType") {
+        None => ProductKind::Theme,
+        Some(code) => ProductKind::from_code(code)?,
     };
-    if !type_ok {
-        return None;
-    }
     let price = number(value, "currentPriceInCent")
         .or_else(|| number(value, "originPriceInCent"))
         .unwrap_or(0);
     Some(StoreProduct {
         product_id: text(value, "productUuid").filter(|id| is_id(id)),
         module_id,
+        kind,
         name,
         image_url: image(text(value, "imageUrl"), root),
         second_image_url: image(text(value, "secondImageUrl"), root),
@@ -345,12 +418,7 @@ fn parse_link(value: &Value, root: &str, icon: bool) -> Option<StoreLink> {
         Some(Value::String(s)) => Some(s.clone()),
         _ => None,
     };
-    let product_type_ok = match link.get("productType") {
-        None => true,
-        Some(Value::Number(n)) => n.as_u64() == Some(1),
-        Some(Value::String(s)) => s.eq_ignore_ascii_case("THEME"),
-        _ => false,
-    };
+    let product_type_ok = link.get("productType").is_none_or(|code| ProductKind::from_code(code).is_some());
     let (page_id, module_id) = match kind.as_deref() {
         Some("1" | "UI_PAGE") if product_type_ok => (target, None),
         Some("5" | "PRODUCT_DETAIL") if product_type_ok => (None, target),
@@ -415,7 +483,7 @@ pub fn parse_page(body: &str, start: u32) -> AppResult<StorePage> {
             }
         }
         let mut links = Vec::new();
-        for key in ["gridBanners", "banners", "iconGroups", "loopImages", "items"] {
+        for key in ["gridBanners", "banners", "iconGroups", "loopImages", "items", "fixedElements"] {
             let icon = key == "iconGroups";
             for entry in card.get(key).and_then(Value::as_array).into_iter().flatten() {
                 match entry.as_array() {
@@ -426,6 +494,9 @@ pub fn parse_page(body: &str, start: u32) -> AppResult<StorePage> {
         }
         if card.get("imageUrl").is_some() {
             links.extend(parse_link(card, &root, false));
+        }
+        if let Some(top) = card.get("topImage") {
+            links.extend(parse_link(top, &root, false));
         }
         if products.is_empty() && links.is_empty() {
             continue;
@@ -485,8 +556,27 @@ pub fn parse_detail(body: &str, requested: &str) -> AppResult<ThemeDetail> {
     // state (absent, negative or non-numeric) must not fall back to "free".
     let price = number(detail, "productPrice");
     let bought = detail.get("productBought").and_then(Value::as_bool).unwrap_or(false);
+    let kind = detail
+        .get("category")
+        .filter(|c| !c.is_null())
+        .and_then(ProductKind::from_code)
+        .or_else(|| detail.get("productType").and_then(ProductKind::from_code))
+        .unwrap_or_default();
+    let audio_url = if kind == ProductKind::Ringtone && price == Some(0) {
+        let base = text(detail, "downloadUrlRootAudio")
+            .and_then(|r| safe_image_url(&r))
+            .unwrap_or_else(|| format!("{IMAGE_ROOT}download/"));
+        let base = if base.ends_with('/') { base } else { format!("{base}/") };
+        text(detail, "downloadUrl")
+            .filter(|p| !p.contains("://") && !p.contains(".."))
+            .map(|p| format!("{base}{}", p.split('/').map(|s| encode(s).replace("%2E", ".")).collect::<Vec<_>>().join("/")))
+            .and_then(|u| safe_image_url(&u))
+    } else {
+        None
+    };
     Ok(ThemeDetail {
         product_id: text(detail, "productId").or_else(|| text(detail, "assemblyId")).filter(|id| is_id(id)),
+        kind,
         name: text(detail, "name").unwrap_or_else(|| "Untitled theme".into()),
         designer: text(detail, "designer").or_else(|| designer_card.and_then(|c| text(c, "designerName"))),
         author: text(detail, "author"),
@@ -506,6 +596,7 @@ pub fn parse_detail(body: &str, requested: &str) -> AppResult<ThemeDetail> {
         bought,
         price_known: price.is_some(),
         free: price == Some(0),
+        audio_url,
         web_url: format!("https://zhuti.xiaomi.com/detail/{module_id}"),
         module_id,
     })
@@ -600,6 +691,15 @@ fn safe_file_stem(name: &str) -> String {
     if trimmed.trim().is_empty() { "theme".into() } else { trimmed.trim().to_string() }
 }
 
+/// Lower-case file extension of a URL path (`…/a.mtz?t=1` → `mtz`).
+pub fn extension_of_url(url: &str) -> Option<String> {
+    let path = url.split(['?', '#']).next()?;
+    let name = path.rsplit('/').next()?;
+    let (_, ext) = name.rsplit_once('.')?;
+    let ext = ext.to_ascii_lowercase();
+    (!ext.is_empty() && ext.len() <= 5 && ext.chars().all(|c| c.is_ascii_alphanumeric())).then_some(ext)
+}
+
 fn sidecar(dir: &Path, module_id: &str) -> PathBuf {
     dir.join(format!("{module_id}.json"))
 }
@@ -675,11 +775,15 @@ pub fn download(
         return Ok(record);
     }
     let ticket_url = format!(
-        "{THM}/download/v2/{}?category=Compound&{}",
+        "{THM}/download/v2/{}?category={}&{}",
         detail.module_id,
+        detail.kind.category(),
         client_params(region_of(region))
     );
     let ticket = parse_ticket(&get_text(&ticket_url, user_agent)?)?;
+    let ext = extension_of_url(&ticket.url)
+        .filter(|e| detail.kind.allowed_extensions().contains(&e.as_str()))
+        .ok_or_else(|| AppError::new("store", "The store returned an unexpected file type for this item."))?;
     std::fs::create_dir_all(dir).map_err(|e| AppError::io("Could not create the downloads folder", e))?;
 
     let mut response = agent(user_agent, Duration::from_secs(30 * 60))
@@ -697,7 +801,7 @@ pub fn download(
         return Err(AppError::new("too_large", "The theme package is larger than 1 GB."));
     }
     let short: String = detail.module_id.chars().take(8).collect();
-    let final_path = dir.join(format!("{} ({short}).mtz", safe_file_stem(&detail.name)));
+    let final_path = dir.join(format!("{} ({short}).{ext}", safe_file_stem(&detail.name)));
     let temp_path = dir.join(format!("{}.part", detail.module_id));
     let result = (|| -> AppResult<String> {
         let mut file = std::fs::File::create(&temp_path).map_err(|e| AppError::io("Could not write the download", e))?;
@@ -750,6 +854,7 @@ pub fn download(
     let record = DownloadedTheme {
         module_id: detail.module_id.clone(),
         product_id: detail.product_id.clone(),
+        kind: detail.kind,
         name: detail.name.clone(),
         designer: detail.designer.clone(),
         cover: detail.cover.clone(),

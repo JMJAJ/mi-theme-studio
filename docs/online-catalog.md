@@ -34,6 +34,21 @@ The detail response holds the overview card (`snapshotsUrl` screenshots), the de
 
 The download ticket returns a signed `https://theme-fs.cdn.intl.miui.com/…/<name>.mtz` URL, `fileSize` and `fileHash` (the SHA-1 of the package).
 
+## Product types
+
+The same routes serve every product type; the type picks `pageCategory` (home page) and `category` (search and download):
+
+| Type | Code (`productType`) | `pageCategory` | `category` | Download |
+|---|---|---|---|---|
+| Theme | 1 | `THEME` | `Compound` | `.mtz` |
+| Font | 7 | `FONT` | `Font` | `.mtz` with `fonts/` |
+| Wallpaper | 2 | `WALLPAPER` | `WallpaperUnion` | `.jpg` / `.png` |
+| Ringtone | 6 | `RINGTONE` | `RingtoneUnion` | `.mp3` |
+
+The wallpaper home page is built from albums and category links (`loopImages`, `fixedElements`, `topImage`); its category pages list individual wallpapers. Ringtone details carry `downloadUrl` + `downloadUrlRootAudio`, which the app uses as an audio preview for free ringtones only. A download's file type must match its product type.
+
+Wallpapers apply as `wallpaper/default_wallpaper.*` and/or `wallpaper/default_lock_wallpaper.*`; ringtones as `ringtones/ringtone.mp3`, `notification.mp3` or `alarm.mp3` (the names Theme Manager reads). A file with the same name and another extension is replaced in the same undoable change, and the source is recorded in the package report.
+
 ## Downloads
 
 - Only themes with `productPrice == 0` (or already bought) are downloaded. The backend re-fetches the detail and refuses paid themes before requesting a ticket. Rights/DRM routes (`/thm/drm/issue`) are never called.

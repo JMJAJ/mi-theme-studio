@@ -5,7 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { api, errorCode, errorMessage, newOpId } from '../lib/api';
 import { fileName, joinPath, parentOf, validateName } from '../lib/paths';
-import type { AdbLogEntry, ConflictPolicy, DownloadedTheme, ExportProgress, ProjectSnapshot, SaveResult, Slot } from '../lib/types';
+import type { AdbLogEntry, ConflictPolicy, DownloadedTheme, MediaTarget, ExportProgress, ProjectSnapshot, SaveResult, Slot } from '../lib/types';
 import { formatBytes, plural } from '../lib/format';
 import {
   choiceDialog,
@@ -725,6 +725,30 @@ export async function openDownloadAsProject(theme: DownloadedTheme) {
   if (!snapshot) return false;
   resetWorkspace(snapshot);
   toast('success', `Opened “${theme.name}” as a new project. Saving asks where to store your copy.`);
+  return true;
+}
+
+const MEDIA_LABELS: Record<MediaTarget, string> = {
+  homeWallpaper: 'home screen wallpaper',
+  lockWallpaper: 'lock screen wallpaper',
+  ringtone: 'ringtone',
+  notification: 'notification sound',
+  alarm: 'alarm sound',
+};
+
+/** Put a downloaded wallpaper or ringtone into the open project. */
+export async function applyDownloadedMedia(item: DownloadedTheme, targets: MediaTarget[]) {
+  if (!getState().project) {
+    toast('warning', 'Open or create a theme first.');
+    return false;
+  }
+  let snapshot: ProjectSnapshot | undefined;
+  for (const target of targets) {
+    snapshot = await guard('Use download', () => api.storeApplyMedia(item.moduleId, target));
+    if (!snapshot) return false;
+  }
+  if (snapshot) applySnapshot(snapshot);
+  toast('success', `“${item.name}” is now the ${targets.map((t) => MEDIA_LABELS[t]).join(' and ')}`);
   return true;
 }
 

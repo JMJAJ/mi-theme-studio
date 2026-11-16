@@ -98,6 +98,7 @@ pub fn run() {
             commands::store_downloads,
             commands::store_remove_download,
             commands::store_open_project,
+            commands::store_apply_media,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Mi Theme Studio");

@@ -918,6 +918,50 @@ impl Project {
         Ok(result)
     }
 
+    /// Put an external file at `stem.<ext>` (e.g. `wallpaper/default_wallpaper`),
+    /// removing other files with the same stem but a different extension, as
+    /// one undoable change, and record where it came from.
+    pub fn place_file(
+        &mut self,
+        stem: &str,
+        ext: &str,
+        data: Vec<u8>,
+        label: &str,
+        attribution: Option<(String, String, String)>,
+    ) -> AppResult<String> {
+        let path = format!("{stem}.{}", ext.to_ascii_lowercase());
+        let stem_name = paths::file_name(stem).to_ascii_lowercase();
+        let folder = paths::parent(stem);
+        let siblings: Vec<String> = self
+            .files
+            .keys()
+            .filter(|k| *k != &path && paths::parent(k) == folder)
+            .filter(|k| {
+                let name = paths::file_name(k).to_ascii_lowercase();
+                name.rsplit_once('.').is_some_and(|(s, _)| s == stem_name)
+            })
+            .cloned()
+            .collect();
+        let existing = self.files.get(&path).cloned();
+        if existing.is_none() {
+            let ignore: BTreeSet<String> = siblings.iter().cloned().collect();
+            self.check_new_path(&path, &ignore)?;
+        }
+        let compression = existing.as_ref().map(|b| b.compression).unwrap_or_else(|| self.default_compression(&path));
+        let blob = Blob::new(data, compression);
+        self.transact(label, |tx| {
+            for sibling in &siblings {
+                tx.set(sibling, None);
+            }
+            tx.set(&path, Some(blob));
+            Ok(())
+        })?;
+        if let Some((source_title, source_author, source_file)) = attribution {
+            self.attributions.push(Attribution { source_title, source_author, source_file, files: 1, at_ms: now_ms() });
+        }
+        Ok(path)
+    }
+
     // ----- export ----------------------------------------------------------
 
     /// Build the bytes of every top-level entry. Component archives whose

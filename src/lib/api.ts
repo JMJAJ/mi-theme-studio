@@ -2,6 +2,7 @@
 // device work happens in Rust; the UI only calls these.
 import { invoke } from '@tauri-apps/api/core';
 import type {
+  MediaTarget,
   NinePatch,
   NinePatchUpdate,
   ReplaceResult,
@@ -154,6 +155,7 @@ export const api = {
   storeCancel: (moduleId: string) => call<void>('store_cancel', { moduleId }),
   storeDownloads: () => call<DownloadedTheme[]>('store_downloads'),
   storeRemoveDownload: (moduleId: string) => call<void>('store_remove_download', { moduleId }),
+  storeApplyMedia: (moduleId: string, target: MediaTarget) => call<ProjectSnapshot>('store_apply_media', { moduleId, target }),
   storeOpenProject: (moduleId: string) => call<ProjectSnapshot>('store_open_project', { moduleId }),
 };
 

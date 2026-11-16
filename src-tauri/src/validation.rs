@@ -113,12 +113,12 @@ pub fn validate(project: &Project) -> ValidationReport {
                     Some(DESCRIPTION_PATH),
                 ));
             } else {
-                if view.root != ROOT_NAME {
+                if !metadata::is_known_root(&view.root) {
                     issues.push(issue(
                         Severity::Warning,
                         "description-root",
                         format!(
-                            "The root element is `{}`; MIUI packages use `{ROOT_NAME}`.",
+                            "The root element is `{}`; theme packages use `theme` (current) or `{ROOT_NAME}` (older MIUI).",
                             view.root
                         ),
                         Some(DESCRIPTION_PATH),

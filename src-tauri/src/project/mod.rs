@@ -8,6 +8,8 @@
 pub mod classify;
 pub mod history;
 pub mod search;
+#[cfg(test)]
+mod samples;
 pub mod snapshot;
 
 use crate::error::{AppError, AppResult};
@@ -250,7 +252,11 @@ impl Project {
     }
 
     pub fn title(&self) -> String {
-        let view = metadata::parse(self.text(metadata::DESCRIPTION_PATH).as_deref());
+        let xml = self.text(metadata::DESCRIPTION_PATH);
+        if let Some(localized) = xml.as_deref().and_then(|x| metadata::localized_value(x, "titles", "title", &["en_US", "en"])) {
+            return localized;
+        }
+        let view = metadata::parse(xml.as_deref());
         view.fields
             .iter()
             .find(|f| f.name == "title" && f.attributes.is_empty())

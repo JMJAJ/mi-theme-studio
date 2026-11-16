@@ -67,6 +67,8 @@ Opt-in live checks (not part of the default test run):
 ```sh
 # read-only device smoke test: lists devices, reads properties, captures one screenshot in memory
 MTS_DEVICE_SMOKE=1 cargo test --manifest-path src-tauri/Cargo.toml --test device_smoke -- --ignored --nocapture
+# round-trips real packages: byte-identical export, reopen, single-edit locality, validation
+MTS_SAMPLES="path/to/folder-of-mtz" cargo test --manifest-path src-tauri/Cargo.toml --lib project::samples -- --ignored --nocapture
 # fetches live store pages, search and a theme detail
 MTS_STORE_LIVE=1 cargo test --manifest-path src-tauri/Cargo.toml --lib store::tests::live -- --ignored --nocapture
 ```

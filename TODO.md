@@ -38,7 +38,7 @@
 - [ ] MAML runtime preview for lock screens, clocks and widgets.
 - [x] Nine-patch editor: stretch/padding overlay, ruler editing, stretched preview; compiled (npTc) and source (border) formats.
 - [ ] Template-based "new component" scaffolds (with user-supplied templates; vendor templates are not bundled).
-- [ ] Round-trip checks against representative MIUI and HyperOS sample packages.
+- [x] Round-trip checks against real packages (`MTS_SAMPLES`): byte-identical untouched export, reopen, edit locality, validation. Current `<theme>` root and localized `<titles>` handled.
 - [x] Multi-file find-and-replace across text and XML files (inside component archives too), one undoable change, XML kept well-formed.
 
 ## Research notes

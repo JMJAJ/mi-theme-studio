@@ -5,7 +5,7 @@ These notes summarize observations from the editor packages and the Theme Manage
 ## Package format
 
 - An `.mtz` is a ZIP archive. Its root contains `description.xml` and often `plugin_config.xml`.
-- `description.xml` uses a `MIUI-Theme` root with simple fields such as `title`, `designer`, `author`, `version`, `uiVersion`, `miuiAdapterVersion`, `description` and `keywords`. Localized variants may appear as repeated elements with attributes.
+- `description.xml` uses a `theme` root in current store packages (values in CDATA, localized `<titles>/<authors>/<designers>` groups with `locale` attributes) and a `MIUI-Theme` root in older packages and the official editor's output. It has simple fields such as `title`, `designer`, `author`, `version`, `uiVersion`, `miuiAdapterVersion`, `description` and `keywords`. Localized variants may appear as repeated elements with attributes.
 - Components are stored at the root as **nested ZIP archives without an extension**: `icons`, `lockscreen`, `com.android.systemui`, `framework-res`, `com.android.settings`, `com.miui.home`, per-app overlays such as `com.android.contacts`, and widget/clock components (`clock_*`, `photoframe_*`). The desktop editors keep these as folders while editing and pack them on export.
 - Plain folders hold wallpapers (`wallpaper/default_wallpaper.*`, `default_lock_wallpaper.*`), store previews (`preview/`), fonts (`fonts/`), sounds (`ringtones/`) and boot animations (`boots/*.zip`, which must stay uncompressed).
 - Inside components, drawables follow Android conventions (`res/drawable-xxhdpi/...`, nine-patch `.9.png`). Icons are named after package or activity names.

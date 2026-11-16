@@ -14,6 +14,12 @@ use std::collections::BTreeMap;
 
 pub const DESCRIPTION_PATH: &str = "description.xml";
 pub const ROOT_NAME: &str = "MIUI-Theme";
+/// Root used by current Theme Manager / HyperOS packages.
+pub const ROOT_NAME_CURRENT: &str = "theme";
+
+pub fn is_known_root(root: &str) -> bool {
+    root == ROOT_NAME || root == ROOT_NAME_CURRENT
+}
 
 /// Fields the editor knows about, in the order they are created when
 /// missing. Other simple fields are still listed and editable.
@@ -64,6 +70,69 @@ pub fn default_description_xml(title: &str) -> String {
 
 pub fn default_plugin_config_xml() -> String {
     "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<PluginConfig>\n</PluginConfig>\n".to_string()
+}
+
+/// Text of a localized entry such as `<titles><title locale="en_US">…`.
+/// `locales` are tried in order; a locale prefix (`en`) also matches `en_US`.
+pub fn localized_value(xml: &str, group: &str, item: &str, locales: &[&str]) -> Option<String> {
+    let (xml, _) = strip_bom(xml);
+    let mut reader = Reader::from_str(xml);
+    let mut depth = 0usize;
+    let mut in_group = false;
+    let mut current: Option<(String, String)> = None;
+    let mut found: Vec<(String, String)> = Vec::new();
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(start)) => {
+                depth += 1;
+                let name = name_of(&start);
+                if depth == 2 && name == group {
+                    in_group = true;
+                } else if depth == 3 && in_group && name == item {
+                    let locale = attributes_of(&start)
+                        .into_iter()
+                        .find(|(k, _)| k == "locale" || k == "xml:lang")
+                        .map(|(_, v)| v)
+                        .unwrap_or_default();
+                    current = Some((locale, String::new()));
+                }
+            }
+            Ok(Event::Text(text)) => {
+                if let Some((_, value)) = current.as_mut() {
+                    value.push_str(&text.xml10_content());
+                }
+            }
+            Ok(Event::CData(data)) => {
+                if let Some((_, value)) = current.as_mut() {
+                    let data: &str = &data;
+                    value.push_str(data);
+                }
+            }
+            Ok(Event::End(_)) => {
+                if depth == 3 {
+                    if let Some((locale, value)) = current.take() {
+                        found.push((locale, value.trim().to_string()));
+                    }
+                }
+                if depth == 2 {
+                    in_group = false;
+                }
+                depth = depth.saturating_sub(1);
+            }
+            Ok(Event::Eof) | Err(_) => break,
+            Ok(_) => {}
+        }
+    }
+    for wanted in locales {
+        let hit = found
+            .iter()
+            .find(|(l, v)| !v.is_empty() && l.eq_ignore_ascii_case(wanted))
+            .or_else(|| found.iter().find(|(l, v)| !v.is_empty() && l.to_ascii_lowercase().starts_with(&wanted.to_ascii_lowercase())));
+        if let Some((_, v)) = hit {
+            return Some(v.clone());
+        }
+    }
+    None
 }
 
 fn strip_bom(xml: &str) -> (&str, bool) {
@@ -454,6 +523,25 @@ pub fn update(xml: Option<&str>, updates: &[FieldUpdate]) -> AppResult<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn current_format_root_and_localized_titles() {
+        let xml = "<?xml version=\"1.0\"?>
+<theme>
+<title><![CDATA[7]]></title>
+<titles>
+<title locale=\"zh_CN\"><![CDATA[七]]></title>
+<title locale=\"en_US\"><![CDATA[Glass Flower]]></title>
+</titles>
+</theme>";
+        let view = parse(Some(xml));
+        assert!(is_known_root(&view.root));
+        assert_eq!(view.fields.iter().find(|f| f.name == "title").unwrap().value, "7");
+        assert_eq!(localized_value(xml, "titles", "title", &["en_US"]).as_deref(), Some("Glass Flower"));
+        assert_eq!(localized_value(xml, "titles", "title", &["en"]).as_deref(), Some("Glass Flower"));
+        assert_eq!(localized_value(xml, "titles", "title", &["fr_FR"]), None);
+        assert!(!is_known_root("resources"));
+    }
 
     const SAMPLE: &str = "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<MIUI-Theme>\n<!-- keep me -->\n<title>Old &amp; Gold</title>\n<designer>D</designer>\n<author/>\n<title xml:lang=\"zh_CN\">旧</title>\n<custom>x</custom>\n</MIUI-Theme>\n";
 

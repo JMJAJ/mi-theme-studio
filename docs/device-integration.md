@@ -38,4 +38,8 @@ What the app does:
 
 ## Not implemented (intentionally)
 
-- **Live mirroring.** The preview can refresh screenshots every 5 seconds and labels this as not live. A real mirror (for example an optional `scrcpy` integration) is on the roadmap.
+- **Live mirroring** is implemented with the bundled scrcpy (see below).
+
+## Live mirroring
+
+The installer bundles scrcpy 3.3.1 (Genymobile, Apache-2.0; FFmpeg/libusb LGPL, SDL zlib), fetched by `scripts/fetch-scrcpy.mjs` from the official release and checked against a pinned SHA-256. **Mirror screen** (Device page, Preview, Device menu) starts it for the selected phone with `--serial <serial> --stay-awake --no-audio --max-fps 60` and `ADB=<the app's adb>`, so only one adb server version runs. The mirror window is interactive. Its output goes to the ADB log; it is closed with **Stop mirroring** or when the app exits. The bundled `adb.exe` is also the last adb candidate, so the app works without a separate platform-tools install.

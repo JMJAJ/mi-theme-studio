@@ -37,7 +37,15 @@ pub fn run() {
                 data: resolver.app_data_dir()?,
             };
             let settings = storage::load_settings(&paths);
-            app.manage(AppState::new(paths, settings));
+            let mut state = AppState::new(paths, settings);
+            if let Ok(resources) = resolver.resource_dir() {
+                let bundled_adb = resources.join("scrcpy").join(if cfg!(windows) { "adb.exe" } else { "adb" });
+                if bundled_adb.is_file() {
+                    let _ = adb::BUNDLED_ADB.set(bundled_adb);
+                }
+                state.resource_dir = Some(resources);
+            }
+            app.manage(state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -91,6 +99,9 @@ pub fn run() {
             commands::adb_open_store_item,
             commands::adb_open_theme_settings,
             commands::adb_apply_theme,
+            commands::mirror_start,
+            commands::mirror_stop,
+            commands::mirror_status,
             commands::ninepatch_info,
             commands::ninepatch_update,
             commands::project_search,
@@ -104,6 +115,13 @@ pub fn run() {
             commands::store_open_project,
             commands::store_apply_media,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Mi Theme Studio");
+        .build(tauri::generate_context!())
+        .expect("error while building Mi Theme Studio")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                // Close a running scrcpy window with the app.
+                let state = app.state::<AppState>();
+                state::lock(&state.mirror).take();
+            }
+        });
 }

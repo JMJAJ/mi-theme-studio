@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, Camera, CircleCheck, FolderSearch, Info, Lock, Palette, Play, RefreshCw, RotateCcw, Send, Smartphone, Unplug } from 'lucide-react';
 import { api } from '../../lib/api';
+import { MirrorButton } from '../common/MirrorButton';
 import { useStore } from '../../state/store';
 import * as A from '../../state/actions';
 import { relativeTime } from '../../lib/format';
@@ -288,6 +289,7 @@ export function DeviceView() {
                 >
                   <Camera /> Capture screenshot
                 </button>
+                <MirrorButton block />
                 <button className="btn" style={{ justifyContent: 'flex-start' }} disabled={!project || !!busy} onClick={() => void A.sendToDevice()} title={project ? undefined : 'Open a package first'}>
                   <Send /> Copy package to device…
                 </button>

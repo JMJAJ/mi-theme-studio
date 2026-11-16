@@ -13,6 +13,7 @@ import type {
   Settings,
   Slot,
   ConflictPolicy,
+  MirrorStatus,
   ValidationReport,
 } from '../lib/types';
 
@@ -158,6 +159,7 @@ export interface StoreState {
   layout: Layout;
   dockTab: DockTab;
   sideTab: SideTab;
+  mirror: MirrorStatus | null;
   reveal: Reveal | null;
   validation: ValidationReport | null;
   validating: boolean;
@@ -199,6 +201,7 @@ export const useStore = create<StoreState>(() => ({
   layout: loadLayout(),
   dockTab: 'problems',
   sideTab: 'files',
+  mirror: null,
   reveal: null,
   validation: null,
   validating: false,

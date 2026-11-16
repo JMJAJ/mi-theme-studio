@@ -1170,6 +1170,56 @@ pub async fn adb_apply_theme(
     .await
 }
 
+// ----- screen mirroring (bundled scrcpy) ------------------------------------------
+
+fn mirror_status_of(state: &AppState) -> adb::mirror::MirrorStatus {
+    let mut guard = lock(&state.mirror);
+    if guard.as_mut().is_some_and(|m| !m.running()) {
+        *guard = None;
+    }
+    let resources = state.resource_dir.as_deref();
+    adb::mirror::MirrorStatus {
+        available: resources.and_then(adb::mirror::bundled).is_some(),
+        running: guard.is_some(),
+        serial: guard.as_ref().map(|m| m.serial.clone()),
+        started_ms: guard.as_ref().map(|m| m.started_ms),
+        version: resources.and_then(adb::mirror::bundled_version),
+    }
+}
+
+#[tauri::command]
+pub async fn mirror_status(app: AppHandle) -> AppResult<adb::mirror::MirrorStatus> {
+    blocking(app, |state, _| Ok(mirror_status_of(state))).await
+}
+
+/// Open a live mirror window of the device (one at a time).
+#[tauri::command]
+pub async fn mirror_start(app: AppHandle, serial: String, title: Option<String>) -> AppResult<adb::mirror::MirrorStatus> {
+    blocking(app, move |state, app| {
+        let scrcpy = state
+            .resource_dir
+            .as_deref()
+            .and_then(adb::mirror::bundled)
+            .ok_or_else(|| AppError::not_found("The bundled scrcpy is missing. Reinstall Mi Theme Studio, or run `npm run fetch:scrcpy` in a development checkout."))?;
+        let adb = adb_for(state, app)?;
+        lock(&state.mirror).take();
+        let window_title = title.unwrap_or_else(|| format!("{serial} · Mi Theme Studio"));
+        let mirror = adb::mirror::start(&scrcpy, &adb.path, &serial, &window_title, adb.log.clone())?;
+        *lock(&state.mirror) = Some(mirror);
+        Ok(mirror_status_of(state))
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn mirror_stop(app: AppHandle) -> AppResult<adb::mirror::MirrorStatus> {
+    blocking(app, |state, _| {
+        lock(&state.mirror).take();
+        Ok(mirror_status_of(state))
+    })
+    .await
+}
+
 // ----- nine-patch -------------------------------------------------------------------
 
 #[tauri::command]

@@ -57,6 +57,9 @@ pub struct AppState {
     /// History position captured by the last autosave.
     pub last_autosave: Mutex<Option<Option<u64>>>,
     pub paths: AppPaths,
+    pub mirror: Mutex<Option<crate::adb::mirror::Mirror>>,
+    /// Bundled resources (scrcpy).
+    pub resource_dir: Option<std::path::PathBuf>,
 }
 
 impl AppState {
@@ -70,6 +73,8 @@ impl AppState {
             adb_log: Mutex::new(VecDeque::new()),
             last_autosave: Mutex::new(None),
             paths,
+            mirror: Mutex::new(None),
+            resource_dir: None,
         }
     }
 }

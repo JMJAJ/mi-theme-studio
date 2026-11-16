@@ -30,6 +30,9 @@
   },
   "bundle": {
     "active": true,
+    "resources": {
+      "resources/scrcpy/": "scrcpy/"
+    },
     "targets": ["nsis"],
     "publisher": "JMJAJ",
     "shortDescription": "MIUI/HyperOS theme package studio",

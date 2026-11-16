@@ -481,3 +481,11 @@ export interface ApplyResult {
   bytes: number;
   steps: string[];
 }
+
+export interface MirrorStatus {
+  available: boolean;
+  running: boolean;
+  serial: string | null;
+  startedMs: number | null;
+  version: string | null;
+}

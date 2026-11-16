@@ -11,13 +11,14 @@
   },
   "scripts": {
     "dev": "vite",
-    "start": "tauri dev",
+    "start": "node scripts/fetch-scrcpy.mjs && tauri dev",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "tauri": "tauri",
-    "build:win": "tauri build --bundles nsis && node scripts/stage-windows-installer.mjs"
+    "fetch:scrcpy": "node scripts/fetch-scrcpy.mjs",
+    "build:win": "node scripts/fetch-scrcpy.mjs && tauri build --bundles nsis && node scripts/stage-windows-installer.mjs"
   },
   "dependencies": {
     "@codemirror/lang-xml": "^6.1.0",

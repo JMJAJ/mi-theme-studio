@@ -6,6 +6,7 @@
 //! a confirmed apply through its editor entry point; see `theme_apply` and
 //! docs/device-integration.md.
 
+pub mod mirror;
 pub mod parse;
 pub mod runner;
 pub mod theme_apply;
@@ -22,6 +23,9 @@ use std::time::Duration;
 
 pub const THEME_MANAGER_PACKAGE: &str = "com.android.thememanager";
 pub const REMOTE_DIR: &str = "/sdcard/Download/MiThemeStudio";
+
+/// adb shipped with the bundled scrcpy; the last place searched.
+pub static BUNDLED_ADB: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
 
 static NEXT_LOG_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -119,6 +123,9 @@ pub fn candidates(configured: Option<&str>) -> Vec<(PathBuf, &'static str)> {
             PathBuf::from(r"C:\Android\platform-tools").join(exe_name()),
             "common",
         ));
+    }
+    if let Some(bundled) = BUNDLED_ADB.get() {
+        list.push((bundled.clone(), "bundled"));
     }
     list
 }

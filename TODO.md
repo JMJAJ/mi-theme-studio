@@ -28,7 +28,7 @@
 
 ## Device
 
-- [ ] Live screen mirroring (evaluate an optional `scrcpy` integration); today the preview uses screenshots and says so.
+- [x] Live screen mirroring with bundled scrcpy 3.3.1 (pinned, checksum-verified, Apache-2.0); its adb is also used when no other adb is found.
 - [x] Theme Manager intents investigated (docs/device-integration.md): editor apply entry point (absent in global builds), deep links to store items and settings.
 - [x] Apply on phone where Theme Manager supports it: confirmation, verified push, screenshot afterwards; previous theme stays in My themes. Not yet exercised on a supporting (China) build.
 - [ ] Device-resolution preview of individual resources (e.g. icon masks at the device's density).

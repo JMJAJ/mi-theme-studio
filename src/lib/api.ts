@@ -2,6 +2,7 @@
 // device work happens in Rust; the UI only calls these.
 import { invoke } from '@tauri-apps/api/core';
 import type {
+  MirrorStatus,
   ApplyResult,
   ThemeManagerSupport,
   MediaTarget,
@@ -150,6 +151,9 @@ export const api = {
   adbOpenStoreItem: (serial: string, moduleId: string) => call<void>('adb_open_store_item', { serial, moduleId }),
   adbOpenThemeSettings: (serial: string) => call<void>('adb_open_theme_settings', { serial }),
   adbApplyTheme: (serial: string, opId: string) => call<ApplyResult>('adb_apply_theme', { serial, confirmed: true, opId }),
+  mirrorStatus: () => call<MirrorStatus>('mirror_status'),
+  mirrorStart: (serial: string, title?: string) => call<MirrorStatus>('mirror_start', { serial, title }),
+  mirrorStop: () => call<MirrorStatus>('mirror_stop'),
   ninepatchInfo: (slot: Slot, path: string) => call<NinePatch>('ninepatch_info', { slot, path }),
   ninepatchUpdate: (path: string, update: NinePatchUpdate) => call<ProjectSnapshot>('ninepatch_update', { path, update }),
   projectSearch: (options: SearchOptions) => call<SearchResult>('project_search', { options }),

@@ -123,6 +123,7 @@ export const COMMANDS: Command[] = [
   { id: 'device.refresh', group: 'Device', label: 'Refresh devices', icon: RefreshCw, run: () => A.refreshAdb(false, true) },
   { id: 'device.screenshot', group: 'Device', label: 'Capture device screenshot', shortcut: 'Ctrl+Alt+S', icon: Camera, enabled: deviceReady, run: async () => { const shot = await A.captureScreenshot(); if (shot) A.openSingleton('preview'); } },
   { id: 'device.send', group: 'Device', label: 'Copy package to device…', icon: Send, enabled: (s) => hasProject(s) && deviceReady(s), run: A.sendToDevice },
+  { id: 'device.mirror', group: 'Device', label: 'Mirror screen (live)', icon: Smartphone, enabled: deviceReady, run: () => (A.mirrorRunning() ? A.stopMirror() : A.startMirror()) },
   { id: 'device.restart', group: 'Device', label: 'Restart ADB server', icon: RefreshCw, enabled: (s) => !!s.adb?.location, run: A.restartAdb },
   { id: 'device.locate', group: 'Device', label: 'Set adb.exe location…', icon: Wrench, run: A.chooseAdbPath },
 
@@ -160,7 +161,7 @@ export const MENUS: { label: string; items: MenuEntry[] }[] = [
   { label: 'View', items: ['view.sidebar', 'view.inspector', 'view.dock', '-', 'view.problems', 'view.output', 'view.adbLog', 'view.history', '-', 'view.zoomIn', 'view.zoomOut', 'view.zoomReset', '-', 'view.resetLayout'] },
   { label: 'Project', items: ['project.details', 'project.addFiles', 'project.newComponent', '-', 'project.validate', 'project.build'] },
   { label: 'Tools', items: ['tools.catalog', '-', 'tools.settings'] },
-  { label: 'Device', items: ['device.manager', 'device.refresh', '-', 'device.screenshot', 'device.send', '-', 'device.restart', 'device.locate'] },
+  { label: 'Device', items: ['device.manager', 'device.refresh', '-', 'device.screenshot', 'device.mirror', 'device.send', '-', 'device.restart', 'device.locate'] },
   { label: 'Window', items: ['window.dashboard', 'window.preview', 'device.manager', 'project.build', '-', 'window.nextTab', 'window.prevTab', 'window.closeTab', 'window.closeAll'] },
   { label: 'Help', items: ['help.shortcuts', 'help.roadmap', '-', 'help.about'] },
 ];

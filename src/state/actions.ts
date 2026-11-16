@@ -931,6 +931,46 @@ export async function sendToDevice() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// live mirror (bundled scrcpy)
+
+export function mirrorRunning() {
+  return !!getState().mirror?.running;
+}
+
+export async function refreshMirror() {
+  try {
+    setState({ mirror: await api.mirrorStatus() });
+  } catch {
+    /* not available outside the app */
+  }
+}
+
+export async function startMirror() {
+  const device = readyDevice();
+  if (!device) {
+    toast('warning', 'Connect and authorize a phone first.');
+    return;
+  }
+  const details = getState().deviceDetails[device.serial];
+  const name = details?.marketName ?? details?.model ?? device.model ?? device.serial;
+  setState({ busy: 'Starting screen mirror…' });
+  try {
+    const status = await api.mirrorStart(device.serial, `${name} · Mi Theme Studio`);
+    setState({ mirror: status });
+    toast('success', `Mirroring ${name} in a separate window. You can use the phone from there.`);
+  } catch (error) {
+    toast('error', `Mirror screen: ${errorMessage(error)}`);
+  } finally {
+    setState({ busy: null });
+  }
+}
+
+export async function stopMirror() {
+  const status = await guard('Stop mirroring', () => api.mirrorStop());
+  if (status) setState({ mirror: status });
+}
+
 /** Open a store item's page in Theme Manager on the selected phone. */
 export async function openStoreItemOnDevice(moduleId: string, name: string) {
   const device = readyDevice();

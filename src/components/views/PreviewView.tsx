@@ -7,6 +7,7 @@ import type { FileInfo } from '../../lib/types';
 import { useStore } from '../../state/store';
 import * as A from '../../state/actions';
 import { useDeviceSummary } from '../shell/deviceSummary';
+import { MirrorButton } from '../common/MirrorButton';
 
 type Screen = 'lock' | 'home' | 'previews' | 'screenshot';
 
@@ -169,7 +170,7 @@ export function PreviewView() {
       label = (
         <span className="badge badge-info">
           <Camera /> Screenshot from {shot.model ?? 'device'} · captured {formatTime(shot.atMs)}
-          {autoRefresh ? ' · refreshing every 5 s (not a live mirror)' : ' · not live'}
+          {autoRefresh ? ' · refreshing every 5 s; use Mirror screen for live video' : ' · use Mirror screen for live video'}
         </span>
       );
     } else {
@@ -279,6 +280,7 @@ export function PreviewView() {
               <label className="check" title="Captures a new screenshot every 5 seconds while this view is open. This is not a live video mirror.">
                 <input type="checkbox" checked={autoRefresh} disabled={!device.ready} onChange={(e) => setAutoRefresh(e.target.checked)} /> Refresh every 5 s
               </label>
+              <MirrorButton className="btn btn-sm" />
               {shot && (
                 <button className="btn btn-sm" onClick={() => void A.saveScreenshot(shot.id)}>
                   <Save /> Save PNG

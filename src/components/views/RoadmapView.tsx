@@ -34,11 +34,11 @@ const ITEMS: { area: string; items: [Status, string, string?][] }[] = [
   {
     area: 'Online themes',
     items: [
-      ['done', 'Browse public catalog shelves, quick links and category cards', 'Read-only, anonymous, loaded only on request.'],
-      ['planned', 'Theme listings inside shelves', 'Verified calls return shelves without products; needs a confirmed product-list request.'],
-      ['planned', 'Theme details and downloads', 'Not implemented until a product ID and download flow are verified. Paid/DRM rights checks are never bypassed.'],
+      ['done', 'Browse store shelves, categories and search', 'Anonymous requests with generic client settings; region selectable.'],
+      ['done', 'Theme details', 'Screenshots, description, designer, tags, size, version and download count.'],
+      ['done', 'Download free themes', 'Verified against the store’s SHA-1. Paid themes are refused; rights/DRM checks are never bypassed.'],
+      ['done', 'Apply all or selected parts of a downloaded theme', 'Copied as one undoable change with attribution, or opened whole as a new project.'],
       ['done', 'Open supported themes already cached on a connected phone as a read-only reference', 'Selected files copied into a project include theme title and author attribution.'],
-      ['planned', 'Open a theme downloaded directly from the online catalog as a reference'],
     ],
   },
 ];

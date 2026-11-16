@@ -5,7 +5,7 @@ Mi Theme Studio is a Tauri v2 application. The Rust backend owns all package dat
 ## Data flow
 
 ```
-React UI ──invoke──▶ commands.rs ──▶ project / package / validation / storage / adb / catalog
+React UI ──invoke──▶ commands.rs ──▶ project / package / validation / storage / adb / store
    ▲                      │
    │  ProjectSnapshot     │  (file list + metadata, never file contents)
    └──────────────────────┘
@@ -30,9 +30,9 @@ React UI ──invoke──▶ commands.rs ──▶ project / package / validat
 - Archive paths are sanitized on import (`package/paths.rs`); user-entered names are validated against Windows-unsafe characters.
 - Import limits: 100 000 entries, 512 MB per entry, 2 GB expanded total; declared sizes are not trusted.
 - Device commands only run via `adb/runner.rs` with timeouts, cancellation and `CREATE_NO_WINDOW`; device-side shell arguments are fixed or restricted to `[A-Za-z0-9._-]`. The Theme Manager cache browser reads bounded metadata and image files from fixed paths and validates IDs and preview names before constructing remote paths.
-- The catalog client can only reach two fixed list routes; image URLs from API data are limited to `https://*.mi-img.com` (also enforced by the CSP).
+- The store client builds every URL from fixed routes and validated IDs; image URLs are limited to `https://*.mi-img.com` (also enforced by the CSP), downloads to HTTPS Xiaomi hosts, and packages are SHA-1 verified. Paid themes are never downloaded.
 
 ## Tests
 
-- Rust: `cargo test` in `src-tauri` covers path sanitizing, hostile archives, limits, nested components, round-trip byte preservation, metadata rewriting, undo/redo/goto, rename/move/duplicate/pack, reference copy, validation, storage, ADB output parsing, process timeout/cancellation, and catalog parsing.
+- Rust: `cargo test` in `src-tauri` covers path sanitizing, hostile archives, limits, nested components, round-trip byte preservation, metadata rewriting, undo/redo/goto, rename/move/duplicate/pack, reference copy, validation, storage, ADB output parsing, process timeout/cancellation, and store parsing/downloads.
 - Frontend: `npm test` covers path/tree helpers, formatting, shortcut matching and the command registry.

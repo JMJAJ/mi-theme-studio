@@ -6,11 +6,10 @@
 //! - `validation`: structural package checks and reports
 //! - `storage`: settings, recents, autosave recovery, backups
 //! - `adb`: device discovery, details, screenshots, verified file copy
-//! - `catalog`: read-only discovery of the public online theme catalog
+//! - `store`: online theme store (browse, details, verified free downloads)
 //! - `commands` / `protocol` / `state`: Tauri integration
 
 pub mod adb;
-pub mod catalog;
 pub mod commands;
 pub mod error;
 pub mod package;
@@ -18,6 +17,7 @@ pub mod project;
 pub mod protocol;
 pub mod state;
 pub mod storage;
+pub mod store;
 pub mod validation;
 
 use state::AppState;
@@ -87,7 +87,13 @@ pub fn run() {
             commands::adb_cancel,
             commands::adb_log,
             commands::adb_send_package,
-            commands::catalog_fetch,
+            commands::store_page,
+            commands::store_detail,
+            commands::store_download,
+            commands::store_cancel,
+            commands::store_downloads,
+            commands::store_remove_download,
+            commands::store_open_project,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Mi Theme Studio");

@@ -36,8 +36,10 @@ It is an independent, unofficial tool and is not affiliated with Xiaomi.
 - **Themes on device** browses Theme Manager's cached theme names, authors, component lists and local preview images over ADB. Open a cached theme as a read-only reference, then copy selected components into your project with source attribution in the report.
 - *Copy package to device* (after explicit confirmation) to `/sdcard/Download/MiThemeStudio/`, verified by comparing file sizes. Installing or applying a theme is **not** automated.
 
-**Online themes**
-- Loads, on request, the public Theme Manager catalog's theme shelves, quick links and category cards with their images. Individual themes and downloads are not available from the public catalog.
+**Theme store**
+- Browse Theme Manager's shelves and categories, search, and open any theme for its screenshots, description, designer, tags, size and version.
+- Download free themes (verified by SHA-1; paid themes are refused) and keep them in a local library.
+- Apply all or selected parts of a downloaded theme (icons, lock screen, wallpapers, system UI, fonts…) to your project as one undoable change, or open the whole theme as a new project.
 - The **On device** tab lists themes already cached by Theme Manager on a connected phone, including local preview images. It assembles supported cached modules into an in-memory reference; it does not download themes from the service or change the phone. See [docs/device-integration.md](docs/device-integration.md) and [docs/online-catalog.md](docs/online-catalog.md).
 
 See the in-app **Roadmap** view or [TODO.md](TODO.md) for planned work.
@@ -65,8 +67,8 @@ Opt-in live checks (not part of the default test run):
 ```sh
 # read-only device smoke test: lists devices, reads properties, captures one screenshot in memory
 MTS_DEVICE_SMOKE=1 cargo test --manifest-path src-tauri/Cargo.toml --test device_smoke -- --ignored --nocapture
-# fetches the two public catalog pages
-MTS_CATALOG_LIVE=1 cargo test --manifest-path src-tauri/Cargo.toml --lib catalog::tests::live -- --ignored --nocapture
+# fetches live store pages, search and a theme detail
+MTS_STORE_LIVE=1 cargo test --manifest-path src-tauri/Cargo.toml --lib store::tests::live -- --ignored --nocapture
 ```
 
 Windows installers are built by the GitHub Actions workflow and published on the [Releases page](https://github.com/JMJAJ/mi-theme-studio/releases). The installer is per-user. The first Tauri installer replaces the previous Electron install in its existing per-user folder; later updates reuse the registered Tauri install folder, even if the install-directory page is changed.
@@ -89,7 +91,7 @@ src-tauri/src/           Rust backend
   validation.rs          structural checks and reports
   storage/               settings, recents, recovery copy, backups, atomic writes
   adb/                   adb discovery, process runner (timeout/cancel), parsers, device operations
-  catalog/               read-only online catalog client
+  store/                 theme store client (listings, details, verified downloads)
   commands.rs, protocol.rs, state.rs   Tauri commands, `themeres:` preview protocol, app state
 docs/                    format notes, architecture, device and catalog notes
 ```

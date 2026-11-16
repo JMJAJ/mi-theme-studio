@@ -4,7 +4,7 @@
 use crate::adb::{
     self, parse::DeviceEntry, Adb, AdbLocation, AdbLogEntry, Candidate, DeviceDetails, PushResult,
 };
-use crate::catalog::{self, CatalogPage, CatalogSource};
+use crate::store::{self, DownloadProgress, DownloadedTheme, StorePage, StoreQuery, ThemeDetail};
 use crate::error::{AppError, AppResult};
 use crate::package::archive::{self, Limits, WriteEntry};
 use crate::package::metadata::{self, FieldUpdate, MetadataView, DESCRIPTION_PATH};
@@ -1117,19 +1117,84 @@ pub async fn adb_send_package(
     .await
 }
 
-// ----- online catalog (read-only) ----------------------------------------------
+// ----- online theme store ---------------------------------------------------------
 
-/// Load one page of the public catalog. Only fixed, verified list routes
-/// are reachable; the request carries no account or device information.
+fn user_agent(app: &AppHandle) -> String {
+    format!("MiThemeStudio/{}", app.package_info().version)
+}
+
+fn downloads_dir(state: &AppState) -> PathBuf {
+    state.paths.data.join("downloads")
+}
+
+/// One page of store listings (home, categories, a page, a shelf or search).
 #[tauri::command]
-pub async fn catalog_fetch(
+pub async fn store_page(
     app: AppHandle,
-    source: CatalogSource,
-    card_start: Option<u32>,
-) -> AppResult<CatalogPage> {
+    query: StoreQuery,
+    start: Option<u32>,
+    region: Option<String>,
+) -> AppResult<StorePage> {
     blocking(app, move |_, app| {
-        let user_agent = format!("MiThemeStudio/{}", app.package_info().version);
-        catalog::fetch(source, card_start.unwrap_or(0), &user_agent)
+        store::fetch_page(&query, start.unwrap_or(0), region.as_deref(), &user_agent(app))
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn store_detail(app: AppHandle, id: String, region: Option<String>) -> AppResult<ThemeDetail> {
+    blocking(app, move |_, app| store::fetch_detail(&id, region.as_deref(), &user_agent(app))).await
+}
+
+/// Download a free theme into the app's downloads folder (verified by SHA-1).
+#[tauri::command]
+pub async fn store_download(
+    app: AppHandle,
+    module_id: String,
+    region: Option<String>,
+) -> AppResult<DownloadedTheme> {
+    blocking(app, move |state, app| {
+        let dir = downloads_dir(state);
+        let id = module_id.clone();
+        store::download(&module_id, region.as_deref(), &dir, &user_agent(app), |received, total| {
+            let _ = app.emit(
+                "store-download",
+                DownloadProgress { module_id: id.clone(), received, total },
+            );
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub fn store_cancel(module_id: String) {
+    store::cancel(&module_id);
+}
+
+#[tauri::command]
+pub async fn store_downloads(app: AppHandle) -> AppResult<Vec<DownloadedTheme>> {
+    blocking(app, |state, _| Ok(store::list_downloads(&downloads_dir(state)))).await
+}
+
+#[tauri::command]
+pub async fn store_remove_download(app: AppHandle, module_id: String) -> AppResult<()> {
+    blocking(app, move |state, _| store::remove_download(&downloads_dir(state), &module_id)).await
+}
+
+/// Open a downloaded theme as an editable, untitled copy: saving asks for a
+/// new location instead of overwriting the cached download.
+#[tauri::command]
+pub async fn store_open_project(app: AppHandle, module_id: String) -> AppResult<ProjectSnapshot> {
+    blocking(app, move |state, _| {
+        let record = store::existing(&downloads_dir(state), &module_id)
+            .ok_or_else(|| AppError::not_found("That theme is not downloaded."))?;
+        let path = PathBuf::from(&record.path);
+        let data = read_limited(&path, MAX_PACKAGE_BYTES, "The package")?;
+        let project = Project::from_bytes(&data, &file_name_of(&path), None, Limits::default())?;
+        let snap = snapshot(&project, "main");
+        *lock(&state.main) = Some(project);
+        *lock(&state.last_autosave) = None;
+        Ok(snap)
     })
     .await
 }

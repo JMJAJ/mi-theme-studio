@@ -114,7 +114,7 @@ export const COMMANDS: Command[] = [
   { id: 'project.build', group: 'Project', label: 'Build & export', icon: FileDown, enabled: hasProject, run: () => A.openSingleton('build') },
 
   // Tools
-  { id: 'tools.catalog', group: 'Tools', label: 'Online themes (catalog)', icon: Globe, run: () => A.openSingleton('catalog') },
+  { id: 'tools.catalog', group: 'Tools', label: 'Theme store', icon: Globe, run: () => A.openSingleton('catalog') },
   { id: 'tools.settings', group: 'Tools', label: 'Settings…', shortcut: 'Ctrl+,', icon: Settings, run: () => setState({ dialog: { type: 'settings' } }), global: true },
 
   // Device

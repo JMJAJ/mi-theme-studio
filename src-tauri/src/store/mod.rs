@@ -1,0 +1,751 @@
+//! Online theme store: browse, search, inspect and download free themes from
+//! the public Theme Manager service.
+//!
+//! Routes (all anonymous GETs, verified against the live service):
+//! - `app/v9/uipages?pageCategory=THEME&isDeep=true` — home shelves
+//! - `app/v9/uipages/classification?pageCategory=HYBRID` — category cards
+//! - `app/v9/uipages/{pageId}` — a page linked from a banner or category
+//! - `app/v9/uipages/subjects/{subjectId}` — every theme on one shelf
+//! - `thm/search/v2/npage?keywords=…&category=Compound` — search
+//! - `app/v9/uipages/theme/{id}` — theme detail (screenshots, description…)
+//! - `thm/download/v2/{moduleId}?category=Compound` — signed package URL
+//!
+//! The service only fills product lists when a request carries the client
+//! parameters the Android app sends (generic device class, region, language,
+//! capability flags). Those are fixed, generic values here: no account,
+//! device identifier or user data is ever sent.
+//!
+//! Downloads are limited to themes the service lists as free. Paid themes are
+//! refused before any download request is made, and rights/DRM routes are
+//! never called. Every package is checked against the service's SHA-1.
+
+use crate::error::{AppError, AppResult};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::HashSet;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
+pub const V9: &str = "https://api.zhuti.intl.xiaomi.com/app/v9";
+pub const THM: &str = "https://thm.market.intl.xiaomi.com/thm";
+const IMAGE_ROOT: &str = "https://t17.market.mi-img.com/";
+const PAGE_SIZE: u32 = 20;
+const MAX_BODY: u64 = 16 * 1024 * 1024;
+pub const MAX_DOWNLOAD: u64 = 1024 * 1024 * 1024;
+
+pub const REGIONS: &[&str] = &[
+    "US", "GB", "DE", "FR", "ES", "IT", "RU", "IN", "ID", "MY", "PH", "TH", "VN", "TR", "BR", "MX",
+];
+
+static CANCELLED: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+
+// ----- query -------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum StoreQuery {
+    Home,
+    Categories,
+    Page { id: String },
+    Subject { id: String },
+    Search { keywords: String },
+}
+
+fn is_id(value: &str) -> bool {
+    !value.is_empty() && value.len() <= 64 && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+fn check_id(value: &str) -> AppResult<&str> {
+    if is_id(value) {
+        Ok(value)
+    } else {
+        Err(AppError::invalid("Invalid store identifier."))
+    }
+}
+
+fn region_of(region: Option<&str>) -> &'static str {
+    let wanted = region.unwrap_or("US");
+    REGIONS.iter().copied().find(|r| *r == wanted).unwrap_or("US")
+}
+
+fn encode(value: &str) -> String {
+    percent_encoding::utf8_percent_encode(value, percent_encoding::NON_ALPHANUMERIC).to_string()
+}
+
+/// Generic client parameters. Values describe a device class, not a person.
+fn client_params(region: &str) -> String {
+    let params = [
+        ("device", "generic"),
+        ("region", region),
+        ("isGlobal", "true"),
+        ("system", "miui"),
+        ("alpha", "false"),
+        ("language", "en_US"),
+        ("capability", "w,b,s,m,h5,v:8,vw"),
+        ("apk", "3000519"),
+        ("devicePixel", "1080"),
+        ("miuiUIVersion", "V160"),
+        ("isSupportWidget", "true"),
+    ];
+    params
+        .iter()
+        .map(|(k, v)| format!("{k}={}", encode(v)))
+        .collect::<Vec<_>>()
+        .join("&")
+}
+
+pub fn query_url(query: &StoreQuery, start: u32, region: &str) -> AppResult<String> {
+    let common = client_params(region);
+    Ok(match query {
+        StoreQuery::Home => format!(
+            "{V9}/uipages?cardCount={PAGE_SIZE}&pageCategory=THEME&cardStart={start}&isDeep=true&apiVersion=1&{common}"
+        ),
+        StoreQuery::Categories => format!(
+            "{V9}/uipages/classification?cardCount={PAGE_SIZE}&pageCategory=HYBRID&cardStart={start}&{common}"
+        ),
+        StoreQuery::Page { id } => {
+            format!("{V9}/uipages/{}?cardCount={PAGE_SIZE}&cardStart={start}&{common}", check_id(id)?)
+        }
+        StoreQuery::Subject { id } => {
+            format!("{V9}/uipages/subjects/{}?cardCount=1&cardStart={start}&apiVersion=1&{common}", check_id(id)?)
+        }
+        StoreQuery::Search { keywords } => {
+            let keywords = keywords.trim();
+            if keywords.is_empty() || keywords.chars().count() > 80 {
+                return Err(AppError::invalid("Enter a search term of up to 80 characters."));
+            }
+            format!(
+                "{THM}/search/v2/npage?keywords={}&category=Compound&page={start}&{common}",
+                encode(keywords)
+            )
+        }
+    })
+}
+
+// ----- models ------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct StoreProduct {
+    /// Module ID: identifies the downloadable package.
+    pub module_id: String,
+    pub product_id: Option<String>,
+    pub name: String,
+    pub image_url: Option<String>,
+    pub second_image_url: Option<String>,
+    pub price_cents: u64,
+    pub size_bytes: Option<u64>,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct StoreLink {
+    pub title: Option<String>,
+    /// A store page ID (`StoreQuery::Page`).
+    pub page_id: Option<String>,
+    /// Set when the link opens a single theme.
+    pub module_id: Option<String>,
+    pub image_url: Option<String>,
+    /// Small quick-link icon rather than a banner image.
+    pub icon: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct StoreSection {
+    pub id: Option<String>,
+    pub title: Option<String>,
+    pub subtitle: Option<String>,
+    pub subject_id: Option<String>,
+    pub products: Vec<StoreProduct>,
+    pub links: Vec<StoreLink>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorePage {
+    pub title: Option<String>,
+    pub has_more: bool,
+    pub next_start: u32,
+    pub sections: Vec<StoreSection>,
+    pub fetched_at_ms: u64,
+    pub duration_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ThemeDetail {
+    pub module_id: String,
+    pub product_id: Option<String>,
+    pub name: String,
+    pub designer: Option<String>,
+    pub author: Option<String>,
+    pub designer_icon: Option<String>,
+    pub designer_themes: Option<u64>,
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+    pub cover: Option<String>,
+    pub screenshots: Vec<String>,
+    pub size_bytes: Option<u64>,
+    pub version: Option<String>,
+    pub ui_version: Option<u64>,
+    pub downloads: Option<u64>,
+    pub score: Option<f64>,
+    pub price_cents: u64,
+    pub bought: bool,
+    pub free: bool,
+    pub web_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadedTheme {
+    pub module_id: String,
+    pub product_id: Option<String>,
+    pub name: String,
+    pub designer: Option<String>,
+    pub cover: Option<String>,
+    pub path: String,
+    pub size_bytes: u64,
+    pub sha1: String,
+    pub downloaded_at_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadProgress {
+    pub module_id: String,
+    pub received: u64,
+    pub total: u64,
+}
+
+// ----- parsing -----------------------------------------------------------------
+
+fn text(value: &Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+fn number(value: &Value, key: &str) -> Option<u64> {
+    match value.get(key)? {
+        Value::Number(n) => n.as_u64().or_else(|| n.as_f64().map(|f| f.max(0.0) as u64)),
+        Value::String(s) => s.replace(',', "").trim().parse().ok(),
+        _ => None,
+    }
+}
+
+fn host_of(url: &str) -> Option<&str> {
+    let rest = url.strip_prefix("https://")?;
+    let host = rest.split(['/', '?', '#']).next().unwrap_or("");
+    (!host.is_empty() && !host.contains('@') && !host.contains(':')).then_some(host)
+}
+
+fn host_allowed(host: &str, suffixes: &[&str]) -> bool {
+    suffixes
+        .iter()
+        .any(|s| host == *s || host.ends_with(&format!(".{s}")))
+}
+
+/// HTTPS images from Xiaomi's market CDN only.
+pub fn safe_image_url(url: &str) -> Option<String> {
+    let host = host_of(url)?;
+    host_allowed(host, &["mi-img.com"]).then(|| url.to_string())
+}
+
+/// Resolve a possibly relative image path against the page's file server.
+fn image(value: Option<String>, root: &str) -> Option<String> {
+    let value = value?;
+    if value.starts_with("https://") {
+        return safe_image_url(&value);
+    }
+    if value.contains("://") || value.starts_with("//") {
+        return None;
+    }
+    safe_image_url(&format!("{root}{}", value.trim_start_matches('/')))
+}
+
+fn file_root(data: &Value) -> String {
+    for key in ["fileServer", "root"] {
+        if let Some(root) = text(data, key).and_then(|r| safe_image_url(&r)) {
+            let root = if root.ends_with("/download/") || root.ends_with("/thumbnail/") {
+                // Paths already start with `thumbnail/` or `download/`.
+                root.rsplitn(3, '/').nth(2).map(|s| format!("{s}/")).unwrap_or(root)
+            } else {
+                root
+            };
+            return if root.ends_with('/') { root } else { format!("{root}/") };
+        }
+    }
+    IMAGE_ROOT.to_string()
+}
+
+fn tags_of(value: &Value) -> Vec<String> {
+    match value.get("metaTags").or_else(|| value.get("tags")) {
+        Some(Value::Array(list)) => list.iter().filter_map(Value::as_str).map(str::to_string).collect(),
+        Some(Value::String(s)) => s.split(';').map(str::trim).filter(|t| !t.is_empty()).map(str::to_string).collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn parse_product(value: &Value, root: &str) -> Option<StoreProduct> {
+    let module_id = text(value, "uuid").filter(|id| is_id(id))?;
+    let name = text(value, "name").or_else(|| text(value, "title"))?;
+    let type_ok = match value.get("productType") {
+        None => true,
+        Some(Value::Number(n)) => n.as_u64() == Some(1),
+        Some(Value::String(s)) => s.eq_ignore_ascii_case("THEME") || s == "1",
+        _ => false,
+    };
+    if !type_ok {
+        return None;
+    }
+    let price = number(value, "currentPriceInCent")
+        .or_else(|| number(value, "originPriceInCent"))
+        .unwrap_or(0);
+    Some(StoreProduct {
+        product_id: text(value, "productUuid").filter(|id| is_id(id)),
+        module_id,
+        name,
+        image_url: image(text(value, "imageUrl"), root),
+        second_image_url: image(text(value, "secondImageUrl"), root),
+        price_cents: price,
+        size_bytes: number(value, "fileSizeInKB").filter(|n| *n > 0),
+        tags: tags_of(value),
+    })
+}
+
+fn parse_link(value: &Value, root: &str, icon: bool) -> Option<StoreLink> {
+    let link = value.get("link")?;
+    let target = text(link, "link").filter(|id| is_id(id));
+    let kind = match link.get("type") {
+        Some(Value::Number(n)) => n.as_u64().map(|n| n.to_string()),
+        Some(Value::String(s)) => Some(s.clone()),
+        _ => None,
+    };
+    let product_type_ok = match link.get("productType") {
+        None => true,
+        Some(Value::Number(n)) => n.as_u64() == Some(1),
+        Some(Value::String(s)) => s.eq_ignore_ascii_case("THEME"),
+        _ => false,
+    };
+    let (page_id, module_id) = match kind.as_deref() {
+        Some("1" | "UI_PAGE") if product_type_ok => (target, None),
+        Some("5" | "PRODUCT_DETAIL") if product_type_ok => (None, target),
+        _ => (None, None),
+    };
+    if page_id.is_none() && module_id.is_none() {
+        return None;
+    }
+    Some(StoreLink {
+        title: text(value, "title").or_else(|| text(link, "title")),
+        page_id,
+        module_id,
+        image_url: image(
+            text(value, "imageUrl").or_else(|| text(value, "iconUrl")),
+            root,
+        ),
+        icon,
+    })
+}
+
+fn api_ok(json: &Value) -> AppResult<&Value> {
+    let code = match json.get("apiCode") {
+        Some(Value::String(s)) => s.clone(),
+        Some(other) => other.to_string(),
+        None => String::new(),
+    };
+    if code != "0" {
+        let message = text(json, "apiMessage")
+            .or_else(|| json.get("apiData").and_then(Value::as_str).map(str::to_string))
+            .unwrap_or_else(|| "unknown error".into());
+        return Err(AppError::new(
+            "store_api",
+            format!("The theme store returned “{message}” (code {code})."),
+        ));
+    }
+    json.get("apiData")
+        .filter(|d| !d.is_null())
+        .ok_or_else(|| AppError::new("store", "The theme store response has no data."))
+}
+
+fn parse_json(body: &str) -> AppResult<Value> {
+    serde_json::from_str(body)
+        .map_err(|e| AppError::new("store", format!("The theme store response is not valid JSON: {e}")))
+}
+
+pub fn parse_page(body: &str, start: u32) -> AppResult<StorePage> {
+    let json = parse_json(body)?;
+    let data = api_ok(&json)?;
+    let root = file_root(data);
+    let cards = data.get("cards").and_then(Value::as_array).cloned().unwrap_or_default();
+    let mut sections = Vec::new();
+    let mut seen = HashSet::new();
+    for card in &cards {
+        let mut products = Vec::new();
+        for key in ["products", "recommends"] {
+            for entry in card.get(key).and_then(Value::as_array).into_iter().flatten() {
+                if let Some(product) = parse_product(entry, &root) {
+                    if seen.insert(product.module_id.clone()) {
+                        products.push(product);
+                    }
+                }
+            }
+        }
+        let mut links = Vec::new();
+        for key in ["gridBanners", "banners", "iconGroups", "loopImages", "items"] {
+            let icon = key == "iconGroups";
+            for entry in card.get(key).and_then(Value::as_array).into_iter().flatten() {
+                match entry.as_array() {
+                    Some(group) => links.extend(group.iter().filter_map(|e| parse_link(e, &root, icon))),
+                    None => links.extend(parse_link(entry, &root, icon)),
+                }
+            }
+        }
+        if card.get("imageUrl").is_some() {
+            links.extend(parse_link(card, &root, false));
+        }
+        if products.is_empty() && links.is_empty() {
+            continue;
+        }
+        sections.push(StoreSection {
+            id: text(card, "cardUuid"),
+            title: text(card, "title"),
+            subtitle: text(card, "subTitle"),
+            subject_id: text(card, "subjectUuid").filter(|id| is_id(id)),
+            products,
+            links,
+        });
+    }
+    Ok(StorePage {
+        title: text(data, "title"),
+        has_more: data.get("hasMore").and_then(Value::as_bool).unwrap_or(false),
+        next_start: start + (cards.len() as u32).max(1),
+        sections,
+        fetched_at_ms: crate::storage::now_ms(),
+        duration_ms: 0,
+    })
+}
+
+pub fn parse_detail(body: &str, requested: &str) -> AppResult<ThemeDetail> {
+    let json = parse_json(body)?;
+    let data = api_ok(&json)?;
+    let detail = data
+        .get("extraInfo")
+        .and_then(|e| e.get("themeDetail"))
+        .ok_or_else(|| AppError::not_found("The theme store has no details for this theme."))?;
+    let root = text(detail, "downloadUrlRoot")
+        .and_then(|r| safe_image_url(&r))
+        .unwrap_or_else(|| format!("{IMAGE_ROOT}thumbnail/"));
+    let root = if root.ends_with('/') { root } else { format!("{root}/") };
+    let cards = data.get("cards").and_then(Value::as_array).cloned().unwrap_or_default();
+    let overview = cards.iter().find_map(|c| c.get("themeProductOverview"));
+    let designer_card = cards.iter().find(|c| c.get("designerName").is_some());
+    let mut screenshots: Vec<String> = overview
+        .and_then(|o| o.get("snapshotsUrl"))
+        .and_then(Value::as_array)
+        .map(|l| l.iter().filter_map(Value::as_str).filter_map(safe_image_url).collect())
+        .unwrap_or_default();
+    if screenshots.is_empty() {
+        screenshots = detail
+            .get("snapshotsUrl")
+            .and_then(Value::as_array)
+            .map(|l| {
+                l.iter()
+                    .filter_map(Value::as_str)
+                    .filter_map(|p| image(Some(format!("webp/w1080q70/{p}")), &root))
+                    .collect()
+            })
+            .unwrap_or_default();
+    }
+    let module_id = text(detail, "moduleId").filter(|id| is_id(id)).unwrap_or_else(|| requested.to_string());
+    let price = number(detail, "productPrice").unwrap_or(0);
+    let bought = detail.get("productBought").and_then(Value::as_bool).unwrap_or(false);
+    Ok(ThemeDetail {
+        product_id: text(detail, "productId").or_else(|| text(detail, "assemblyId")).filter(|id| is_id(id)),
+        name: text(detail, "name").unwrap_or_else(|| "Untitled theme".into()),
+        designer: text(detail, "designer").or_else(|| designer_card.and_then(|c| text(c, "designerName"))),
+        author: text(detail, "author"),
+        designer_icon: designer_card.and_then(|c| text(c, "designerIcon")).and_then(|u| safe_image_url(&u)),
+        designer_themes: designer_card.and_then(|c| number(c, "productCount")),
+        description: text(detail, "description"),
+        tags: tags_of(detail),
+        cover: screenshots.first().cloned(),
+        screenshots,
+        size_bytes: number(detail, "fileSize"),
+        version: text(detail, "version"),
+        ui_version: number(detail, "uiVersion"),
+        downloads: number(detail, "downloads"),
+        score: detail.get("score").and_then(Value::as_f64).filter(|s| *s > 0.0),
+        price_cents: price,
+        bought,
+        free: price == 0,
+        web_url: format!("https://zhuti.xiaomi.com/detail/{module_id}"),
+        module_id,
+    })
+}
+
+#[derive(Debug, PartialEq)]
+pub struct DownloadTicket {
+    pub url: String,
+    pub sha1: Option<String>,
+    pub size: Option<u64>,
+}
+
+pub fn parse_ticket(body: &str) -> AppResult<DownloadTicket> {
+    let json = parse_json(body)?;
+    let data = api_ok(&json)?;
+    let url = text(data, "downloadUrl")
+        .ok_or_else(|| AppError::new("store_api", "The theme store did not return a download link."))?;
+    let host = host_of(&url).ok_or_else(|| AppError::new("store", "The download link is not HTTPS."))?;
+    if !host_allowed(host, &["miui.com", "mi-img.com", "xiaomi.com"]) {
+        return Err(AppError::new("store", format!("Refusing to download from unexpected host {host}.")));
+    }
+    let sha1 = text(data, "fileHash")
+        .map(|h| h.to_ascii_lowercase())
+        .filter(|h| h.len() == 40 && h.chars().all(|c| c.is_ascii_hexdigit()));
+    Ok(DownloadTicket { url, sha1, size: number(data, "fileSize") })
+}
+
+// ----- network -----------------------------------------------------------------
+
+fn agent(user_agent: &str, timeout: Duration) -> ureq::Agent {
+    ureq::Agent::config_builder()
+        .timeout_global(Some(timeout))
+        .http_status_as_error(false)
+        .user_agent(user_agent)
+        .build()
+        .into()
+}
+
+fn get_text(url: &str, user_agent: &str) -> AppResult<String> {
+    let mut response = agent(user_agent, Duration::from_secs(25))
+        .get(url)
+        .header("Accept", "application/json")
+        .call()
+        .map_err(|e| AppError::new("network", format!("Could not reach the theme store: {e}")))?;
+    let status = response.status();
+    let body = response
+        .body_mut()
+        .with_config()
+        .limit(MAX_BODY)
+        .read_to_string()
+        .map_err(|e| AppError::new("network", format!("Could not read the theme store response: {e}")))?;
+    if !status.is_success() && !body.trim_start().starts_with('{') {
+        return Err(AppError::new("http", format!("The theme store answered HTTP {}.", status.as_u16())));
+    }
+    Ok(body)
+}
+
+pub fn fetch_page(query: &StoreQuery, start: u32, region: Option<&str>, user_agent: &str) -> AppResult<StorePage> {
+    if start > 5000 {
+        return Err(AppError::invalid("Invalid page offset."));
+    }
+    let started = Instant::now();
+    let url = query_url(query, start, region_of(region))?;
+    let mut page = parse_page(&get_text(&url, user_agent)?, start)?;
+    page.duration_ms = started.elapsed().as_millis() as u64;
+    Ok(page)
+}
+
+pub fn fetch_detail(id: &str, region: Option<&str>, user_agent: &str) -> AppResult<ThemeDetail> {
+    let id = check_id(id)?;
+    let url = format!("{V9}/uipages/theme/{id}?{}", client_params(region_of(region)));
+    parse_detail(&get_text(&url, user_agent)?, id)
+}
+
+pub fn cancel(module_id: &str) {
+    let mut guard = CANCELLED.lock().unwrap_or_else(|e| e.into_inner());
+    guard.get_or_insert_with(HashSet::new).insert(module_id.to_string());
+}
+
+fn take_cancelled(module_id: &str) -> bool {
+    let mut guard = CANCELLED.lock().unwrap_or_else(|e| e.into_inner());
+    guard.as_mut().is_some_and(|set| set.remove(module_id))
+}
+
+fn safe_file_stem(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || matches!(c, ' ' | '-' | '_') { c } else { ' ' })
+        .collect();
+    let collapsed = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
+    let trimmed: String = collapsed.chars().take(60).collect();
+    if trimmed.trim().is_empty() { "theme".into() } else { trimmed.trim().to_string() }
+}
+
+fn sidecar(dir: &Path, module_id: &str) -> PathBuf {
+    dir.join(format!("{module_id}.json"))
+}
+
+fn sha1_file(path: &Path) -> std::io::Result<String> {
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = sha1_smol::Sha1::new();
+    let mut buf = vec![0u8; 256 * 1024];
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher.digest().to_string())
+}
+
+/// Already-downloaded copy that still matches its recorded hash.
+pub fn existing(dir: &Path, module_id: &str) -> Option<DownloadedTheme> {
+    let raw = std::fs::read_to_string(sidecar(dir, module_id)).ok()?;
+    let record: DownloadedTheme = serde_json::from_str(&raw).ok()?;
+    let path = PathBuf::from(&record.path);
+    let meta = std::fs::metadata(&path).ok()?;
+    (meta.len() == record.size_bytes && path.starts_with(dir)).then_some(record)
+}
+
+pub fn list_downloads(dir: &Path) -> Vec<DownloadedTheme> {
+    let mut out: Vec<DownloadedTheme> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let id = name.strip_suffix(".json")?;
+            existing(dir, id)
+        })
+        .collect();
+    out.sort_by(|a, b| b.downloaded_at_ms.cmp(&a.downloaded_at_ms));
+    out
+}
+
+pub fn remove_download(dir: &Path, module_id: &str) -> AppResult<()> {
+    let id = check_id(module_id)?;
+    if let Some(record) = existing(dir, id) {
+        let _ = std::fs::remove_file(&record.path);
+    }
+    let _ = std::fs::remove_file(sidecar(dir, id));
+    Ok(())
+}
+
+/// Download a free theme into `dir`, verifying size and SHA-1.
+pub fn download(
+    module_id: &str,
+    region: Option<&str>,
+    dir: &Path,
+    user_agent: &str,
+    mut progress: impl FnMut(u64, u64),
+) -> AppResult<DownloadedTheme> {
+    let module_id = check_id(module_id)?.to_string();
+    take_cancelled(&module_id);
+    let detail = fetch_detail(&module_id, region, user_agent)?;
+    if !detail.free && !detail.bought {
+        return Err(AppError::new(
+            "paid",
+            "This is a paid theme. Mi Theme Studio only downloads themes the store lists as free.",
+        ));
+    }
+    if let Some(record) = existing(dir, &detail.module_id) {
+        progress(record.size_bytes, record.size_bytes);
+        return Ok(record);
+    }
+    let ticket_url = format!(
+        "{THM}/download/v2/{}?category=Compound&{}",
+        detail.module_id,
+        client_params(region_of(region))
+    );
+    let ticket = parse_ticket(&get_text(&ticket_url, user_agent)?)?;
+    std::fs::create_dir_all(dir).map_err(|e| AppError::io("Could not create the downloads folder", e))?;
+
+    let mut response = agent(user_agent, Duration::from_secs(30 * 60))
+        .get(&ticket.url)
+        .call()
+        .map_err(|e| AppError::new("network", format!("Could not start the download: {e}")))?;
+    if !response.status().is_success() {
+        return Err(AppError::new("http", format!("The download server answered HTTP {}.", response.status().as_u16())));
+    }
+    let total = ticket
+        .size
+        .or_else(|| response.headers().get("content-length").and_then(|v| v.to_str().ok()?.parse().ok()))
+        .unwrap_or(0);
+    if total > MAX_DOWNLOAD {
+        return Err(AppError::new("too_large", "The theme package is larger than 1 GB."));
+    }
+    let short: String = detail.module_id.chars().take(8).collect();
+    let final_path = dir.join(format!("{} ({short}).mtz", safe_file_stem(&detail.name)));
+    let temp_path = dir.join(format!("{}.part", detail.module_id));
+    let result = (|| -> AppResult<String> {
+        let mut file = std::fs::File::create(&temp_path).map_err(|e| AppError::io("Could not write the download", e))?;
+        let mut reader = response.body_mut().with_config().limit(MAX_DOWNLOAD).reader();
+        let mut hasher = sha1_smol::Sha1::new();
+        let mut buf = vec![0u8; 256 * 1024];
+        let mut received = 0u64;
+        let mut last = Instant::now();
+        loop {
+            if take_cancelled(&detail.module_id) {
+                return Err(AppError::new("cancelled", "Download cancelled."));
+            }
+            let n = reader
+                .read(&mut buf)
+                .map_err(|e| AppError::new("network", format!("The download was interrupted: {e}")))?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
+            file.write_all(&buf[..n]).map_err(|e| AppError::io("Could not write the download", e))?;
+            received += n as u64;
+            if last.elapsed() > Duration::from_millis(120) {
+                progress(received, total);
+                last = Instant::now();
+            }
+        }
+        file.flush().map_err(|e| AppError::io("Could not write the download", e))?;
+        progress(received, total.max(received));
+        if total > 0 && received != total {
+            return Err(AppError::new("verify", format!("Downloaded {received} bytes, expected {total}.")));
+        }
+        let digest = hasher.digest().to_string();
+        if let Some(expected) = &ticket.sha1 {
+            if &digest != expected {
+                return Err(AppError::new("verify", "The downloaded package failed its SHA-1 check."));
+            }
+        }
+        Ok(digest)
+    })();
+    let digest = match result {
+        Ok(d) => d,
+        Err(e) => {
+            let _ = std::fs::remove_file(&temp_path);
+            return Err(e);
+        }
+    };
+    let _ = std::fs::remove_file(&final_path);
+    std::fs::rename(&temp_path, &final_path).map_err(|e| AppError::io("Could not save the download", e))?;
+    let size = std::fs::metadata(&final_path).map(|m| m.len()).unwrap_or(0);
+    let record = DownloadedTheme {
+        module_id: detail.module_id.clone(),
+        product_id: detail.product_id.clone(),
+        name: detail.name.clone(),
+        designer: detail.designer.clone(),
+        cover: detail.cover.clone(),
+        path: final_path.to_string_lossy().into_owned(),
+        size_bytes: size,
+        sha1: digest,
+        downloaded_at_ms: crate::storage::now_ms(),
+    };
+    let json = serde_json::to_string_pretty(&record).unwrap_or_default();
+    std::fs::write(sidecar(dir, &detail.module_id), json)
+        .map_err(|e| AppError::io("Could not record the download", e))?;
+    Ok(record)
+}
+
+/// Re-hash a downloaded file (used by tests and integrity checks).
+pub fn verify_file(path: &Path) -> AppResult<String> {
+    sha1_file(path).map_err(|e| AppError::io("Could not read the package", e))
+}
+
+#[cfg(test)]
+mod tests;

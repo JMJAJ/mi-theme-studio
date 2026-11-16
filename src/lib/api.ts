@@ -2,12 +2,14 @@
 // device work happens in Rust; the UI only calls these.
 import { invoke } from '@tauri-apps/api/core';
 import type {
+  DownloadedTheme,
+  StorePage,
+  StoreQuery,
+  ThemeDetail,
   AdbLogEntry,
   AdbStatus,
   AppErrorPayload,
   AppInfo,
-  CatalogPage,
-  CatalogSource,
   CachedDeviceTheme,
   BulkResult,
   ConflictPolicy,
@@ -135,7 +137,13 @@ export const api = {
   adbSendPackage: (serial: string, opId: string) =>
     call<SendResult>('adb_send_package', { serial, confirmed: true, opId }),
 
-  catalogFetch: (source: CatalogSource, cardStart = 0) => call<CatalogPage>('catalog_fetch', { source, cardStart }),
+  storePage: (query: StoreQuery, start = 0, region?: string) => call<StorePage>('store_page', { query, start, region }),
+  storeDetail: (id: string, region?: string) => call<ThemeDetail>('store_detail', { id, region }),
+  storeDownload: (moduleId: string, region?: string) => call<DownloadedTheme>('store_download', { moduleId, region }),
+  storeCancel: (moduleId: string) => call<void>('store_cancel', { moduleId }),
+  storeDownloads: () => call<DownloadedTheme[]>('store_downloads'),
+  storeRemoveDownload: (moduleId: string) => call<void>('store_remove_download', { moduleId }),
+  storeOpenProject: (moduleId: string) => call<ProjectSnapshot>('store_open_project', { moduleId }),
 };
 
 // Windows/Android webviews reach custom protocols as http://<scheme>.localhost.

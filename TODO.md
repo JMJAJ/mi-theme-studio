@@ -13,17 +13,18 @@
 - [x] ADB: discovery, device states, details, screenshots (timeout/cancel), confirmed + verified copy to device.
 - [x] Browse Theme Manager's cached theme names, authors, component lists and local previews over ADB (read-only).
 - [x] Open supported modules from an already cached phone theme as a read-only reference, with title/author metadata and existing copy attribution.
-- [x] Online catalog: browse public theme shelves, quick links and category cards (read-only).
+- [x] Theme store: shelves, categories, search, theme details, verified free downloads, apply all or selected parts.
 
 ## Online themes and remixing
 
-- [ ] Verify a product-list request for shelves/subjects (direct calls currently return no products; see docs/online-catalog.md).
-- [ ] Theme details by product ID once verified; show cover/preview images.
-- [ ] Downloads only after a real product ID and download flow are verified; respect paid/DRM rights checks, never bypass them.
+- [x] Product lists for shelves/subjects (needs Theme Manager's client parameters; see docs/online-catalog.md).
+- [x] Theme details with screenshots, description, designer and stats.
+- [x] Downloads of free themes, SHA-1 verified; paid themes refused, rights/DRM never bypassed.
 - [x] Open supported modules from an already cached Theme Manager theme as a read-only reference with attribution.
-- [ ] Open a theme downloaded directly from the online catalog as a reference once its product/download flow is verified.
+- [x] Open a downloaded store theme as a reference, apply selected parts, or open it whole as a new project.
+- [ ] Fonts, wallpapers and ringtones from the store (other product types).
 - [ ] Extend `.mrc` to MTZ component mapping for more regional resource types and verify licensing terms for reuse/export. The cache reference reads already-present files only; it does not call store download or rights endpoints.
-- [ ] Search (`/thm/search/v2/npage`, `category=Compound`) once results can be shown meaningfully.
+- [x] Search (`/thm/search/v2/npage`, `category=Compound`).
 
 ## Device
 

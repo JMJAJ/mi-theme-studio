@@ -1,31 +1,46 @@
-# Online catalog
+# Theme store
 
-The **Online themes** view shows public, read-only catalog data from the global Theme Manager service. Nothing is requested until the user clicks *Load catalog*; requests are anonymous (generic `MiThemeStudio/<version>` user agent, no account, device or package data).
+The **Theme store** view (Tools → Theme store) browses Xiaomi's public Theme Manager catalog, shows full theme details, downloads free themes, and applies all or selected parts of a downloaded theme to the open project.
 
-## Routes used
+Nothing is requested until the user clicks *Connect*. Requests are anonymous GETs with a generic `MiThemeStudio/<version>` user agent.
 
-Both routes were verified to answer anonymous GET requests with `apiCode: "0"`:
+## Client parameters
 
-| View | Route |
+Product lists are only filled when a request carries the client parameters Theme Manager adds to every call. Without them the service returns shelf titles with empty `products`. The app sends fixed, generic values that describe a device class, not a person:
+
+`device=generic, region=<chosen>, isGlobal=true, system=miui, alpha=false, language=en_US, capability=w,b,s,m,h5,v:8,vw, apk=3000519, devicePixel=1080, miuiUIVersion=V160, isSupportWidget=true`
+
+`miuiUIVersion` is the one that matters: without it, home shelves drop from ~128 products to a handful. No account, device identifier, user ID or package data is sent. The region is chosen in the store toolbar (default `US`).
+
+## Routes
+
+| Purpose | Route |
 |---|---|
-| Theme shelves | `https://api.zhuti.intl.xiaomi.com/app/v9/uipages?cardCount=20&pageCategory=THEME&cardStart=<n>&isDeep=true&apiVersion=1` |
-| Categories | `https://api.zhuti.intl.xiaomi.com/app/v9/uipages/classification?cardCount=20&pageCategory=HYBRID` |
+| Home shelves | `https://api.zhuti.intl.xiaomi.com/app/v9/uipages?pageCategory=THEME&isDeep=true&cardStart=<n>` |
+| Categories | `…/app/v9/uipages/classification?pageCategory=HYBRID` |
+| Page from a banner or category | `…/app/v9/uipages/<pageId>` |
+| All themes on a shelf | `…/app/v9/uipages/subjects/<subjectId>?cardCount=1&cardStart=<n>` |
+| Search | `https://thm.market.intl.xiaomi.com/thm/search/v2/npage?keywords=<q>&category=Compound&page=<n>` |
+| Theme detail | `…/app/v9/uipages/theme/<moduleId>` |
+| Download ticket | `https://thm.market.intl.xiaomi.com/thm/download/v2/<moduleId>?category=Compound` |
 
-`pageCategory` must be uppercase (`theme` returns `ARGUMENT_ERROR`). The shelf page is paginated with `cardStart` and `hasMore`.
+Products carry a module ID (`uuid`, the downloadable package) and a product ID (`productUuid`). The detail route accepts either. Relative image paths are resolved against the response's `fileServer`.
 
-What the responses contain and how the app shows it:
+The detail response holds the overview card (`snapshotsUrl` screenshots), the designer card (name, avatar, theme count), the detail card (description, tags) and `extraInfo.themeDetail` (name, designer, size, version, UI version, downloads, score, `productPrice`, `productBought`).
 
-- `TOP_BANNER` → quick links (`iconGroups` with `iconUrl` / `iconDarkModeUrl` and `UI_PAGE` links such as New, Hot Hits, Dark Mode).
-- `THEME_*_LIST` → shelves with `title`, `subjectUuid`, `productCountPerCard`; in verified calls `products` is empty and `productCount` is 0. The app lists the shelves and states "No products returned".
-- `FOUR_GRID_BANNER_WITH_SIZE` (categories) → category cards with images and `UI_PAGE` links (`productType` THEME or FONT). These cards carry `visible: false`; the app shows them with a "hidden by service" badge and a toggle.
-- `TEXT_IMAGE_BANNER`, `GLOBAL_AD_BIG` → banners with images; `EXTERNAL_HREF` links are app-only and are not opened.
+The download ticket returns a signed `https://theme-fs.cdn.intl.miui.com/…/<name>.mtz` URL, `fileSize` and `fileHash` (the SHA-1 of the package).
 
-Images come directly from `https://t17.market.mi-img.com/...` URLs in the JSON. The backend drops image URLs outside `https://*.mi-img.com`, and the CSP only allows that host for remote images.
+## Downloads
 
-## Not available yet
+- Only themes with `productPrice == 0` (or already bought) are downloaded. The backend re-fetches the detail and refuses paid themes before requesting a ticket. Rights/DRM routes (`/thm/drm/issue`) are never called.
+- Ticket URLs must be HTTPS on `*.miui.com`, `*.mi-img.com` or `*.xiaomi.com`.
+- Packages stream to `<app data>/downloads/<name> (<id>).mtz` through a `.part` file, with progress events (`store-download`) and cancellation. Size and SHA-1 are verified before the file is kept. A JSON sidecar records name, designer, cover, size and hash, and the *Downloaded* tab lists them offline.
+- Images are only loaded from `https://*.mi-img.com` (backend allow-list and CSP).
 
-- **Products inside shelves.** Direct calls to shelf/subject child pages returned empty cards. The Android app's default request parameters are empty, so this is not fixed by adding device headers; it may depend on region, backend visibility or service behaviour. Needs a verified product-list request.
-- **Theme details and downloads.** The app resource type for full themes is `Compound`; detail and download routes exist in the marketplace API but are **not** called. Downloads stay unavailable until a real product ID and download flow are verified.
-- **Rights/DRM.** The marketplace rights route is treated as a gate. The app never attempts to bypass paid or DRM restrictions.
+## Applying a theme
 
-When downloads become possible, the plan is to open a downloaded theme as a read-only reference (never replacing the project) and keep its attribution in the package report.
+- **Apply parts to my theme**: the download is opened as the read-only reference package. Its top-level parts (component archives such as `icons`, `lockscreen`, `com.android.systemui`, and folders such as `wallpaper`, `fonts`) are listed with file counts and sizes. The selected parts go through the normal copy-from-reference flow: you review the plan, existing files at the same paths are replaced by default, the copy is one undoable change, and the source theme is recorded in the package report.
+- **Open whole theme as project**: opens the package as an untitled project, so saving asks for a new location instead of overwriting the cached download.
+- **Browse files as reference**: opens the reference in the sidebar to copy individual files.
+
+Respect the designers' licences when redistributing anything built from store themes.

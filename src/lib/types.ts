@@ -305,51 +305,89 @@ export interface CachedDeviceTheme {
   hasPreview: boolean;
 }
 
-// ----- Online catalog (read-only discovery) -----
+// ----- Online theme store -----
 
-export type CatalogSource = 'shelves' | 'categories';
+export type StoreQuery =
+  | { kind: 'home' }
+  | { kind: 'categories' }
+  | { kind: 'page'; id: string }
+  | { kind: 'subject'; id: string }
+  | { kind: 'search'; keywords: string };
 
-export interface CatalogLink {
-  kind: string | null;
-  target: string | null;
-  title: string | null;
-  productType: string | null;
-}
-
-export interface CatalogItem {
-  title: string | null;
+export interface StoreProduct {
+  moduleId: string;
+  productId: string | null;
+  name: string;
   imageUrl: string | null;
-  darkImageUrl: string | null;
-  link: CatalogLink | null;
+  secondImageUrl: string | null;
+  priceCents: number;
+  sizeBytes: number | null;
+  tags: string[];
 }
 
-export interface CatalogSection {
-  cardUuid: string | null;
-  cardType: string;
-  layout: 'shelf' | 'banner' | 'grid' | 'icons' | 'other';
+export interface StoreLink {
   title: string | null;
-  localizedTitle: string | null;
+  pageId: string | null;
+  moduleId: string | null;
+  imageUrl: string | null;
+  icon: boolean;
+}
+
+export interface StoreSection {
+  id: string | null;
+  title: string | null;
   subtitle: string | null;
-  subjectUuid: string | null;
-  productCount: number | null;
-  productCountPerCard: number | null;
-  productsReturned: number;
-  visible: boolean;
-  imageUrl: string | null;
-  link: CatalogLink | null;
-  items: CatalogItem[];
+  subjectId: string | null;
+  products: StoreProduct[];
+  links: StoreLink[];
 }
 
-export interface CatalogPage {
-  source: CatalogSource;
-  endpoint: string;
+export interface StorePage {
   title: string | null;
-  pageUuid: string | null;
-  language: string | null;
   hasMore: boolean;
-  cardStart: number;
   nextStart: number;
-  sections: CatalogSection[];
+  sections: StoreSection[];
   fetchedAtMs: number;
   durationMs: number;
+}
+
+export interface ThemeDetail {
+  moduleId: string;
+  productId: string | null;
+  name: string;
+  designer: string | null;
+  author: string | null;
+  designerIcon: string | null;
+  designerThemes: number | null;
+  description: string | null;
+  tags: string[];
+  cover: string | null;
+  screenshots: string[];
+  sizeBytes: number | null;
+  version: string | null;
+  uiVersion: number | null;
+  downloads: number | null;
+  score: number | null;
+  priceCents: number;
+  bought: boolean;
+  free: boolean;
+  webUrl: string;
+}
+
+export interface DownloadedTheme {
+  moduleId: string;
+  productId: string | null;
+  name: string;
+  designer: string | null;
+  cover: string | null;
+  path: string;
+  sizeBytes: number;
+  sha1: string;
+  downloadedAtMs: number;
+}
+
+export interface DownloadProgress {
+  moduleId: string;
+  received: number;
+  total: number;
 }

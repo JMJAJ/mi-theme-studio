@@ -116,11 +116,11 @@ function ChoiceDialog({ dialog }: { dialog: Extract<DialogState, { type: 'choice
   );
 }
 
-function CopyPlanDialog({ paths }: { paths: string[] }) {
+function CopyPlanDialog({ paths, initialPolicy = 'skip', title = 'Copy from reference' }: { paths: string[]; initialPolicy?: ConflictPolicy; title?: string }) {
   const project = useStore((s) => s.project);
   const [mode, setMode] = useState<'same' | 'folder'>('same');
   const [folder, setFolder] = useState('');
-  const [policy, setPolicy] = useState<ConflictPolicy>('skip');
+  const [policy, setPolicy] = useState<ConflictPolicy>(initialPolicy);
   const [plan, setPlan] = useState<CopyPlanItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -141,7 +141,7 @@ function CopyPlanDialog({ paths }: { paths: string[] }) {
   return (
     <Modal
       wide
-      title="Copy from reference"
+      title={title}
       icon={<Copy width={16} className="muted" />}
       onClose={closeDialog}
       footer={
@@ -442,7 +442,7 @@ export function DialogHost() {
     case 'choice':
       return <ChoiceDialog dialog={dialog} />;
     case 'copyPlan':
-      return <CopyPlanDialog paths={dialog.paths} />;
+      return <CopyPlanDialog paths={dialog.paths} initialPolicy={dialog.policy} title={dialog.title} />;
     case 'move':
       return <MoveDialog paths={dialog.paths} />;
     case 'settings':

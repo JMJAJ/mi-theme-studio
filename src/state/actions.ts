@@ -5,7 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { api, errorCode, errorMessage, newOpId } from '../lib/api';
 import { fileName, joinPath, parentOf, validateName } from '../lib/paths';
-import type { AdbLogEntry, ConflictPolicy, ExportProgress, ProjectSnapshot, SaveResult, Slot } from '../lib/types';
+import type { AdbLogEntry, ConflictPolicy, DownloadedTheme, ExportProgress, ProjectSnapshot, SaveResult, Slot } from '../lib/types';
 import { formatBytes, plural } from '../lib/format';
 import {
   choiceDialog,
@@ -126,7 +126,7 @@ const SINGLETON_TITLES: Partial<Record<TabKind, string>> = {
   device: 'Device',
   build: 'Build & export',
   roadmap: 'Roadmap',
-  catalog: 'Online themes',
+  catalog: 'Theme store',
 };
 
 export function openTab(tab: Tab) {
@@ -709,6 +709,27 @@ export async function closeReference() {
   await guard('Close reference', () => api.referenceClose());
   applyReference(null);
   setState((s) => ({ sideTab: 'files', tabs: s.tabs.filter((t) => t.slot !== 'ref'), activeTab: s.tabs.find((t) => t.id === s.activeTab)?.slot === 'ref' ? null : s.activeTab }));
+}
+
+/** Open a downloaded store theme as an editable, untitled project. */
+export async function openDownloadAsProject(theme: DownloadedTheme) {
+  if (!(await ensureCanDiscard('open another theme'))) return false;
+  const snapshot = await guard('Open theme', () => api.storeOpenProject(theme.moduleId), `Opening ${theme.name}…`);
+  if (!snapshot) return false;
+  resetWorkspace(snapshot);
+  toast('success', `Opened “${theme.name}” as a new project. Saving asks where to store your copy.`);
+  return true;
+}
+
+/** Open a downloaded store theme as the read-only reference package. */
+export async function openDownloadAsReference(theme: DownloadedTheme, reveal = true) {
+  const current = getState().reference;
+  if (current?.sourcePath === theme.path) return current;
+  const snapshot = await guard('Open reference', () => api.referenceOpen(theme.path), `Opening ${theme.name}…`);
+  if (!snapshot) return null;
+  applyReference(snapshot);
+  if (reveal) setState((s) => ({ sideTab: 'reference', layout: { ...s.layout, sidebar: true } }));
+  return snapshot;
 }
 
 export async function copyFromReference(paths: string[], folder: string | null, policy: ConflictPolicy) {

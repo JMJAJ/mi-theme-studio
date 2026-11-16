@@ -12,6 +12,7 @@ import type {
   ScreenshotInfo,
   Settings,
   Slot,
+  ConflictPolicy,
   ValidationReport,
 } from '../lib/types';
 
@@ -124,7 +125,7 @@ export type DialogState =
       choices: { id: string; label: string; primary?: boolean; danger?: boolean }[];
       resolve: (value: string) => void;
     }
-  | { type: 'copyPlan'; paths: string[] }
+  | { type: 'copyPlan'; paths: string[]; policy?: ConflictPolicy; title?: string }
   | { type: 'settings' }
   | { type: 'shortcuts' }
   | { type: 'about' }

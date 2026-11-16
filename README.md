@@ -22,7 +22,7 @@ npm install
 npm start
 ```
 
-Windows installers are published on the [GitHub Releases page](https://github.com/JMJAJ/mi-theme-studio/releases).
+Windows installers are published on the [GitHub Releases page](https://github.com/JMJAJ/mi-theme-studio/releases). The installer keeps one per-user copy of Mi Theme Studio; running a newer setup updates that copy in place instead of offering another install folder.
 
 ## Package notes
 

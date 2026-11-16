@@ -9,7 +9,6 @@ Thumbs.db
 *.apks
 *.mtz
 /source/
-/.claude/
 /src-tauri/target/
 /src-tauri/gen/
 /src-tauri/resources/scrcpy/

@@ -7,6 +7,7 @@
 
 pub mod classify;
 pub mod history;
+pub mod search;
 pub mod snapshot;
 
 use crate::error::{AppError, AppResult};

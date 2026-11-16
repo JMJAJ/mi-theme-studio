@@ -39,7 +39,7 @@
 - [ ] Nine-patch editor and stretch-area overlay.
 - [ ] Template-based "new component" scaffolds (with user-supplied templates; vendor templates are not bundled).
 - [ ] Round-trip checks against representative MIUI and HyperOS sample packages.
-- [ ] Multi-file find-and-replace across XML resources.
+- [x] Multi-file find-and-replace across text and XML files (inside component archives too), one undoable change, XML kept well-formed.
 
 ## Research notes
 

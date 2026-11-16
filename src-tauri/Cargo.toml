@@ -27,6 +27,7 @@ imagesize = "0.15"
 percent-encoding = "2"
 ureq = "3"
 sha1_smol = "1"
+regex = { version = "1", default-features = false, features = ["std", "unicode-perl", "unicode-case"] }
 
 [dev-dependencies]
 tempfile = "3"

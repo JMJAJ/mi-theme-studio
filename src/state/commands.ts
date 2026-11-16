@@ -90,6 +90,7 @@ export const COMMANDS: Command[] = [
   { id: 'edit.duplicate', group: 'Edit', label: 'Duplicate', shortcut: 'Ctrl+D', icon: Copy, enabled: (s) => s.selection.some((p) => s.fileIndex.has(p)), run: () => A.duplicatePaths(getState().selection) },
   { id: 'edit.move', group: 'Edit', label: 'Move to folder…', enabled: hasSelection, run: () => setState({ dialog: { type: 'move', paths: getState().selection } }) },
   { id: 'edit.delete', group: 'Edit', label: 'Delete', shortcut: 'Delete', icon: Trash2, enabled: hasSelection, run: () => A.deletePaths(getState().selection) },
+  { id: 'edit.findInFiles', group: 'Edit', label: 'Find in files', shortcut: 'Ctrl+Shift+F', icon: Search, enabled: hasProject, run: () => setState((s) => ({ sideTab: 'search', layout: { ...s.layout, sidebar: true } })), global: true },
   { id: 'edit.goToFile', group: 'Edit', label: 'Go to file…', shortcut: 'Ctrl+P', icon: Search, enabled: hasProject, run: () => setState({ palette: 'files' }), global: true },
   { id: 'edit.palette', group: 'Edit', label: 'Command palette…', shortcut: 'Ctrl+Shift+P', icon: Search, run: () => setState({ palette: 'commands' }), global: true },
 
@@ -155,7 +156,7 @@ export type MenuEntry = string | '-' | { heading: string };
 /** Menu bar layout (command ids; '-' is a separator). */
 export const MENUS: { label: string; items: MenuEntry[] }[] = [
   { label: 'File', items: ['file.new', 'file.open', 'recent', '-', 'file.save', 'file.saveAs', 'file.exportCopy', 'file.report', '-', 'file.openReference', '-', 'file.close'] },
-  { label: 'Edit', items: ['edit.undo', 'edit.redo', '-', 'edit.rename', 'edit.duplicate', 'edit.move', 'edit.delete', '-', 'edit.goToFile', 'edit.palette'] },
+  { label: 'Edit', items: ['edit.undo', 'edit.redo', '-', 'edit.rename', 'edit.duplicate', 'edit.move', 'edit.delete', '-', 'edit.findInFiles', 'edit.goToFile', 'edit.palette'] },
   { label: 'View', items: ['view.sidebar', 'view.inspector', 'view.dock', '-', 'view.problems', 'view.output', 'view.adbLog', 'view.history', '-', 'view.zoomIn', 'view.zoomOut', 'view.zoomReset', '-', 'view.resetLayout'] },
   { label: 'Project', items: ['project.details', 'project.addFiles', 'project.newComponent', '-', 'project.validate', 'project.build'] },
   { label: 'Tools', items: ['tools.catalog', '-', 'tools.settings'] },

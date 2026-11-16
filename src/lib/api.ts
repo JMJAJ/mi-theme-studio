@@ -2,6 +2,10 @@
 // device work happens in Rust; the UI only calls these.
 import { invoke } from '@tauri-apps/api/core';
 import type {
+  ReplaceResult,
+  ReplaceTarget,
+  SearchOptions,
+  SearchResult,
   DownloadedTheme,
   StorePage,
   StoreQuery,
@@ -137,6 +141,9 @@ export const api = {
   adbSendPackage: (serial: string, opId: string) =>
     call<SendResult>('adb_send_package', { serial, confirmed: true, opId }),
 
+  projectSearch: (options: SearchOptions) => call<SearchResult>('project_search', { options }),
+  projectReplace: (options: SearchOptions, replacement: string, targets: ReplaceTarget[], allowInvalidXml = false) =>
+    call<{ result: ReplaceResult; snapshot: ProjectSnapshot }>('project_replace', { options, replacement, targets, allowInvalidXml }),
   storePage: (query: StoreQuery, start = 0, region?: string) => call<StorePage>('store_page', { query, start, region }),
   storeDetail: (id: string, region?: string) => call<ThemeDetail>('store_detail', { id, region }),
   storeDownload: (moduleId: string, region?: string) => call<DownloadedTheme>('store_download', { moduleId, region }),

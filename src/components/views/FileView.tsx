@@ -161,6 +161,8 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
   const [text, setText] = useState(draft?.text ?? '');
   const isXml = file.kind === 'xml';
   const readOnly = slot === 'ref';
+  const view = useRef<EditorView | null>(null);
+  const reveal = useStore((s) => (slot === 'main' && s.reveal?.path === file.path ? s.reveal : null));
 
   useEffect(() => {
     if (draft && loaded) return; // keep editing the draft
@@ -179,6 +181,21 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [file.path, file.rev, slot]);
+
+  // Select a search match once the text is loaded.
+  useEffect(() => {
+    const v = view.current;
+    if (!reveal || !v || !loaded) return;
+    const doc = v.state.doc;
+    if (reveal.line < 1 || reveal.line > doc.lines) return;
+    const line = doc.line(reveal.line);
+    // Columns are in characters; CodeMirror positions are UTF-16 units.
+    const prefix = [...line.text].slice(0, reveal.column - 1).join('');
+    const hit = [...line.text.slice(prefix.length)].slice(0, reveal.length).join('');
+    const from = line.from + prefix.length;
+    v.dispatch({ selection: { anchor: from, head: Math.min(from + hit.length, doc.length) }, effects: EditorView.scrollIntoView(from, { y: 'center' }) });
+    v.focus();
+  }, [reveal?.nonce, loaded]);
 
   const [syntax, setSyntax] = useState<string | null>(null);
   useEffect(() => {
@@ -272,6 +289,9 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
           theme="none"
           readOnly={readOnly}
           extensions={extensions}
+          onCreateEditor={(v) => {
+            view.current = v;
+          }}
           basicSetup={{ foldGutter: true, highlightActiveLine: true, autocompletion: false }}
           onChange={(value) => {
             setText(value);

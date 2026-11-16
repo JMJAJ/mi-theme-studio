@@ -26,6 +26,7 @@ import type { FileInfo, ProjectSnapshot, Slot } from '../../lib/types';
 import { getState, setState, useStore } from '../../state/store';
 import * as A from '../../state/actions';
 import { openContextMenu, type MenuItem } from '../common/Menu';
+import { SearchPanel } from './SearchPanel';
 import { kindIcon } from '../common/icons';
 
 const ROW = 28;
@@ -456,6 +457,9 @@ export function Explorer() {
           <button role="tab" aria-selected={sideTab === 'files'} onClick={() => setState({ sideTab: 'files' })}>
             Explorer
           </button>
+          <button role="tab" aria-selected={sideTab === 'search'} onClick={() => setState({ sideTab: 'search' })} disabled={!project}>
+            Search
+          </button>
           <button role="tab" aria-selected={sideTab === 'reference'} onClick={() => setState({ sideTab: 'reference' })} disabled={!project}>
             Reference{reference ? ' •' : ''}
           </button>
@@ -479,6 +483,8 @@ export function Explorer() {
         <div className="tree-empty">Open or create a theme package to browse its files.</div>
       ) : sideTab === 'files' ? (
         <FilesPanel />
+      ) : sideTab === 'search' ? (
+        <SearchPanel />
       ) : (
         <ReferencePanel />
       )}

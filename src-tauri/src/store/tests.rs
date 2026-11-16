@@ -95,6 +95,34 @@ fn paid_detail_is_not_free() {
 }
 
 #[test]
+fn missing_price_is_not_free() {
+    let missing = DETAIL.replace("\"productPrice\": 0, ", "");
+    assert!(!missing.contains("productPrice"), "fixture edit must remove the field");
+    let d = parse_detail(&missing, "mod-1").unwrap();
+    assert!(!d.price_known, "an absent price is not a stated price");
+    assert!(!d.free, "a theme with no stated price must not be treated as free");
+    assert_eq!(d.price_cents, 0);
+}
+
+#[test]
+fn malformed_price_is_not_free() {
+    for bad in ["-5", "\"free\"", "null", "true", "\"\"", "[]"] {
+        let doc = DETAIL.replace("\"productPrice\": 0", &format!("\"productPrice\": {bad}"));
+        let d = parse_detail(&doc, "mod-1").unwrap();
+        assert!(!d.free, "productPrice {bad} must not read as free");
+        assert!(!d.price_known, "productPrice {bad} must not count as a stated price");
+    }
+}
+
+#[test]
+fn zero_price_is_free() {
+    let d = parse_detail(DETAIL, "mod-1").unwrap();
+    assert!(d.price_known);
+    assert!(d.free);
+    assert_eq!(d.price_cents, 0);
+}
+
+#[test]
 fn download_ticket_checks_host_and_hash() {
     let ok = r#"{"apiCode":0,"apiData":{"downloadUrl":"https://theme-fs.cdn.intl.miui.com/issue/a.mtz?t=1","fileHash":"43B3ACE1BA9A05E85CCBA9ABAE5A72E07081F476","fileSize":10}}"#;
     let t = parse_ticket(ok).unwrap();

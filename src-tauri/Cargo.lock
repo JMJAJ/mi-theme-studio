@@ -2140,6 +2140,7 @@ dependencies = [
  "imagesize",
  "percent-encoding",
  "quick-xml",
+ "regex",
  "serde",
  "serde_json",
  "sha1_smol",

@@ -54,7 +54,16 @@ export interface BuildRecord extends Omit<SaveResult, 'snapshot'> {
 }
 
 export type DockTab = 'problems' | 'output' | 'adb' | 'build' | 'history';
-export type SideTab = 'files' | 'reference';
+export type SideTab = 'files' | 'search' | 'reference';
+
+/** A text range to select once its file is open in an editor. */
+export interface Reveal {
+  path: string;
+  line: number;
+  column: number;
+  length: number;
+  nonce: number;
+}
 
 export interface Layout {
   sidebar: boolean;
@@ -149,6 +158,7 @@ export interface StoreState {
   layout: Layout;
   dockTab: DockTab;
   sideTab: SideTab;
+  reveal: Reveal | null;
   validation: ValidationReport | null;
   validating: boolean;
   logs: LogEntry[];
@@ -189,6 +199,7 @@ export const useStore = create<StoreState>(() => ({
   layout: loadLayout(),
   dockTab: 'problems',
   sideTab: 'files',
+  reveal: null,
   validation: null,
   validating: false,
   logs: [],

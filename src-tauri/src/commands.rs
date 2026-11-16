@@ -11,6 +11,7 @@ use crate::package::metadata::{self, FieldUpdate, MetadataView, DESCRIPTION_PATH
 use crate::package::paths;
 use crate::project::history::History;
 use crate::project::snapshot::{snapshot, ProjectSnapshot};
+use crate::project::search::{self, ReplaceResult, ReplaceTarget, SearchOptions, SearchResult};
 use crate::project::{decode_text, BulkResult, ConflictPolicy, CopyPlanItem, Project};
 use crate::state::{lock, AppState, Screenshot, ScreenshotInfo, MAX_ADB_LOG, MAX_SCREENSHOTS};
 use crate::storage::{self, RecoveryInfo, Settings};
@@ -1112,6 +1113,37 @@ pub async fn adb_send_package(
         Ok(SendResult {
             push: result?,
             package_entries: built.entries,
+        })
+    })
+    .await
+}
+
+// ----- find and replace ----------------------------------------------------------
+
+#[tauri::command]
+pub async fn project_search(app: AppHandle, options: SearchOptions) -> AppResult<SearchResult> {
+    blocking(app, move |state, _| with_main(state, |project| search::search(project, &options))).await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplaceResponse {
+    result: ReplaceResult,
+    snapshot: ProjectSnapshot,
+}
+
+#[tauri::command]
+pub async fn project_replace(
+    app: AppHandle,
+    options: SearchOptions,
+    replacement: String,
+    targets: Vec<ReplaceTarget>,
+    allow_invalid_xml: bool,
+) -> AppResult<ReplaceResponse> {
+    blocking(app, move |state, _| {
+        with_main(state, |project| {
+            let result = search::replace(project, &options, &replacement, &targets, allow_invalid_xml)?;
+            Ok(ReplaceResponse { result, snapshot: snapshot(project, "main") })
         })
     })
     .await

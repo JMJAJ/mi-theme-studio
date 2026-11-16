@@ -372,6 +372,7 @@ export interface ThemeDetail {
   priceCents: number;
   currency: string | null;
   bought: boolean;
+  priceKnown: boolean;
   free: boolean;
   webUrl: string;
 }
@@ -392,4 +393,49 @@ export interface DownloadProgress {
   moduleId: string;
   received: number;
   total: number;
+}
+
+// ----- Find and replace -----
+
+export interface SearchOptions {
+  query: string;
+  regex: boolean;
+  caseSensitive: boolean;
+  wholeWord: boolean;
+  include: string;
+}
+
+export interface SearchMatch {
+  line: number;
+  column: number;
+  length: number;
+  offset: number;
+  preview: string;
+  previewStart: number;
+}
+
+export interface SearchFile {
+  path: string;
+  rev: number;
+  matches: SearchMatch[];
+}
+
+export interface SearchResult {
+  files: SearchFile[];
+  total: number;
+  truncated: boolean;
+  searchedFiles: number;
+}
+
+export interface ReplaceTarget {
+  path: string;
+  rev: number;
+  offsets?: number[] | null;
+}
+
+export interface ReplaceResult {
+  files: string[];
+  replacements: number;
+  invalidXml: string[];
+  stale: string[];
 }

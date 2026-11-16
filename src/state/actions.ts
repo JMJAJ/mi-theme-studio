@@ -145,6 +145,13 @@ export function openComponent(id: string) {
   openTab({ id: `component:${id}`, kind: 'component', component: id, title: def?.label ?? id });
 }
 
+let revealNonce = 0;
+/** Open a file and select a range in its text editor. */
+export function revealInFile(path: string, line: number, column: number, length: number) {
+  openFile(path);
+  setState({ reveal: { path, line, column, length, nonce: ++revealNonce } });
+}
+
 export function openFile(path: string, slot: Slot = 'main') {
   openTab({ id: `file:${slot}:${path}`, kind: 'file', path, slot, title: fileName(path) });
   if (slot === 'main') setState({ selection: [path], selectionAnchor: path });

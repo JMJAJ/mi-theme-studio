@@ -612,7 +612,15 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
           )}
           {detail.description && <p className="description selectable">{detail.description}</p>}
           <div className="facts">
-            <Fact label="Price">{detail.free ? 'Free' : detail.bought ? 'Purchased' : formatPrice(detail.priceCents, detail.currency)}</Fact>
+            <Fact label="Price">
+              {detail.free
+                ? 'Free'
+                : detail.bought
+                  ? 'Purchased'
+                  : detail.priceKnown
+                    ? formatPrice(detail.priceCents, detail.currency)
+                    : 'Not stated'}
+            </Fact>
             {detail.sizeBytes ? <Fact label="Size">{formatBytes(detail.sizeBytes)}</Fact> : null}
             {detail.version ? <Fact label="Version">{detail.version}</Fact> : null}
             {detail.uiVersion ? <Fact label="UI version">{detail.uiVersion}</Fact> : null}
@@ -631,8 +639,9 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
               <div className="banner banner-warn">
                 <Lock />
                 <span>
-                  Paid theme ({formatPrice(detail.priceCents, detail.currency)}). Mi Theme Studio only downloads themes the store lists as free. Buy it in Theme Manager on your
-                  phone, then import it from the “On device” tab.
+                  {detail.priceKnown
+                    ? `Paid theme (${formatPrice(detail.priceCents, detail.currency)}). Mi Theme Studio only downloads themes the store lists as free. Buy it in Theme Manager on your phone, then import it from the “On device” tab.`
+                    : 'The store did not state a price for this theme, so Mi Theme Studio will not download it. Free themes are listed at zero.'}
                 </span>
               </div>
             </>

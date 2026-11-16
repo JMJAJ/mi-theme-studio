@@ -199,6 +199,9 @@ pub struct ThemeDetail {
     pub price_cents: u64,
     pub currency: Option<String>,
     pub bought: bool,
+    /// The store stated a price at all. `false` means the response was missing,
+    /// negative or non-numeric, which is treated as "not free" rather than free.
+    pub price_known: bool,
     pub free: bool,
     pub web_url: String,
 }
@@ -238,7 +241,9 @@ fn text(value: &Value, key: &str) -> Option<String> {
 
 fn number(value: &Value, key: &str) -> Option<u64> {
     match value.get(key)? {
-        Value::Number(n) => n.as_u64().or_else(|| n.as_f64().map(|f| f.max(0.0) as u64)),
+        // Negative numbers are rejected rather than clamped to zero: clamping
+        // would turn a malformed price into a valid "free" one.
+        Value::Number(n) => n.as_u64().or_else(|| n.as_f64().filter(|f| *f >= 0.0).map(|f| f as u64)),
         Value::String(s) => s.replace(',', "").trim().parse().ok(),
         _ => None,
     }
@@ -476,7 +481,9 @@ pub fn parse_detail(body: &str, requested: &str) -> AppResult<ThemeDetail> {
             .unwrap_or_default();
     }
     let module_id = text(detail, "moduleId").filter(|id| is_id(id)).unwrap_or_else(|| requested.to_string());
-    let price = number(detail, "productPrice").unwrap_or(0);
+    // Only an explicit zero authorises a download. A price the store did not
+    // state (absent, negative or non-numeric) must not fall back to "free".
+    let price = number(detail, "productPrice");
     let bought = detail.get("productBought").and_then(Value::as_bool).unwrap_or(false);
     Ok(ThemeDetail {
         product_id: text(detail, "productId").or_else(|| text(detail, "assemblyId")).filter(|id| is_id(id)),
@@ -494,10 +501,11 @@ pub fn parse_detail(body: &str, requested: &str) -> AppResult<ThemeDetail> {
         ui_version: number(detail, "uiVersion"),
         downloads: number(detail, "downloads"),
         score: detail.get("score").and_then(Value::as_f64).filter(|s| *s > 0.0),
-        price_cents: price,
+        price_cents: price.unwrap_or(0),
         currency: currency_of(detail),
         bought,
-        free: price == 0,
+        price_known: price.is_some(),
+        free: price == Some(0),
         web_url: format!("https://zhuti.xiaomi.com/detail/{module_id}"),
         module_id,
     })
@@ -655,10 +663,12 @@ pub fn download(
     take_cancelled(&module_id);
     let detail = fetch_detail(&module_id, region, user_agent)?;
     if !detail.free && !detail.bought {
-        return Err(AppError::new(
-            "paid",
-            "This is a paid theme. Mi Theme Studio only downloads themes the store lists as free.",
-        ));
+        let reason = if detail.price_known {
+            "This is a paid theme. Mi Theme Studio only downloads themes the store lists as free."
+        } else {
+            "The store did not state a price for this theme, so Mi Theme Studio will not download it. Free themes are listed at zero."
+        };
+        return Err(AppError::new("paid", reason));
     }
     if let Some(record) = existing(dir, &detail.module_id) {
         progress(record.size_bytes, record.size_bytes);

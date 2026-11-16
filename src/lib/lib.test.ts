@@ -113,3 +113,26 @@ describe('shortcuts', () => {
     expect(matches('Delete', ev('Delete'))).toBe(true);
   });
 });
+
+describe('interface zoom', () => {
+  it('steps through presets and clamps', async () => {
+    const { stepZoom, clampZoom, MIN_ZOOM, MAX_ZOOM } = await import('../state/zoom');
+    expect(stepZoom(1, 1)).toBe(1.1);
+    expect(stepZoom(1, -1)).toBe(0.9);
+    expect(stepZoom(1.05, -1)).toBe(1);
+    expect(stepZoom(MAX_ZOOM, 1)).toBe(MAX_ZOOM);
+    expect(stepZoom(MIN_ZOOM, -1)).toBe(MIN_ZOOM);
+    expect(clampZoom(9)).toBe(MAX_ZOOM);
+    expect(clampZoom(Number.NaN)).toBe(1);
+  });
+
+  it('matches zoom keys by physical key', () => {
+    const key = (k: string, code: string, shift = false) => ({ key: k, code, ctrlKey: true, metaKey: false, shiftKey: shift, altKey: false });
+    expect(matches('Ctrl+=', key('=', 'Equal'))).toBe(true);
+    expect(matches('Ctrl+Shift+=', key('+', 'Equal', true))).toBe(true);
+    expect(matches('Ctrl+-', key('-', 'Minus'))).toBe(true);
+    expect(matches('Ctrl+NumpadAdd', key('+', 'NumpadAdd'))).toBe(true);
+    expect(matches('Ctrl+0', key('0', 'Digit0'))).toBe(true);
+    expect(parseShortcut('Ctrl++').key).toBe('+');
+  });
+});

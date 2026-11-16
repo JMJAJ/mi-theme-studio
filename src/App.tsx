@@ -18,6 +18,7 @@ import { COMMANDS, isEnabled, targetFolder } from './state/commands';
 import { matches, isTextTarget } from './lib/shortcuts';
 import { api } from './lib/api';
 import * as A from './state/actions';
+import { installZoom } from './state/zoom';
 
 const PACKAGE_RE = /\.(mtz|zip)$/i;
 
@@ -38,6 +39,10 @@ function useGlobalShortcuts() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+}
+
+function useInterfaceZoom() {
+  useEffect(() => installZoom(), []);
 }
 
 function useFileDrop() {
@@ -165,6 +170,7 @@ export function App() {
   const layout = useStore((s) => s.layout);
   const started = useRef(false);
   useGlobalShortcuts();
+  useInterfaceZoom();
   useFileDrop();
   useCloseGuard();
   useBackgroundTasks();

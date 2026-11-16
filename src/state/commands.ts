@@ -33,10 +33,13 @@ import {
   Undo2,
   Wrench,
   X,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import * as A from './actions';
 import { DEFAULT_LAYOUT, getState, setState, updateLayout, type StoreState } from './store';
 import { parentOf } from '../lib/paths';
+import { resetZoom, zoomIn, zoomOut } from './zoom';
 
 export interface Command {
   id: string;
@@ -98,6 +101,9 @@ export const COMMANDS: Command[] = [
   { id: 'view.output', group: 'View', label: 'Show output log', run: () => { updateLayout({ dock: true }); setState({ dockTab: 'output' }); } },
   { id: 'view.adbLog', group: 'View', label: 'Show ADB log', run: () => { updateLayout({ dock: true }); setState({ dockTab: 'adb' }); } },
   { id: 'view.history', group: 'View', label: 'Show edit history', run: () => { updateLayout({ dock: true }); setState({ dockTab: 'history' }); } },
+  { id: 'view.zoomIn', group: 'View', label: 'Zoom in', shortcut: 'Ctrl+=', alt: ['Ctrl+Shift+=', 'Ctrl+NumpadAdd'], icon: ZoomIn, run: zoomIn, global: true },
+  { id: 'view.zoomOut', group: 'View', label: 'Zoom out', shortcut: 'Ctrl+-', alt: ['Ctrl+NumpadSubtract'], icon: ZoomOut, run: zoomOut, global: true },
+  { id: 'view.zoomReset', group: 'View', label: 'Reset zoom', shortcut: 'Ctrl+0', run: resetZoom, global: true },
   { id: 'view.resetLayout', group: 'View', label: 'Reset layout', run: () => updateLayout(DEFAULT_LAYOUT) },
 
   // Project
@@ -150,7 +156,7 @@ export type MenuEntry = string | '-' | { heading: string };
 export const MENUS: { label: string; items: MenuEntry[] }[] = [
   { label: 'File', items: ['file.new', 'file.open', 'recent', '-', 'file.save', 'file.saveAs', 'file.exportCopy', 'file.report', '-', 'file.openReference', '-', 'file.close'] },
   { label: 'Edit', items: ['edit.undo', 'edit.redo', '-', 'edit.rename', 'edit.duplicate', 'edit.move', 'edit.delete', '-', 'edit.goToFile', 'edit.palette'] },
-  { label: 'View', items: ['view.sidebar', 'view.inspector', 'view.dock', '-', 'view.problems', 'view.output', 'view.adbLog', 'view.history', '-', 'view.resetLayout'] },
+  { label: 'View', items: ['view.sidebar', 'view.inspector', 'view.dock', '-', 'view.problems', 'view.output', 'view.adbLog', 'view.history', '-', 'view.zoomIn', 'view.zoomOut', 'view.zoomReset', '-', 'view.resetLayout'] },
   { label: 'Project', items: ['project.details', 'project.addFiles', 'project.newComponent', '-', 'project.validate', 'project.build'] },
   { label: 'Tools', items: ['tools.catalog', '-', 'tools.settings'] },
   { label: 'Device', items: ['device.manager', 'device.refresh', '-', 'device.screenshot', 'device.send', '-', 'device.restart', 'device.locate'] },

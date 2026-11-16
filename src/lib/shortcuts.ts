@@ -10,7 +10,12 @@ export interface ParsedShortcut {
 
 export function parseShortcut(shortcut: string): ParsedShortcut {
   const parts = shortcut.split('+');
-  const key = parts.pop() ?? '';
+  let key = parts.pop() ?? '';
+  // `Ctrl++` splits into a trailing empty part.
+  if (key === '' && parts.length) {
+    parts.pop();
+    key = '+';
+  }
   const mods = new Set(parts.map((p) => p.toLowerCase()));
   return { ctrl: mods.has('ctrl'), shift: mods.has('shift'), alt: mods.has('alt'), key: key.toLowerCase() };
 }
@@ -30,6 +35,11 @@ function eventKey(event: KeyLike): string {
   if (key === 'del') return 'delete';
   // Shift+/ produces "?" on US layouts; match the physical key.
   if (event.code === 'Slash') return '/';
+  // Match +/- by physical key so Shift and keyboard layout don't matter.
+  if (event.code === 'Equal') return '=';
+  if (event.code === 'Minus') return '-';
+  if (event.code === 'NumpadAdd') return 'numpadadd';
+  if (event.code === 'NumpadSubtract') return 'numpadsubtract';
   if (event.code?.startsWith('Digit')) return event.code.slice(5);
   return key;
 }

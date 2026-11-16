@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CircleCheck, CircleX, Copy, Info, Loader2 } from 'lucide-react';
+import { AlertTriangle, CircleCheck, CircleX, Copy, Info, Loader2, ZoomIn, ZoomOut } from 'lucide-react';
 import { api, errorMessage } from '../../lib/api';
 import { buildTree, folderOptions } from '../../lib/tree';
 import { displayFolder } from '../../lib/paths';
@@ -8,6 +8,7 @@ import type { ConflictPolicy, CopyPlanItem } from '../../lib/types';
 import { closeDialog, useStore, type DialogState } from '../../state/store';
 import * as A from '../../state/actions';
 import { COMMANDS } from '../../state/commands';
+import { MAX_ZOOM, MIN_ZOOM, resetZoom, setZoom, useZoom, zoomIn, zoomOut } from '../../state/zoom';
 import { Modal } from '../common/Modal';
 
 function ConfirmDialog({ dialog }: { dialog: Extract<DialogState, { type: 'confirm' }> }) {
@@ -279,12 +280,46 @@ function MoveDialog({ paths }: { paths: string[] }) {
   );
 }
 
+function ZoomSetting() {
+  const zoom = useZoom((s) => s.zoom);
+  return (
+    <div className="field">
+      <span className="field-label">Interface zoom</span>
+      <div className="row">
+        <div className="segmented" role="group" aria-label="Interface zoom">
+          <button onClick={zoomOut} disabled={zoom <= MIN_ZOOM} title="Zoom out (Ctrl+-)" aria-label="Zoom out">
+            <ZoomOut />
+          </button>
+          <button onClick={resetZoom} title="Reset to 100% (Ctrl+0)" style={{ minWidth: 64, justifyContent: 'center' }} className="mono">
+            {Math.round(zoom * 100)}%
+          </button>
+          <button onClick={zoomIn} disabled={zoom >= MAX_ZOOM} title="Zoom in (Ctrl+=)" aria-label="Zoom in">
+            <ZoomIn />
+          </button>
+        </div>
+        <input
+          type="range"
+          className="grow"
+          min={MIN_ZOOM}
+          max={MAX_ZOOM}
+          step={0.05}
+          value={zoom}
+          onChange={(e) => setZoom(Number(e.target.value))}
+          aria-label="Interface zoom level"
+        />
+      </div>
+      <span className="field-hint">Ctrl+mouse wheel, Ctrl+= and Ctrl+- also change it. Ctrl+0 resets.</span>
+    </div>
+  );
+}
+
 function SettingsDialog() {
   const settings = useStore((s) => s.settings);
   const appInfo = useStore((s) => s.appInfo);
   if (!settings) return null;
   return (
     <Modal title="Settings" onClose={closeDialog} footer={<button className="btn btn-primary" onClick={closeDialog}>Done</button>}>
+      <ZoomSetting />
       <label className="check">
         <input type="checkbox" checked={settings.autosaveEnabled} onChange={(e) => void A.updateSettings({ autosaveEnabled: e.target.checked })} />
         Keep a recovery copy of unsaved work

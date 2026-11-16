@@ -28,8 +28,8 @@ function useBox() {
 }
 
 function Frame({ ratio, box, children, camera = true }: { ratio: number; box: { w: number; h: number }; children: React.ReactNode; camera?: boolean }) {
-  const maxW = Math.max(120, box.w - 40);
-  const maxH = Math.max(200, box.h - 24);
+  const maxW = Math.max(120, box.w - 72);
+  const maxH = Math.max(200, box.h - 40);
   const w = Math.min(maxW, maxH / ratio);
   const h = w * ratio;
   const s = w / 360;
@@ -48,7 +48,7 @@ function ThemeScreen({ screen, box, ratio, previewIndex }: { screen: Screen; box
   const files = useMemo(() => project?.files ?? [], [project]);
   const icons = useMemo(() => pickIcons(files), [files]);
   const previews = useMemo(() => files.filter((f) => f.component === 'previews' && f.kind === 'image'), [files]);
-  const w = Math.min(Math.max(120, box.w - 40), Math.max(200, box.h - 24) / ratio);
+  const w = Math.min(Math.max(120, box.w - 72), Math.max(200, box.h - 40) / ratio);
   const s = w / 360;
   const now = new Date();
   const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });

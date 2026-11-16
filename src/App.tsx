@@ -261,14 +261,15 @@ export function App() {
           </main>
         </div>
         {layout.phone && (
-          <>
-            <Splitter orientation="vertical" label="Resize phone preview" value={layout.phoneWidth} min={300} max={620} direction={-1} onChange={(phoneWidth) => updateLayout({ phoneWidth })} />
-            <div style={{ width: layout.phoneWidth, display: 'flex', minHeight: 0 }}>
+          <div className="phone-dock">
+            <Splitter orientation="vertical" label="Resize phone preview" value={layout.phoneWidth} min={280} max={620} direction={-1} onChange={(phoneWidth) => updateLayout({ phoneWidth })} />
+            {/* Scales with the window: never more than about a third of it. */}
+            <div style={{ width: `clamp(280px, ${layout.phoneWidth}px, 30vw)`, display: 'flex', minHeight: 0 }}>
               <ErrorBoundary name="Phone preview">
                 <PhonePanel />
               </ErrorBoundary>
             </div>
-          </>
+          </div>
         )}
       </div>
       <StatusBar />

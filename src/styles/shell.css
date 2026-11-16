@@ -86,7 +86,7 @@
 .pp-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 12px 12px; }
 
 /* ---------- design ---------- */
-.design { padding: 22px 26px 36px; max-width: 1240px; }
+.design { padding: 22px clamp(16px, 2.2vw, 36px) 36px; max-width: 1480px; margin: 0 auto; width: 100%; }
 .hero { display: flex; gap: 22px; align-items: stretch; padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: radial-gradient(120% 140% at 0% 0%, rgba(255, 106, 26, 0.09), transparent 55%), var(--bg-2); }
 .hero-art { width: 112px; flex: none; aspect-ratio: 9 / 19; border-radius: 16px; overflow: hidden; background: var(--bg-3); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), inset 0 0 0 1px var(--line); }
 .hero-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -98,7 +98,7 @@
 .hero-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 .design-head { margin-top: 26px; margin-bottom: 12px; }
 .design-head h2 { font-size: var(--fs-lg); }
-.part-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 14px; }
+.part-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: clamp(10px, 1vw, 16px); }
 .part-card { position: relative; display: flex; flex-direction: column; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg-2); color: var(--text); text-align: left; cursor: pointer; overflow: hidden; transition: border-color 0.12s, transform 0.12s, background 0.12s; }
 .part-card:hover { border-color: var(--line-strong); background: var(--bg-3); transform: translateY(-1px); }
 .part-card:focus-visible { box-shadow: var(--focus); }
@@ -159,7 +159,7 @@
 .start-phone .muted { font-size: var(--fs-sm); }
 
 /* ---------- phone page ---------- */
-.phone-page { padding: 22px 26px 36px; max-width: 1180px; }
+.phone-page { padding: 22px clamp(16px, 2.2vw, 36px) 36px; max-width: 1480px; margin: 0 auto; width: 100%; }
 .phone-hero { display: flex; gap: 22px; padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: radial-gradient(120% 140% at 0% 0%, rgba(52, 211, 153, 0.07), transparent 55%), var(--bg-2); }
 .phone-hero.is-empty { background: var(--bg-2); }
 .ph-shot { width: 120px; flex: none; aspect-ratio: 9 / 19.5; border-radius: 18px; overflow: hidden; background: #08080a; display: grid; place-items: center; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), inset 0 0 0 1px var(--line-strong); }
@@ -174,3 +174,21 @@
 .disclosure svg { width: 16px; height: 16px; color: var(--muted); }
 .disclosure .muted { font-weight: 400; font-size: var(--fs-sm); margin-left: 6px; }
 .phone-advanced { padding-top: 6px; }
+
+/* ---------- responsive ---------- */
+.phone-dock { display: contents; }
+/* Narrow windows: the editor gets the room; the phone panel comes back when wider. */
+@media (max-width: 900px) { .phone-dock { display: none; } }
+@media (max-width: 760px) { .rail-label { display: none; } .rail { width: 52px; } .rail-item { width: 44px; } .tb-search kbd, .tb-state { display: none; } }
+@media (max-width: 1180px) { .tb-search { max-width: 300px; } .tb-phone { max-width: 160px; } }
+.hero h1, .ph-body h1 { font-size: clamp(22px, 2vw, 30px); }
+.store-detail, .start { width: 100%; }
+
+/* Store home: short shelves sit side by side as cards so wide windows have no empty bands. */
+.store-sections { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr)); gap: 18px clamp(14px, 1.4vw, 22px); align-items: start; }
+.store-sections > .section { margin-top: 0; min-width: 0; }
+.store-sections > .shelf-wide { grid-column: 1 / -1; }
+.store-sections > .shelf-card { padding: 14px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg-2); }
+.store-sections > .shelf-card .section-head { margin-bottom: 12px; }
+.store-sections > .shelf-card .section-head h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.store-sections > .shelf-card .product-grid { grid-template-columns: repeat(var(--shelf-count, 3), minmax(0, 1fr)); gap: 12px; }

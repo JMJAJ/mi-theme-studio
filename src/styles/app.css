@@ -326,7 +326,7 @@ p { margin: 0; }
 
 /* ---------- views ---------- */
 .view { flex: 1; min-height: 0; overflow: auto; position: relative; }
-.view-pad { padding: 18px 22px 28px; max-width: 1280px; }
+.view-pad { padding: 18px clamp(16px, 2.2vw, 36px) 28px; max-width: 1480px; margin: 0 auto; width: 100%; }
 .view-header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 16px; }
 .view-header h1 { font-size: var(--fs-xl); }
 .view-header .sub { color: var(--muted); margin-top: 3px; font-size: var(--fs); }

@@ -262,8 +262,12 @@ function StoreList({
           </div>
         )
       ) : (
-        sections.map((section, i) => (
-          <div className="section" key={`${section.id ?? 's'}-${i}`}>
+        <div className="store-sections">
+        {sections.map((section, i) => (
+          <div
+            className={`section ${section.products.length > 0 && section.products.length <= 4 && !section.links.length ? 'shelf-card' : 'shelf-wide'}`}
+            key={`${section.id ?? 's'}-${i}`}
+          >
             {(section.title || section.subjectId) && section.products.length > 0 && (
               <div className="section-head">
                 <h2>{section.title ?? 'Themes'}</h2>
@@ -286,7 +290,7 @@ function StoreList({
               </div>
             )}
             {section.products.length > 0 && (
-              <div className="product-grid">
+              <div className="product-grid" style={section.products.length <= 4 ? { ['--shelf-count' as string]: section.products.length } : undefined}>
                 {section.products.map((p) => (
                   <ProductCard key={p.moduleId} product={p} onOpen={() => openProduct(p)} />
                 ))}
@@ -300,7 +304,8 @@ function StoreList({
               </div>
             )}
           </div>
-        ))
+        ))}
+        </div>
       )}
       {error && pages.length > 0 && (
         <div className="banner banner-err" style={{ marginTop: 14 }}>
@@ -964,7 +969,7 @@ export function CatalogView() {
         </div>
         <form
           className="search grow"
-          style={{ maxWidth: 340 }}
+          style={{ maxWidth: 340, minWidth: 200 }}
           onSubmit={(e) => {
             e.preventDefault();
             runSearch();

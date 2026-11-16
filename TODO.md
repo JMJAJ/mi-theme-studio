@@ -29,5 +29,5 @@
 
 ## Research notes
 
-- The supplied Theme Manager APK contains the global Xiaomi theme service host `api.zhuti.intl.xiaomi.com`; its real catalog endpoints, login requirements, and download permissions still need validation.
-- All editor implementation files now live in `source/`.
+- The Theme Manager APK embeds the global service paths `https://api.zhuti.intl.xiaomi.com/app/v9/` and `/app/v1.9/`; map their catalog, login, and download calls and verify which can be used by the desktop app.
+- The local reverse-engineering inputs live under the ignored `source/research-inputs/` folder. Mi Theme Studio's own tracked implementation remains at the repository root.

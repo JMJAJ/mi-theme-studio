@@ -5,7 +5,7 @@
   "author": "JMJAJ",
   "description": "A modern desktop workspace for browsing and editing MIUI theme packages.",
   "license": "MIT",
-  "main": "source/main.cjs",
+  "main": "main.cjs",
   "engines": {
     "node": ">=22.12.0"
   },
@@ -31,12 +31,16 @@
       "output": "release"
     },
     "files": [
-      "source/**/*",
+      "main.cjs",
+      "preload.cjs",
+      "index.html",
+      "assets/**/*",
+      "src/**/*",
       "node_modules/fflate/**/*",
       "package.json"
     ],
     "win": {
-      "icon": "source/assets/icon.ico",
+      "icon": "assets/icon.ico",
       "target": ["nsis"]
     },
     "nsis": {

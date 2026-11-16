@@ -1,4 +1,4 @@
-import { unzipSync, zipSync } from '../../node_modules/fflate/esm/browser.js';
+import { unzipSync, zipSync } from '../node_modules/fflate/esm/browser.js';
 
 const appRoot = document.querySelector('#app');
 const toastRoot = document.querySelector('#toast');

@@ -32,11 +32,11 @@ Some theme packages use device-specific formats or conventions. This editor pres
 
 ## Project contents
 
-The repository contains a fresh implementation. It does not include the bundled Xiaomi applications, their Electron archive, resource catalogs, plugin packs, or extracted assets used during format research.
+The repository contains a fresh implementation. The local `source/` folder holds the bundled Xiaomi applications, APK, resource catalogs, plugin packs, and extracted research assets; it is ignored by Git and is not published.
 
 See [the reverse-engineering notes](docs/reverse-engineering.md) for the format and application structure observations that informed this project.
 
-The planned online catalog, theme remixing, and ADB device preview work is tracked in [TODO.md](TODO.md). Application implementation files are in `source/`.
+The planned online catalog, theme remixing, and ADB device preview work is tracked in [TODO.md](TODO.md). Application implementation files live at the repository root in `main.cjs`, `preload.cjs`, `index.html`, `assets/`, and `src/`.
 
 ## License
 

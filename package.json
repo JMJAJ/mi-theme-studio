@@ -1,53 +1,47 @@
 {
   "name": "mi-theme-studio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
+  "type": "module",
   "author": "JMJAJ",
-  "description": "A modern desktop workspace for browsing and editing MIUI theme packages.",
+  "description": "A desktop studio for creating, inspecting, previewing and packaging MIUI/HyperOS theme packages.",
   "license": "MIT",
-  "main": "main.cjs",
   "engines": {
     "node": ">=22.12.0"
   },
   "scripts": {
-    "start": "electron .",
-    "dev": "electron .",
-    "build:win": "electron-builder --win nsis --publish never"
-  },
-  "devDependencies": {
-    "electron": "^45.3.2",
-    "electron-builder": "^26.18.0"
+    "dev": "vite",
+    "start": "tauri dev",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "tauri": "tauri",
+    "build:win": "tauri build --bundles nsis"
   },
   "dependencies": {
-    "fflate": "^0.8.3"
+    "@codemirror/lang-xml": "^6.1.0",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/search": "^6.7.2",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
+    "@lezer/highlight": "^1.2.5",
+    "@tauri-apps/api": "^2.12.5",
+    "@tauri-apps/plugin-dialog": "^2.8.4",
+    "@tauri-apps/plugin-opener": "^2.7.3",
+    "@uiw/react-codemirror": "^4.25.12",
+    "lucide-react": "^1.73.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zustand": "^5.1.0"
   },
-  "overrides": {
-    "minimatch": "^11.0.8"
-  },
-  "build": {
-    "appId": "dev.mitheme.studio",
-    "productName": "Mi Theme Studio",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "main.cjs",
-      "preload.cjs",
-      "index.html",
-      "assets/**/*",
-      "src/**/*",
-      "node_modules/fflate/**/*",
-      "package.json"
-    ],
-    "win": {
-      "icon": "assets/icon.ico",
-      "target": ["nsis"]
-    },
-    "nsis": {
-      "oneClick": true,
-      "perMachine": false,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
-    }
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
   }
 }

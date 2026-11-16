@@ -8,6 +8,7 @@ Thumbs.db
 *.apk
 *.apks
 *.mtz
-/file/
-/XiaomiThemeEditor_global__v2.0.5_win_x64/
 /source/
+/.claude/
+/src-tauri/target/
+/src-tauri/gen/

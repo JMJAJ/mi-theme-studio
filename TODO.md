@@ -1,33 +1,46 @@
 # Mi Theme Studio TODO
 
+## Done in the Tauri rewrite
+
+- [x] Tauri v2 + React + TypeScript shell (menus, navigator, explorer, tabs, inspector, dock, status bar, command palette, shortcuts).
+- [x] Safe `.mtz`/`.zip` import with limits and unsafe-path reporting; nested component archives expanded.
+- [x] Byte-preserving export with verification, atomic writes and backups; package report.
+- [x] `description.xml` form editor that preserves unknown fields and comments; XML/text editor; image, font and audio previews.
+- [x] Rename/duplicate/move/delete/replace, multi-select, drag to move, drop files from Windows.
+- [x] Undo/redo with history; unsaved indicators; recovery copy of unsaved work.
+- [x] Validation: XML syntax, image headers, MAML image references, component layout, metadata.
+- [x] Local reference packages with copy-to-project and attribution.
+- [x] ADB: discovery, device states, details, screenshots (timeout/cancel), confirmed + verified copy to device.
+- [x] Browse Theme Manager's cached theme names, authors, component lists and local previews over ADB (read-only).
+- [x] Open supported modules from an already cached phone theme as a read-only reference, with title/author metadata and existing copy attribution.
+- [x] Online catalog: browse public theme shelves, quick links and category cards (read-only).
+
 ## Online themes and remixing
 
-- [ ] Map the Xiaomi Theme Manager 3.0.5.19 global catalog and download flow from the supplied APK; verify which candidate service calls work in the app.
-- [ ] Add an online catalog with search, category filters, cover previews, theme details, and download progress.
-- [ ] Keep a downloaded theme open as a separate reference so it never replaces the theme being edited.
-- [ ] Let users select and copy images, icons, wallpapers, XML/MAML, and other resources from a reference theme into their project.
-- [ ] Preview copied files and resolve path/name conflicts before changing the project.
-- [ ] Preserve source theme attribution and metadata where possible; make package ownership and reuse clear.
-- [ ] Support local `.mtz` reference themes alongside catalog downloads.
+- [ ] Verify a product-list request for shelves/subjects (direct calls currently return no products; see docs/online-catalog.md).
+- [ ] Theme details by product ID once verified; show cover/preview images.
+- [ ] Downloads only after a real product ID and download flow are verified; respect paid/DRM rights checks, never bypass them.
+- [x] Open supported modules from an already cached Theme Manager theme as a read-only reference with attribution.
+- [ ] Open a theme downloaded directly from the online catalog as a reference once its product/download flow is verified.
+- [ ] Extend `.mrc` to MTZ component mapping for more regional resource types and verify licensing terms for reuse/export. The cache reference reads already-present files only; it does not call store download or rights endpoints.
+- [ ] Search (`/thm/search/v2/npage`, `category=Compound`) once results can be shown meaningfully.
 
-## ADB phone connection and live preview
+## Device
 
-- [x] Check ADB connectivity: one authorized device is visible; its identifier is not stored in the project.
-- [ ] Add a device picker with connect/disconnect state, model, screen resolution, and MIUI/HyperOS version.
-- [ ] Show a live phone screen in the editor; compare ADB screen capture streaming with an optional `scrcpy` integration.
-- [ ] Add a device preview mode for wallpaper, icons, and lock-screen assets at the phone’s actual resolution.
-- [ ] Investigate supported Theme Manager intents/ADB commands for sending and previewing a theme without root.
-- [ ] Require confirmation before applying a theme or changing the phone’s active theme; provide a way back to the previous theme.
-- [ ] Test the complete connect, preview, send, apply, and recovery flow with the connected Xiaomi phone.
+- [ ] Live screen mirroring (evaluate an optional `scrcpy` integration); today the preview uses screenshots and says so.
+- [ ] Investigate supported Theme Manager intents for opening/applying a pushed `.mtz` without root.
+- [ ] Apply flow only with explicit confirmation, a way back to the previous theme, and verification on the device.
+- [ ] Device-resolution preview of individual resources (e.g. icon masks at the device's density).
 
 ## Editor and package quality
 
-- [ ] Add a MAML preview/runtime for lock screens, clocks, and widgets.
-- [ ] Show package compatibility and missing-resource checks before export.
-- [ ] Add undo/redo for asset and metadata edits.
-- [ ] Add sample-package round-trip checks for representative MIUI and HyperOS themes.
+- [ ] MAML runtime preview for lock screens, clocks and widgets.
+- [ ] Nine-patch editor and stretch-area overlay.
+- [ ] Template-based "new component" scaffolds (with user-supplied templates; vendor templates are not bundled).
+- [ ] Round-trip checks against representative MIUI and HyperOS sample packages.
+- [ ] Multi-file find-and-replace across XML resources.
 
 ## Research notes
 
-- The Theme Manager APK embeds the global service paths `https://api.zhuti.intl.xiaomi.com/app/v9/` and `/app/v1.9/`; map their catalog, login, and download calls and verify which can be used by the desktop app.
-- The local reverse-engineering inputs live under the ignored `source/research-inputs/` folder. Mi Theme Studio's own tracked implementation remains at the repository root.
+- Local reverse-engineering inputs live in the ignored `source/research-inputs/` folder and stay private.
+- Catalog findings are summarized in docs/online-catalog.md; device findings in docs/device-integration.md.

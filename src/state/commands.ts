@@ -1,0 +1,159 @@
+// Every user-facing command, used by the menu bar, the command palette and
+// keyboard shortcuts, so enablement and labels stay consistent.
+import type { LucideIcon } from 'lucide-react';
+import {
+  Archive,
+  BookOpen,
+  Camera,
+  Copy,
+  Download,
+  FileDown,
+  FilePlus2,
+  FileText,
+  FolderOpen,
+  Globe,
+  Info,
+  Keyboard,
+  LayoutDashboard,
+  ListChecks,
+  MonitorSmartphone,
+  PanelBottom,
+  PanelLeft,
+  PanelRight,
+  Pencil,
+  Plus,
+  Redo2,
+  RefreshCw,
+  Save,
+  Search,
+  Send,
+  Settings,
+  Smartphone,
+  Trash2,
+  Undo2,
+  Wrench,
+  X,
+} from 'lucide-react';
+import * as A from './actions';
+import { DEFAULT_LAYOUT, getState, setState, updateLayout, type StoreState } from './store';
+import { parentOf } from '../lib/paths';
+
+export interface Command {
+  id: string;
+  label: string;
+  group: string;
+  shortcut?: string;
+  /** Extra key combinations that trigger the command but are not shown. */
+  alt?: string[];
+  icon?: LucideIcon;
+  enabled?: (s: StoreState) => boolean;
+  run: () => void | Promise<void>;
+  /** Allowed while focus is in a text field. */
+  global?: boolean;
+}
+
+const hasProject = (s: StoreState) => !!s.project;
+const hasSelection = (s: StoreState) => !!s.project && s.selection.length > 0;
+const deviceReady = (s: StoreState) => !!s.adb?.devices.some((d) => d.serial === s.selectedSerial && d.state === 'device');
+
+/** Folder new files go into: the selected folder, or the selected file's folder. */
+export function targetFolder(s: StoreState = getState()): string {
+  const first = s.selection[0];
+  if (!first || !s.project) return '';
+  if (s.fileIndex.has(first)) return parentOf(first);
+  if (s.project.containers.some((c) => c.name === first)) return `${first}!/`;
+  return first;
+}
+
+function toggle(key: 'sidebar' | 'inspector' | 'dock') {
+  updateLayout({ [key]: !getState().layout[key] });
+}
+
+export const COMMANDS: Command[] = [
+  // File
+  { id: 'file.new', group: 'File', label: 'New theme…', shortcut: 'Ctrl+N', icon: FilePlus2, run: A.newProject, global: true },
+  { id: 'file.open', group: 'File', label: 'Open package…', shortcut: 'Ctrl+O', icon: FolderOpen, run: () => A.openPackage(), global: true },
+  { id: 'file.openReference', group: 'File', label: 'Open reference package…', icon: BookOpen, enabled: hasProject, run: A.openReference },
+  { id: 'file.save', group: 'File', label: 'Save', shortcut: 'Ctrl+S', icon: Save, enabled: hasProject, run: () => void A.save(), global: true },
+  { id: 'file.saveAs', group: 'File', label: 'Save as…', shortcut: 'Ctrl+Shift+S', enabled: hasProject, run: () => void A.saveAs(), global: true },
+  { id: 'file.exportCopy', group: 'File', label: 'Export a copy…', shortcut: 'Ctrl+E', icon: Download, enabled: hasProject, run: A.exportCopy, global: true },
+  { id: 'file.report', group: 'File', label: 'Save package report…', icon: FileText, enabled: hasProject, run: A.saveReport },
+  { id: 'file.close', group: 'File', label: 'Close package', enabled: hasProject, run: A.closeProject },
+
+  // Edit
+  { id: 'edit.undo', group: 'Edit', label: 'Undo', shortcut: 'Ctrl+Z', icon: Undo2, enabled: (s) => !!s.project?.canUndo, run: A.undo },
+  { id: 'edit.redo', group: 'Edit', label: 'Redo', shortcut: 'Ctrl+Y', alt: ['Ctrl+Shift+Z'], icon: Redo2, enabled: (s) => !!s.project?.canRedo, run: A.redo },
+  { id: 'edit.rename', group: 'Edit', label: 'Rename…', shortcut: 'F2', icon: Pencil, enabled: (s) => hasSelection(s) && s.selection.length === 1, run: () => A.renamePath(getState().selection[0]) },
+  { id: 'edit.duplicate', group: 'Edit', label: 'Duplicate', shortcut: 'Ctrl+D', icon: Copy, enabled: (s) => s.selection.some((p) => s.fileIndex.has(p)), run: () => A.duplicatePaths(getState().selection) },
+  { id: 'edit.move', group: 'Edit', label: 'Move to folder…', enabled: hasSelection, run: () => setState({ dialog: { type: 'move', paths: getState().selection } }) },
+  { id: 'edit.delete', group: 'Edit', label: 'Delete', shortcut: 'Delete', icon: Trash2, enabled: hasSelection, run: () => A.deletePaths(getState().selection) },
+  { id: 'edit.goToFile', group: 'Edit', label: 'Go to file…', shortcut: 'Ctrl+P', icon: Search, enabled: hasProject, run: () => setState({ palette: 'files' }), global: true },
+  { id: 'edit.palette', group: 'Edit', label: 'Command palette…', shortcut: 'Ctrl+Shift+P', icon: Search, run: () => setState({ palette: 'commands' }), global: true },
+
+  // View
+  { id: 'view.sidebar', group: 'View', label: 'Toggle sidebar', shortcut: 'Ctrl+B', icon: PanelLeft, run: () => toggle('sidebar'), global: true },
+  { id: 'view.inspector', group: 'View', label: 'Toggle inspector', shortcut: 'Ctrl+Alt+B', icon: PanelRight, run: () => toggle('inspector'), global: true },
+  { id: 'view.dock', group: 'View', label: 'Toggle bottom panel', shortcut: 'Ctrl+J', icon: PanelBottom, run: () => toggle('dock'), global: true },
+  { id: 'view.problems', group: 'View', label: 'Show problems', shortcut: 'Ctrl+Shift+M', run: () => { updateLayout({ dock: true }); setState({ dockTab: 'problems' }); } },
+  { id: 'view.output', group: 'View', label: 'Show output log', run: () => { updateLayout({ dock: true }); setState({ dockTab: 'output' }); } },
+  { id: 'view.adbLog', group: 'View', label: 'Show ADB log', run: () => { updateLayout({ dock: true }); setState({ dockTab: 'adb' }); } },
+  { id: 'view.history', group: 'View', label: 'Show edit history', run: () => { updateLayout({ dock: true }); setState({ dockTab: 'history' }); } },
+  { id: 'view.resetLayout', group: 'View', label: 'Reset layout', run: () => updateLayout(DEFAULT_LAYOUT) },
+
+  // Project
+  { id: 'project.details', group: 'Project', label: 'Theme details', icon: Info, enabled: hasProject, run: () => A.openSingleton('info') },
+  { id: 'project.addFiles', group: 'Project', label: 'Add files…', icon: Plus, enabled: hasProject, run: () => A.addFilesDialog(targetFolder()) },
+  { id: 'project.newComponent', group: 'Project', label: 'New component archive…', icon: Archive, enabled: hasProject, run: () => A.createContainer() },
+  { id: 'project.validate', group: 'Project', label: 'Validate package', shortcut: 'Ctrl+Shift+B', icon: ListChecks, enabled: hasProject, run: () => { void A.runValidation(false); updateLayout({ dock: true }); setState({ dockTab: 'problems' }); }, global: true },
+  { id: 'project.build', group: 'Project', label: 'Build & export', icon: FileDown, enabled: hasProject, run: () => A.openSingleton('build') },
+
+  // Tools
+  { id: 'tools.catalog', group: 'Tools', label: 'Online themes (catalog)', icon: Globe, run: () => A.openSingleton('catalog') },
+  { id: 'tools.settings', group: 'Tools', label: 'Settings…', shortcut: 'Ctrl+,', icon: Settings, run: () => setState({ dialog: { type: 'settings' } }), global: true },
+
+  // Device
+  { id: 'device.manager', group: 'Device', label: 'Device manager', icon: Smartphone, run: () => A.openSingleton('device') },
+  { id: 'device.refresh', group: 'Device', label: 'Refresh devices', icon: RefreshCw, run: () => A.refreshAdb(false, true) },
+  { id: 'device.screenshot', group: 'Device', label: 'Capture device screenshot', shortcut: 'Ctrl+Alt+S', icon: Camera, enabled: deviceReady, run: async () => { const shot = await A.captureScreenshot(); if (shot) A.openSingleton('preview'); } },
+  { id: 'device.send', group: 'Device', label: 'Copy package to device…', icon: Send, enabled: (s) => hasProject(s) && deviceReady(s), run: A.sendToDevice },
+  { id: 'device.restart', group: 'Device', label: 'Restart ADB server', icon: RefreshCw, enabled: (s) => !!s.adb?.location, run: A.restartAdb },
+  { id: 'device.locate', group: 'Device', label: 'Set adb.exe location…', icon: Wrench, run: A.chooseAdbPath },
+
+  // Window
+  { id: 'window.dashboard', group: 'Window', label: 'Dashboard', icon: LayoutDashboard, enabled: hasProject, run: () => A.openSingleton('dashboard') },
+  { id: 'window.preview', group: 'Window', label: 'Preview', icon: MonitorSmartphone, run: () => A.openSingleton('preview') },
+  { id: 'window.closeTab', group: 'Window', label: 'Close tab', shortcut: 'Ctrl+W', icon: X, enabled: (s) => !!s.activeTab, run: () => { const id = getState().activeTab; if (id) void A.closeTab(id); }, global: true },
+  { id: 'window.closeAll', group: 'Window', label: 'Close all tabs', enabled: (s) => s.tabs.length > 0, run: A.closeAllTabs },
+  { id: 'window.nextTab', group: 'Window', label: 'Next tab', shortcut: 'Ctrl+Tab', run: () => A.cycleTab(1), global: true },
+  { id: 'window.prevTab', group: 'Window', label: 'Previous tab', shortcut: 'Ctrl+Shift+Tab', run: () => A.cycleTab(-1), global: true },
+
+  // Help
+  { id: 'help.shortcuts', group: 'Help', label: 'Keyboard shortcuts', shortcut: 'Ctrl+/', icon: Keyboard, run: () => setState({ dialog: { type: 'shortcuts' } }), global: true },
+  { id: 'help.roadmap', group: 'Help', label: 'Roadmap & limitations', icon: BookOpen, run: () => A.openSingleton('roadmap') },
+  { id: 'help.about', group: 'Help', label: 'About Mi Theme Studio', icon: Info, run: () => setState({ dialog: { type: 'about' } }) },
+];
+
+export const commandById = new Map(COMMANDS.map((c) => [c.id, c]));
+
+export function isEnabled(command: Command, state: StoreState = getState()) {
+  return command.enabled ? command.enabled(state) : true;
+}
+
+export function runCommand(id: string) {
+  const command = commandById.get(id);
+  if (command && isEnabled(command)) void command.run();
+}
+
+export type MenuEntry = string | '-' | { heading: string };
+
+/** Menu bar layout (command ids; '-' is a separator). */
+export const MENUS: { label: string; items: MenuEntry[] }[] = [
+  { label: 'File', items: ['file.new', 'file.open', 'recent', '-', 'file.save', 'file.saveAs', 'file.exportCopy', 'file.report', '-', 'file.openReference', '-', 'file.close'] },
+  { label: 'Edit', items: ['edit.undo', 'edit.redo', '-', 'edit.rename', 'edit.duplicate', 'edit.move', 'edit.delete', '-', 'edit.goToFile', 'edit.palette'] },
+  { label: 'View', items: ['view.sidebar', 'view.inspector', 'view.dock', '-', 'view.problems', 'view.output', 'view.adbLog', 'view.history', '-', 'view.resetLayout'] },
+  { label: 'Project', items: ['project.details', 'project.addFiles', 'project.newComponent', '-', 'project.validate', 'project.build'] },
+  { label: 'Tools', items: ['tools.catalog', '-', 'tools.settings'] },
+  { label: 'Device', items: ['device.manager', 'device.refresh', '-', 'device.screenshot', 'device.send', '-', 'device.restart', 'device.locate'] },
+  { label: 'Window', items: ['window.dashboard', 'window.preview', 'device.manager', 'project.build', '-', 'window.nextTab', 'window.prevTab', 'window.closeTab', 'window.closeAll'] },
+  { label: 'Help', items: ['help.shortcuts', 'help.roadmap', '-', 'help.about'] },
+];

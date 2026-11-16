@@ -17,10 +17,21 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
       - run: npm ci
-      - run: npm run build:win
+      - name: Type-check and test frontend
+        run: |
+          npm run typecheck
+          npm test
+      - name: Test native backend
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Build NSIS installer
+        run: npm run build:win
       - uses: actions/upload-artifact@v7
         with:
           name: mi-theme-studio-windows
-          path: release/*.exe
+          path: src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: error

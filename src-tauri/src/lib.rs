@@ -1,0 +1,94 @@
+//! Mi Theme Studio native backend.
+//!
+//! Modules:
+//! - `package`: archive I/O, path safety, metadata (description.xml)
+//! - `project`: in-memory workspace, undo/redo, classification, snapshots
+//! - `validation`: structural package checks and reports
+//! - `storage`: settings, recents, autosave recovery, backups
+//! - `adb`: device discovery, details, screenshots, verified file copy
+//! - `catalog`: read-only discovery of the public online theme catalog
+//! - `commands` / `protocol` / `state`: Tauri integration
+
+pub mod adb;
+pub mod catalog;
+pub mod commands;
+pub mod error;
+pub mod package;
+pub mod project;
+pub mod protocol;
+pub mod state;
+pub mod storage;
+pub mod validation;
+
+use state::AppState;
+use storage::AppPaths;
+use tauri::Manager;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
+        .register_uri_scheme_protocol("themeres", protocol::handle)
+        .setup(|app| {
+            let resolver = app.path();
+            let paths = AppPaths {
+                config: resolver.app_config_dir()?,
+                data: resolver.app_data_dir()?,
+            };
+            let settings = storage::load_settings(&paths);
+            app.manage(AppState::new(paths, settings));
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::app_info,
+            commands::settings_update,
+            commands::recent_remove,
+            commands::project_new,
+            commands::project_open,
+            commands::project_snapshot,
+            commands::project_close,
+            commands::file_text,
+            commands::file_write_text,
+            commands::files_import,
+            commands::file_replace,
+            commands::files_delete,
+            commands::file_rename,
+            commands::files_move,
+            commands::files_duplicate,
+            commands::file_extract,
+            commands::container_create,
+            commands::folder_pack,
+            commands::metadata_get,
+            commands::metadata_update,
+            commands::history_undo,
+            commands::history_redo,
+            commands::history_goto,
+            commands::project_save,
+            commands::project_validate,
+            commands::report_save,
+            commands::autosave,
+            commands::recovery_restore,
+            commands::recovery_discard,
+            commands::reference_open,
+            commands::reference_snapshot,
+            commands::reference_close,
+            commands::reference_plan,
+            commands::reference_copy,
+            commands::adb_status,
+            commands::adb_restart_server,
+            commands::adb_details,
+            commands::adb_cached_themes,
+            commands::adb_cached_theme_preview,
+            commands::adb_cached_theme_reference,
+            commands::adb_screenshot,
+            commands::screenshots_list,
+            commands::screenshot_save,
+            commands::adb_cancel,
+            commands::adb_log,
+            commands::adb_send_package,
+            commands::catalog_fetch,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running Mi Theme Studio");
+}

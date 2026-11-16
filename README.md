@@ -1,42 +1,104 @@
 # Mi Theme Studio
 
-Mi Theme Studio is a local desktop workspace for browsing and editing Xiaomi MIUI theme packages. It gives the old package-centric workflow a clean asset library, image previews, editable XML metadata, and one-click `.mtz` export.
+Mi Theme Studio is a local desktop studio for creating, inspecting, previewing and packaging MIUI / HyperOS `.mtz` theme packages. It is built with **Tauri v2** (Rust backend) and **React + TypeScript**.
 
-## What it does
+It is an independent, unofficial tool and is not affiliated with Xiaomi.
 
-- Opens existing `.mtz` and ZIP packages, or starts a clean theme shell.
-- Keeps package files in their existing folders and lets you browse common theme areas.
-- Previews image assets, edits XML/MAML/text files, and replaces or removes package files.
-- Edits the title, author, designer, version, and description in `description.xml`.
-- Adds new files to a category folder and exports the result as an `.mtz` archive.
-- Works locally; packages are not uploaded to a service.
+## What works today
 
-The editor focuses on package and resource editing. It does not emulate the MIUI lock screen or install/apply themes to a phone.
+**Packages**
+- Opens `.mtz` / `.zip` packages safely: entries are decoded in memory with size limits, unsafe paths (`..`, absolute, drive letters) are skipped and reported, and nothing is extracted to disk.
+- Component archives inside the package (`icons`, `lockscreen`, `com.android.systemui`, `framework-res`, boot animation zips, …) are expanded so their files can be browsed and edited.
+- Saving keeps every entry's path, order and compression method. Untouched component archives are written back byte-for-byte; edited ones are rebuilt. Files the editor does not understand are preserved.
+- Saves are atomic (temp file + rename), re-read and verified entry by entry, and the previous file is copied to a backups folder first.
+
+**Editing**
+- Explorer tree with filtering (images, XML, changed, problems), multi-selection, keyboard navigation, context menus, drag-to-move and dropping files from Windows.
+- Component views (icons, wallpapers, lock screen, system UI, framework, fonts, sounds, …) with thumbnail grids, density filters and sorting.
+- `description.xml` form editor that preserves comments, order and unknown fields; CodeMirror XML/text editor with live well-formedness checks; image viewer with fit/zoom/pan; font and audio previews.
+- Rename, duplicate, move, delete, replace, export single files, create component archives, pack a plain folder into a component archive.
+- Undo/redo for every change with a clickable history, unsaved-change indicators, and a periodic recovery copy of unsaved work.
+- Reference packages: open another `.mtz` read-only and copy resources into your project with conflict handling; the source is recorded in the package report.
+
+**Validation and reports**
+- XML syntax, image header/extension mismatches, empty files, case collisions, MAML image references (`src="…"`, including numbered variants), components stored as folders instead of archives, missing metadata.
+- Markdown package report (metadata, components, problems, reused resources, limitations).
+- Checks are structural and the app says so: a clean report does not guarantee a package installs on a particular device.
+
+**Preview**
+- Static home and lock screen mockups built from the package's wallpapers and icons at the connected phone's real resolution (or presets). They are labelled as static mockups: MAML, theme fonts and system UI are not rendered.
+- Package `preview/` images.
+- Real device screenshots over ADB, labelled with capture time; optional refresh every 5 s, explicitly not a live mirror.
+
+**Device (ADB)** — native backend only, never from the web view
+- Finds `adb.exe` (Settings, `ANDROID_HOME`/`ANDROID_SDK_ROOT`, `PATH`, `%USERPROFILE%\Desktop\platform-tools` and similar folders, the default Android SDK location) or lets you choose it.
+- Device list with unauthorized / offline / multiple-device states, device details (model, HyperOS/MIUI and Android version, resolution, density, Theme Manager version), screenshots with timeouts and cancellation, and an ADB command log.
+- **Themes on device** browses Theme Manager's cached theme names, authors, component lists and local preview images over ADB. Open a cached theme as a read-only reference, then copy selected components into your project with source attribution in the report.
+- *Copy package to device* (after explicit confirmation) to `/sdcard/Download/MiThemeStudio/`, verified by comparing file sizes. Installing or applying a theme is **not** automated.
+
+**Online themes**
+- Loads, on request, the public Theme Manager catalog's theme shelves, quick links and category cards with their images. Individual themes and downloads are not available from the public catalog.
+- The **On device** tab lists themes already cached by Theme Manager on a connected phone, including local preview images. It assembles supported cached modules into an in-memory reference; it does not download themes from the service or change the phone. See [docs/device-integration.md](docs/device-integration.md) and [docs/online-catalog.md](docs/online-catalog.md).
+
+See the in-app **Roadmap** view or [TODO.md](TODO.md) for planned work.
 
 ## Run from source
 
-Requires Node.js 22.12 or newer.
+Requirements: Node.js 22.12+, Rust (stable, MSVC toolchain), Visual Studio C++ build tools and the WebView2 runtime (preinstalled on Windows 10/11).
 
 ```sh
 npm install
-npm start
+npm start            # tauri dev: Vite dev server + native app
+npm run build:win    # release build + NSIS installer in src-tauri/target/release/bundle/nsis/
 ```
 
-Windows installers are published on the [GitHub Releases page](https://github.com/JMJAJ/mi-theme-studio/releases). The installer keeps one per-user copy of Mi Theme Studio; running a newer setup updates that copy in place instead of offering another install folder.
+Tests and checks:
 
-## Package notes
+```sh
+npm run typecheck    # TypeScript
+npm test             # frontend unit tests (Vitest)
+npm run test:rust    # Rust unit tests: archive safety, round trips, metadata, history, validation, ADB parsing, process timeouts
+```
 
-An `.mtz` theme is a ZIP archive. The included editor preserves files and paths, and recognizes common resource folders such as `icons/`, `wallpaper/`, lock screen resources, and system resources. Theme metadata is read from `description.xml`; many packages also contain `plugin_config.xml` and MAML XML resources.
+Opt-in live checks (not part of the default test run):
 
-Some theme packages use device-specific formats or conventions. This editor preserves those files, but does not validate that every package is installable on every MIUI/HyperOS version.
+```sh
+# read-only device smoke test: lists devices, reads properties, captures one screenshot in memory
+MTS_DEVICE_SMOKE=1 cargo test --manifest-path src-tauri/Cargo.toml --test device_smoke -- --ignored --nocapture
+# fetches the two public catalog pages
+MTS_CATALOG_LIVE=1 cargo test --manifest-path src-tauri/Cargo.toml --lib catalog::tests::live -- --ignored --nocapture
+```
 
-## Project contents
+Windows installers are built by the GitHub Actions workflow and published on the [Releases page](https://github.com/JMJAJ/mi-theme-studio/releases). The installer is per-user. The first Tauri installer replaces the previous Electron install in its existing per-user folder; later updates reuse the registered Tauri install folder, even if the install-directory page is changed.
 
-The repository contains a fresh implementation. The local `source/` folder holds the bundled Xiaomi applications, APK, resource catalogs, plugin packs, and extracted research assets; it is ignored by Git and is not published.
+## Project layout
 
-See [the reverse-engineering notes](docs/reverse-engineering.md) for the format and application structure observations that informed this project.
+```
+src/                     React + TypeScript UI
+  components/shell/      top bar, menus, navigator, status bar
+  components/explorer/   package tree and reference package panel
+  components/views/      dashboard, component grids, editors, preview, device, build, catalog, roadmap
+  components/inspector/  properties inspector
+  components/dock/       problems, output, ADB log, builds, history
+  components/dialogs/    modal dialogs and command palette
+  state/                 store (zustand), actions, command registry
+  lib/                   typed native API, path/tree helpers, formatting, shortcuts
+src-tauri/src/           Rust backend
+  package/               archive I/O, path safety, blobs, description.xml
+  project/               in-memory workspace, undo/redo, classification, snapshots
+  validation.rs          structural checks and reports
+  storage/               settings, recents, recovery copy, backups, atomic writes
+  adb/                   adb discovery, process runner (timeout/cancel), parsers, device operations
+  catalog/               read-only online catalog client
+  commands.rs, protocol.rs, state.rs   Tauri commands, `themeres:` preview protocol, app state
+docs/                    format notes, architecture, device and catalog notes
+```
 
-The planned online catalog, theme remixing, and ADB device preview work is tracked in [TODO.md](TODO.md). Application implementation files live at the repository root in `main.cjs`, `preload.cjs`, `index.html`, `assets/`, and `src/`.
+More detail: [docs/architecture.md](docs/architecture.md), [docs/device-integration.md](docs/device-integration.md), [docs/reverse-engineering.md](docs/reverse-engineering.md).
+
+## Local research inputs
+
+The ignored `source/` folder holds the user's local Xiaomi editor applications, APKs, plugin packs and reverse-engineering inputs. It is private, never packaged and never published; application code lives in the directories above.
 
 ## License
 

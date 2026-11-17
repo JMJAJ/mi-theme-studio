@@ -48,6 +48,8 @@ jobs:
 
   windows-installer:
     runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -59,7 +61,28 @@ jobs:
           workspaces: src-tauri
           cache-on-failure: true
       - run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Build NSIS installer (version from package.json)
+      # Every build of main must be newer than the last published release, or
+      # the in-app updater never sees it. Use package.json's version when it is
+      # already ahead; otherwise take the next patch after the latest release.
+      - name: Pick release version
+        id: version
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName -q '.[].tagName' | sed -n 's/^v\([0-9]*\.[0-9]*\.[0-9]*\)$/\1/p' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
+          current=$(node -p "require('./package.json').version")
+          version=$(node -e '
+            const [cur, last] = process.argv.slice(1);
+            const n = (v) => v.split(".").map(Number);
+            const newer = (a, b) => { for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i]; return false; };
+            if (!last || newer(n(cur), n(last))) console.log(cur);
+            else { const [M, m, p] = n(last); console.log(`${M}.${m}.${p + 1}`); }
+          ' "$current" "$latest")
+          echo "package.json $current, latest release ${latest:-none} -> building $version"
+          node scripts/bump-version.mjs "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Build NSIS installer
         # Thin LTO keeps the binary small and fast while building in a fraction
         # of the time fat LTO with one codegen unit took. Local builds use the
         # faster settings in Cargo.toml [profile.release].
@@ -86,10 +109,6 @@ jobs:
     needs: [test, windows-installer]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-        with:
-          sparse-checkout: package.json
-          sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v7
         with:
           name: mi-theme-studio-windows
@@ -98,12 +117,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          version=$(node -p "require('./package.json').version")
-          tag="v$version"
-          if gh release view "$tag" >/dev/null 2>&1; then
+          tag="v${{ needs.windows-installer.outputs.version }}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $tag already exists; the build is kept as a workflow artifact only."
           else
-            gh release create "$tag" release/*.exe release/*.zip release/latest.json \
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" release/*.exe release/*.zip release/latest.json \
               --target "$GITHUB_SHA" \
               --title "Mi Theme Studio $tag" \
               --generate-notes \

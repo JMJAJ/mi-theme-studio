@@ -3,6 +3,7 @@
 // installer, install it and restart. Unsaved work is offered a save first.
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { getVersion } from '@tauri-apps/api/app';
 import { create } from 'zustand';
 import { errorMessage } from '../lib/api';
 import { ensureCanDiscard } from './actions';
@@ -28,7 +29,10 @@ export async function checkForUpdate(manual = false) {
       if (manual) toast('info', `Mi Theme Studio ${update.version} is available.`, undefined, [{ label: 'Update now', run: () => void installUpdate() }]);
     } else {
       useUpdater.setState({ status: 'none', checkedAt: Date.now() });
-      if (manual) toast('success', 'You have the latest version.');
+      if (manual) {
+        const current = await getVersion().catch(() => undefined);
+        toast('success', current ? `You have the latest version (${current}).` : 'You have the latest version.');
+      }
     }
   } catch (e) {
     useUpdater.setState({ status: 'error', error: errorMessage(e), checkedAt: Date.now() });

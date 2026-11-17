@@ -91,6 +91,7 @@ pub fn run() {
             commands::adb_cached_theme_reference,
             commands::adb_cached_theme_open,
             commands::adb_try_on,
+            commands::adb_list_apps,
             commands::adb_screenshot,
             commands::screenshots_list,
             commands::screenshot_save,

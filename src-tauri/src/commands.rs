@@ -306,10 +306,11 @@ pub async fn files_import(
     sources: Vec<String>,
     folder: String,
     policy: ConflictPolicy,
+    names: Option<Vec<String>>,
 ) -> AppResult<BulkResponse> {
     blocking(app, move |state, _| {
         let mut items = Vec::new();
-        for source in &sources {
+        for (index, source) in sources.iter().enumerate() {
             let path = PathBuf::from(source);
             if path.is_dir() {
                 return Err(AppError::invalid(format!(
@@ -317,7 +318,8 @@ pub async fn files_import(
                     path.display()
                 )));
             }
-            let name = file_name_of(&path);
+            // Optional target names (e.g. `<package>.png` for app icons).
+            let name = names.as_ref().and_then(|n| n.get(index).cloned()).unwrap_or_else(|| file_name_of(&path));
             paths::validate_name(&name)
                 .map_err(|issue| AppError::invalid(format!("`{name}`: {}", issue.describe())))?;
             let data = read_limited(&path, MAX_ASSET_BYTES, &name)?;
@@ -1196,6 +1198,22 @@ pub async fn adb_apply_theme(
 
 /// "Try on phone": export the project, add it to Theme Manager's library on the
 /// phone and press Apply there. Earlier try-ons are replaced.
+/// Apps installed on the phone (name + package), listed by the bundled scrcpy
+/// server so nothing has to be installed on the phone.
+#[tauri::command]
+pub async fn adb_list_apps(app: AppHandle, serial: String) -> AppResult<Vec<adb::apps::DeviceApp>> {
+    blocking(app, move |state, app| {
+        let jar = state
+            .resource_dir
+            .as_deref()
+            .map(|r| r.join("scrcpy").join("scrcpy-server"))
+            .filter(|p| p.is_file())
+            .ok_or_else(|| AppError::not_found("The bundled scrcpy server is missing. Reinstall Mi Theme Studio."))?;
+        adb_for(state, app)?.list_apps(&serial, &jar)
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn adb_try_on(
     app: AppHandle,
@@ -1211,7 +1229,13 @@ pub async fn adb_try_on(
         let built = build_package(state, Some(app))?;
         let stage = state.paths.staging_dir().join("try-on");
         let cancel = register_op(state, &op_id);
-        let result = adb.try_on(&serial, &built.data, &title, &stage, false, cancel);
+        // Xiaomi's editor entry point when the phone has it (Chinese builds);
+        // otherwise Theme Manager's library.
+        let support = adb.theme_manager_support(&serial).ok().filter(|s| s.can_apply);
+        let result = match support {
+            Some(support) => adb.try_on_with_editor_entry(&serial, &built.data, &stage, &support, cancel),
+            None => adb.try_on(&serial, &built.data, &title, &stage, false, cancel),
+        };
         finish_op(state, &op_id);
         let _ = std::fs::remove_dir_all(&stage);
         result

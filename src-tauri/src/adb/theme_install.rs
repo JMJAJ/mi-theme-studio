@@ -247,6 +247,38 @@ pub fn refused_license(log: &str) -> Option<String> {
 }
 
 impl Adb {
+    /// Applies with Xiaomi's editor entry point (`ApplyThemeForScreenshot`) on
+    /// builds that have it, the same commands as Xiaomi's desktop editors. That
+    /// path is meant for designers and needs no store license.
+    pub fn try_on_with_editor_entry(
+        &self,
+        serial: &str,
+        package: &[u8],
+        stage: &Path,
+        support: &super::theme_apply::ThemeManagerSupport,
+        cancel: Option<Arc<AtomicBool>>,
+    ) -> AppResult<TryOnResult> {
+        std::fs::create_dir_all(stage).map_err(|e| AppError::io("Could not prepare the staging folder", e))?;
+        let local = stage.join("apply-temp.mtz");
+        std::fs::write(&local, package).map_err(|e| AppError::io("Could not stage the theme", e))?;
+        let before = self.theme_stamp(serial);
+        let result = self.apply_theme(serial, &local, support, cancel.clone());
+        let _ = std::fs::remove_file(&local);
+        let result = result?;
+        let mut steps = result.steps;
+        let deadline = Instant::now() + Duration::from_secs(90);
+        let mut applied = false;
+        while Instant::now() < deadline && !cancel.as_ref().is_some_and(|c| c.load(Ordering::Relaxed)) {
+            std::thread::sleep(Duration::from_millis(1000));
+            if before.is_some() && self.theme_stamp(serial) != before {
+                applied = true;
+                break;
+            }
+        }
+        steps.push(if applied { "Theme Manager applied the theme".into() } else { "Theme Manager did not confirm the apply; check the phone".into() });
+        Ok(TryOnResult { local_id: String::new(), parts: Vec::new(), bytes: result.bytes, applied, steps })
+    }
+
     fn device_time(&self, serial: &str) -> Option<String> {
         // adb joins arguments with spaces, so the format is quoted as one shell word.
         let out = self.shell(serial, &["date '+%m-%d %H:%M:%S.000'"], Duration::from_secs(10), None).ok()?;
@@ -263,7 +295,7 @@ impl Adb {
     }
 
     /// Modification time of the active theme folder (seconds).
-    fn theme_stamp(&self, serial: &str) -> Option<String> {
+    pub(super) fn theme_stamp(&self, serial: &str) -> Option<String> {
         let out = self.shell(serial, &["stat", "-c", "%Y", "/data/system/theme", "/data/system/theme/config.config"], Duration::from_secs(10), None).ok()?;
         Some(out.stdout_text().split_whitespace().collect::<Vec<_>>().join(" "))
     }

@@ -476,6 +476,12 @@ export interface ThemeManagerSupport {
   canOpenStore: boolean;
 }
 
+export interface DeviceApp {
+  label: string;
+  package: string;
+  system: boolean;
+}
+
 export interface TryOnResult {
   localId: string;
   parts: string[];

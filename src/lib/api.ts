@@ -1,7 +1,7 @@
 // Typed wrappers over the native commands. All file system, archive and
 // device work happens in Rust; the UI only calls these.
 import { invoke } from '@tauri-apps/api/core';
-import type { TryOnResult,
+import type { DeviceApp, TryOnResult,
   MirrorStatus,
   ApplyResult,
   ThemeManagerSupport,
@@ -96,8 +96,8 @@ export const api = {
   fileText: (path: string, slot: Slot = 'main') => call<TextFile>('file_text', { path, slot }),
   fileWriteText: (path: string, text: string, allowInvalidXml = false) =>
     call<ProjectSnapshot>('file_write_text', { path, text, allowInvalidXml }),
-  filesImport: (sources: string[], folder: string, policy: ConflictPolicy) =>
-    call<BulkResponse>('files_import', { sources, folder, policy }),
+  filesImport: (sources: string[], folder: string, policy: ConflictPolicy, names?: string[]) =>
+    call<BulkResponse>('files_import', { sources, folder, policy, names: names ?? null }),
   fileReplace: (path: string, source: string) => call<ProjectSnapshot>('file_replace', { path, source }),
   filesDelete: (paths: string[]) => call<ProjectSnapshot>('files_delete', { paths }),
   fileRename: (path: string, newName: string) => call<PathsResponse>('file_rename', { path, newName }),
@@ -138,6 +138,7 @@ export const api = {
     call<number[]>('adb_cached_theme_preview', { serial, localId }),
   adbCachedThemeReference: (serial: string, localId: string) =>
     call<ProjectSnapshot>('adb_cached_theme_reference', { serial, localId }),
+  adbListApps: (serial: string) => call<DeviceApp[]>('adb_list_apps', { serial }),
   adbTryOn: (serial: string, opId: string) => call<TryOnResult>('adb_try_on', { serial, opId }),
   adbCachedThemeOpen: (serial: string, localId: string) =>
     call<ProjectSnapshot>('adb_cached_theme_open', { serial, localId }),

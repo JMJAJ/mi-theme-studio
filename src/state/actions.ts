@@ -586,6 +586,20 @@ export async function importFiles(sources: string[], folder: string) {
   toast('success', `Added ${plural(written.length, 'file')}${overwritten.length ? ` (${overwritten.length} replaced)` : ''}${skipped.length ? `, ${skipped.length} skipped` : ''}`);
 }
 
+/** Pick a PNG and store it as the themed icon for an app (`<package>.png`). */
+export async function addAppIcon(pkg: string, label: string, folder: string) {
+  if (!getState().project) return;
+  const picked = await openDialog({ title: `Icon for ${label}`, multiple: false, directory: false, filters: [{ name: 'PNG image', extensions: ['png'] }] });
+  if (!picked || Array.isArray(picked)) return;
+  const target = joinPath(folder, `${pkg}.png`);
+  const policy = await askPolicy(getState().fileIndex.has(target) ? [target] : []);
+  if (!policy) return;
+  const response = await guard('Add icon', () => api.filesImport([picked], folder, policy, [`${pkg}.png`]), 'Adding icon…');
+  if (!response) return;
+  applySnapshot(response.snapshot);
+  toast('success', `Icon for ${label} added`);
+}
+
 export async function addFilesDialog(folder: string) {
   const picked = await openDialog({ title: `Add files to ${folder || 'package root'}`, multiple: true, directory: false });
   if (!picked) return;

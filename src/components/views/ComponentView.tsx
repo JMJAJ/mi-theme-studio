@@ -8,6 +8,7 @@ import { getState, useStore } from '../../state/store';
 import * as A from '../../state/actions';
 import { openContextMenu } from '../common/Menu';
 import { componentIcon } from '../common/icons';
+import { IconCoverage } from './IconCoverage';
 
 type Sort = 'name' | 'size' | 'status';
 
@@ -20,6 +21,7 @@ export function ComponentView({ componentId, embedded = false }: { componentId: 
   const [density, setDensity] = useState('all');
   const [sort, setSort] = useState<Sort>('name');
   const [bg, setBg] = useState<'checker' | 'bg-dark' | 'bg-light'>('checker');
+  const [pane, setPane] = useState<'files' | 'apps'>('files');
 
   const def = project?.components.find((c) => c.id === componentId);
   const files = useMemo(() => (project?.files ?? []).filter((f) => f.component === componentId), [project, componentId]);
@@ -67,6 +69,33 @@ export function ComponentView({ componentId, embedded = false }: { componentId: 
 
   return (
     <div className="center-body">
+      {componentId === 'icons' && (
+        <div className="toolbar">
+          <div className="segmented" role="tablist" aria-label="Icons view">
+            <button role="tab" aria-pressed={pane === 'files'} onClick={() => setPane('files')}>
+              Icon files
+            </button>
+            <button role="tab" aria-pressed={pane === 'apps'} onClick={() => setPane('apps')}>
+              Apps on your phone
+            </button>
+          </div>
+        </div>
+      )}
+      {componentId === 'icons' && pane === 'apps' ? (
+        <div className="view">
+          {needsArchive ? (
+            <div className="view-pad">
+              <div className="banner banner-info">
+                <Archive />
+                <span>Add the Icons part first, then come back to add icons for your apps.</span>
+              </div>
+            </div>
+          ) : (
+            <IconCoverage files={files} folder={folders.find((f) => f.endsWith('drawable-xxhdpi')) ?? `${containers[0]?.name ?? 'icons'}!/res/drawable-xxhdpi`} />
+          )}
+        </div>
+      ) : (
+      <>
       <div className="toolbar">
         {!embedded && (
           <>
@@ -233,6 +262,8 @@ export function ComponentView({ componentId, embedded = false }: { componentId: 
           </table>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }

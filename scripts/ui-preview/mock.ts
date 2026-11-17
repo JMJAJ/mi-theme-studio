@@ -50,6 +50,12 @@ mockIPC((cmd, args) => {
     case 'screenshots_list':
     case 'store_downloads':
       return [];
+    case 'adb_list_apps':
+      return [
+        ['Camera', 'com.android.camera', true], ['Chrome', 'com.android.chrome', true], ['Gallery', 'com.miui.gallery', true],
+        ['Telegram', 'org.telegram.messenger', false], ['Discord', 'com.discord', false], ['Settings', 'com.android.settings', true],
+        ['Calendar', 'com.android.calendar', true], ['Spotify', 'com.spotify.music', false],
+      ].map(([label, pkg, system]) => ({ label, package: pkg, system }));
     case 'adb_cached_themes':
       return ['Dark Anime', 'Faith', 'Grey Sonnet', 'Holy Sword'].map((title, i) => ({
         localId: `00000000-0000-4000-8000-00000000000${i}`, title, author: 'Xiaomi', designer: null, description: null,
@@ -83,6 +89,8 @@ if (dialog) {
   setTimeout(() => useStore.setState({ dialog: { type: 'settings', section: dialog as never } }), 900);
 }
 if (params.get('menu')) setTimeout(() => (document.querySelector('[aria-label="Menu"]') as HTMLButtonElement | null)?.click(), 1200);
+const pane = params.get('pane');
+if (pane) setTimeout(() => ([...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === pane) as HTMLButtonElement | undefined)?.click(), 2000);
 const click = params.get('click');
 if (click) {
   setTimeout(() => {

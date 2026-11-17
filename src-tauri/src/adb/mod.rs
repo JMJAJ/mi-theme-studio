@@ -6,6 +6,7 @@
 //! a confirmed apply through its editor entry point; see `theme_apply` and
 //! docs/device-integration.md.
 
+pub mod apps;
 pub mod mirror;
 pub mod stream;
 pub mod parse;

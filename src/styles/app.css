@@ -761,3 +761,8 @@ button.catalog-card:hover, button.icon-link:hover { border-color: var(--line-str
 .dl-actions { display: flex; align-items: center; gap: 2px; margin-top: 7px; }
 .dl-actions .btn-primary { min-width: 0; justify-content: center; }
 .dl-actions .btn-ghost { flex: none; padding: 0 6px; }
+/* Download card: the main button gets its own line, the small actions sit under it */
+.dl-actions { flex-wrap: wrap; gap: 4px; }
+.dl-actions .btn-primary { flex: 1 1 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.dl-actions .btn-ghost { flex: 1 1 0; justify-content: center; }
+.dl-card.kind-ringtone .dl-actions .btn-primary { flex-basis: auto; }

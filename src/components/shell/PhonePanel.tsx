@@ -95,7 +95,7 @@ function ThemeScreen({ screen, box, ratio, previewIndex }: { screen: Screen; box
           <button className="pp-hit" style={{ inset: '7% 2% 2% 2%' }} title="Change the wallpaper" aria-label="Change the wallpaper" onClick={() => A.goTo('design', 'wallpapers')} />
         </>
       )}
-      <button className="mock-status pp-click" title="Change the font" style={{ fontSize: 12 * s, color: '#fff', fontFamily: themeFont }} onClick={() => A.goTo('design', 'fonts')}>
+      <button className="mock-status pp-click" title="Status bar, notifications and control center (System UI)" style={{ fontSize: 12 * s, color: '#fff', fontFamily: themeFont }} onClick={() => A.goTo('design', 'systemui')}>
         <span>{time}</span>
         <span>▮▮▮ ◔ 87%</span>
       </button>
@@ -292,7 +292,7 @@ export function PhonePanel() {
                 </button>
               </div>
             ) : (
-              <span className="faint pp-note">Updates as you edit. Click the clock, wallpaper, an icon or the status bar to change it.</span>
+              <span className="faint pp-note">Updates as you edit. Click the clock, wallpaper, an icon or the status bar (System UI) to change it.</span>
             )}
           </div>
           {device.ready && (

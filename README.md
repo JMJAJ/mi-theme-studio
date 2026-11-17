@@ -82,6 +82,20 @@ Everything runs locally. Packages are edited in memory, saves are atomic and bac
 - Browse themes already cached on the phone and open them as read-only references.
 - Copy a package to the phone after confirmation, verified by file size.
 
+#### Supported Theme Manager versions (non-root apply)
+
+Non-root one-click apply and Force apply depend on the Theme Manager build on the phone. The app checks this itself and shows the result on the Phone page.
+
+| Theme Manager | Non-root apply | Notes |
+| --- | --- | --- |
+| 3.0.5.16-global | ✅ Verified | Tested on HyperOS 3 (Android 16). Full apply and Force apply work. |
+| 3.0.5.19-global and later | ❌ No entry point | Supported only if the phone's factory build is older: **Enable non-root apply** removes the update and goes back to it. |
+| Factory build 3.0.5.19-global or later | ❌ Not possible | Android does not allow installing an older Theme Manager below the factory version without root. Use root, or Try on phone through the library (wallpapers, lock screen and sounds). |
+| China builds | ⚠️ Untested | Builds that include the editor entry point (`ApplyThemeForScreenshot`) are expected to work. |
+| Older global builds (MIUI 14 and earlier) | ⚠️ Untested | Expected to work if the entry point is present. |
+
+Rooted phones apply every part, whatever the Theme Manager version. If you test another version, please open an issue with your phone model, HyperOS / MIUI version and Theme Manager version (Settings → Apps → Themes).
+
 ### Check and export
 
 - Validation for XML syntax, image header and extension mismatches, empty files, case collisions, missing MAML image references, component layout and metadata.

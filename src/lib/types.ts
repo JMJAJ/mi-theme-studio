@@ -325,6 +325,8 @@ export interface StoreProduct {
   name: string;
   imageUrl: string | null;
   secondImageUrl: string | null;
+  /** Animated preview (GIF) for themes that have one. */
+  gifUrl?: string | null;
   priceCents: number;
   currency: string | null;
   sizeBytes: number | null;
@@ -474,6 +476,7 @@ export interface ThemeManagerSupport {
   canApply: boolean;
   twoStep: boolean;
   canOpenStore: boolean;
+  rooted: boolean;
 }
 
 export interface DeviceApp {
@@ -508,6 +511,28 @@ export interface LicenseOutcome {
   name: string;
   ok: boolean;
   message: string;
+}
+
+export interface ThemeCompatibility {
+  deviceFormat: number | null;
+  themeUiVersion: number | null;
+  themeAdapter: string | null;
+  supported: boolean;
+  detail: string;
+}
+
+export interface RootApplyResult {
+  applied: boolean;
+  backup: string | null;
+  parts: string[];
+  steps: string[];
+}
+
+export interface ThemeBackup {
+  path: string;
+  name: string;
+  bytes: number;
+  modifiedMs: number;
 }
 
 export interface ApplyResult {

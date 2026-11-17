@@ -868,6 +868,16 @@ mod live {
         assert_eq!(report.missing, 0);
     }
 
+    /// Prints the phone's theme format (e.g. 140 = 14.0).
+    #[test]
+    #[ignore]
+    fn reports_phone_theme_format() {
+        let (Ok(path), Ok(serial)) = (std::env::var("MTS_ADB"), std::env::var("MTS_SERIAL")) else { return };
+        let adb = Adb { path: path.into(), log: Arc::new(|_| {}) };
+        let format = adb.theme_format(&serial);
+        println!("theme format: {format:?}");
+        assert!(format.is_some());
+    }
     /// `MTS_LICENSE_ITEMS="moduleId|productId|Name;…"` — applies each item on the
     /// phone so its licence lands, then prints the outcome.
     #[test]

@@ -1231,6 +1231,20 @@ export async function tryOnPhone() {
   }
   if (getState().busy) return;
   if (!(await applyAllDrafts())) return;
+  const compat = await themeCompatibility();
+  if (compat && !compat.supported) {
+    const go = await confirmDialog({
+      title: 'This theme is newer than the phone',
+      message: compat.detail,
+      detail: [
+        'The phone renders an older MIUI/HyperOS theme format: newer icons, system UI, lock screen or font parts may be refused or render wrong.',
+        'Theme Manager still applies what it can; you can usually go back from Themes → My themes on the phone.',
+      ],
+      confirmLabel: 'Apply anyway',
+      danger: true,
+    });
+    if (!go) return;
+  }
   let confirmed = false;
   try {
     confirmed = localStorage.getItem(TRY_ON_OK_KEY) === '1';
@@ -1292,6 +1306,17 @@ export async function tryOnPhone() {
 
 // ---------------------------------------------------------------------------
 // licences
+
+/** Whether the open theme targets a newer format than the connected phone. */
+export async function themeCompatibility() {
+  const device = readyDevice();
+  if (!device) return null;
+  try {
+    return await api.themeCompatibility(device.serial);
+  } catch {
+    return null;
+  }
+}
 
 /** Per-part verdict: what Theme Manager will accept on this phone right now. */
 export async function checkLicences() {
@@ -1375,6 +1400,105 @@ export async function licenseDownloadsOnPhone() {
   }
 }
 
+/** Applies the open theme with root: writes its parts into /data/system/theme. */
+export async function applyWithRoot() {
+  const device = readyDevice();
+  const project = getState().project;
+  if (!device || !project) {
+    toast('warning', 'Open a theme and connect a rooted phone first.');
+    return;
+  }
+  if (getState().busy) return;
+  if (!(await applyAllDrafts())) return;
+  const compat = await themeCompatibility();
+  const ok = await confirmDialog({
+    title: `Write “${project.title}” into the phone’s theme folder?`,
+    message:
+      'Root apply copies the theme parts straight into /data/system/theme and restarts SystemUI. Theme Manager’s licence check is not involved, so custom icons, fonts and system UI work — but a part the phone cannot render can leave the interface broken until you restore the backup.',
+    detail: [
+      compat ? compat.detail : 'The phone did not report a theme format.',
+      'The current /data/system/theme is backed up to /sdcard/MiThemeStudio first.',
+      'Root (su) is used; nothing is uploaded anywhere.',
+      'If the phone looks wrong afterwards, restore the backup or the stock theme.',
+    ],
+    confirmLabel: 'Apply with root',
+    danger: true,
+  });
+  if (!ok) return;
+  const opId = newOpId('root');
+  operations.set(opId, 'Applying with root');
+  setState({ busy: 'Writing the theme into /data/system/theme…' });
+  try {
+    const result = await api.adbRootApply(device.serial, opId);
+    for (const step of result.steps) log('info', `Root apply: ${step}`);
+    if (result.applied) {
+      toast('success', `“${project.title}” is in /data/system/theme${result.backup ? ` (backup: ${result.backup})` : ''}.`);
+    } else {
+      toast('warning', 'Root apply did not finish; check the log.');
+    }
+  } catch (error) {
+    if (errorCode(error) === 'cancelled') log('info', 'Root apply cancelled');
+    else toast('error', `Root apply: ${errorMessage(error)}`);
+  } finally {
+    operations.delete(opId);
+    setState({ busy: null });
+  }
+}
+/** Restores a /data/system/theme backup made by Apply with root. */
+export async function restoreThemeBackup() {
+  const device = readyDevice();
+  if (!device) {
+    toast('warning', 'Connect a rooted phone first.');
+    return;
+  }
+  if (getState().busy) return;
+  let backups: Awaited<ReturnType<typeof api.adbRootBackups>>;
+  try {
+    backups = await api.adbRootBackups(device.serial);
+  } catch (error) {
+    toast('error', `Theme backups: ${errorMessage(error)}`);
+    return;
+  }
+  if (!backups.length) {
+    toast('warning', 'No theme backups on the phone yet — Apply with root creates one first.');
+    return;
+  }
+  const choice = await choiceDialog({
+    title: 'Restore a theme backup',
+    message: 'The current /data/system/theme is replaced by the selected backup, then SystemUI restarts. Only backups listed here are used.',
+    choices: [
+      ...backups.slice(0, 8).map((b) => ({
+        id: b.path,
+        label: `${b.name} · ${formatBytes(b.bytes)}`,
+        primary: false,
+      })),
+      { id: 'cancel', label: 'Cancel' },
+    ],
+  });
+  if (choice === 'cancel') return;
+  const picked = backups.find((b) => b.path === choice);
+  const ok = await confirmDialog({
+    title: `Restore ${picked?.name ?? 'this backup'}?`,
+    message: 'This replaces the phone’s whole theme folder with the backup and restarts SystemUI. Nothing else on the phone is touched.',
+    detail: [picked ? picked.path : choice, 'Root is used. The current theme folder is not backed up again.'],
+    confirmLabel: 'Restore',
+    danger: true,
+  });
+  if (!ok) return;
+  const opId = newOpId('restore');
+  operations.set(opId, 'Restoring theme backup');
+  setState({ busy: 'Restoring the theme backup…' });
+  try {
+    const steps = await api.adbRootRestore(device.serial, choice);
+    for (const step of steps) log('info', `Restore: ${step}`);
+    toast('success', 'Theme backup restored.');
+  } catch (error) {
+    toast('error', `Restore: ${errorMessage(error)}`);
+  } finally {
+    operations.delete(opId);
+    setState({ busy: null });
+  }
+}
 // ---------------------------------------------------------------------------
 // live mirror (bundled scrcpy)
 

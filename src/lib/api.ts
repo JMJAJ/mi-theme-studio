@@ -4,6 +4,9 @@ import { invoke } from '@tauri-apps/api/core';
 import type { DeviceApp, TryOnResult,
   LicenceReport,
   LicenseOutcome,
+  ThemeCompatibility,
+  RootApplyResult,
+  ThemeBackup,
   MirrorStatus,
   ApplyResult,
   ThemeManagerSupport,
@@ -147,6 +150,10 @@ export const api = {
   adbTryOn: (serial: string, opId: string) => call<TryOnResult>('adb_try_on', { serial, opId }),
   adbLicenceReport: (serial: string) => call<LicenceReport>('adb_licence_report', { serial }),
   adbLicenseDownloads: (serial: string, opId: string) => call<LicenseOutcome[]>('adb_license_downloads', { serial, opId }),
+  themeCompatibility: (serial: string) => call<ThemeCompatibility>('theme_compatibility', { serial }),
+  adbRootApply: (serial: string, opId: string) => call<RootApplyResult>('adb_root_apply', { serial, opId }),
+  adbRootBackups: (serial: string) => call<ThemeBackup[]>('adb_root_backups', { serial }),
+  adbRootRestore: (serial: string, backup: string) => call<string[]>('adb_root_restore', { serial, backup }),
   adbCachedThemeOpen: (serial: string, localId: string) =>
     call<ProjectSnapshot>('adb_cached_theme_open', { serial, localId }),
   adbScreenshot: (serial: string, model: string | null, opId: string) =>

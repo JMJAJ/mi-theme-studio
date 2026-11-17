@@ -1,12 +1,12 @@
 import { TryOnButton } from '../common/TryOnButton';
 import { useEffect, useState } from 'react';
-import { AlertTriangle, BadgeCheck, Camera, CircleCheck, FolderSearch, Info, Lock, Palette, RefreshCw, RotateCcw, Send, ShieldCheck, Smartphone, Unplug } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, Camera, CircleCheck, FolderSearch, Info, Lock, Palette, RefreshCw, RotateCcw, Send, ShieldAlert, ShieldCheck, Smartphone, Unplug } from 'lucide-react';
 import { api } from '../../lib/api';
 import { MirrorButton } from '../common/MirrorButton';
 import { useStore } from '../../state/store';
 import * as A from '../../state/actions';
 import { relativeTime } from '../../lib/format';
-import type { DeviceEntry, ThemeManagerSupport } from '../../lib/types';
+import type { DeviceEntry, ThemeCompatibility, ThemeManagerSupport } from '../../lib/types';
 
 const SOURCE_LABEL: Record<string, string> = {
   settings: 'Set in Settings',
@@ -29,6 +29,37 @@ function stateBadge(device: DeviceEntry) {
     default:
       return <span className="badge badge-outline">{device.state}</span>;
   }
+}
+
+function CompatibilityNotice({ serial }: { serial: string }) {
+  const project = useStore((s) => s.project);
+  const [compat, setCompat] = useState<ThemeCompatibility | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!project) {
+      setCompat(null);
+      return;
+    }
+    api
+      .themeCompatibility(serial)
+      .then((value) => !cancelled && setCompat(value))
+      .catch(() => !cancelled && setCompat(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [serial, project?.name]);
+  if (!compat) return null;
+  return (
+    <div className={compat.supported ? 'banner' : 'banner banner-warn'} style={{ marginTop: 4 }}>
+      {compat.supported ? <Info /> : <AlertTriangle />}
+      <span>
+        {compat.detail}{' '}
+        {compat.supported
+          ? 'The theme format fits this phone.'
+          : 'Parts built for the newer format may be refused or render wrong; Try on phone is dimmed but still works at your own risk.'}
+      </span>
+    </div>
+  );
 }
 
 function ThemeManagerActions({ serial, hasProject, busy }: { serial: string; hasProject: boolean; busy: boolean }) {
@@ -62,6 +93,16 @@ function ThemeManagerActions({ serial, hasProject, busy }: { serial: string; has
           <ShieldCheck /> Check licences
         </button>
       )}
+      {support.rooted && hasProject && (
+        <button className="btn" style={{ justifyContent: 'flex-start' }} disabled={busy} onClick={() => void A.applyWithRoot()}>
+          <ShieldAlert /> Apply with root
+        </button>
+      )}
+      {support.rooted && (
+        <button className="btn" style={{ justifyContent: 'flex-start' }} disabled={busy} onClick={() => void A.restoreThemeBackup()}>
+          <RotateCcw /> Restore theme backup…
+        </button>
+      )}
       <button className="btn" style={{ justifyContent: 'flex-start' }} disabled={busy} onClick={() => void A.licenseDownloadsOnPhone()}>
         <BadgeCheck /> License downloads on phone
       </button>
@@ -70,6 +111,7 @@ function ThemeManagerActions({ serial, hasProject, busy }: { serial: string; has
           <Palette /> Open Theme Manager on phone
         </button>
       )}
+      {hasProject && <CompatibilityNotice serial={serial} />}
       <div className="banner" style={{ marginTop: 4 }}>
         <Info />
         <span>Try on phone applies the theme through Theme Manager and reuses the licences already on the phone, so mixes of unmodified store parts work. Wallpapers and sounds need no licence; edited parts get 413 until their source theme or font has been applied on the phone once.</span>

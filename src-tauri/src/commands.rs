@@ -1279,6 +1279,81 @@ pub async fn adb_add_to_theme_manager(
     .await
 }
 
+/// Theme backups made by Apply with root (newest first).
+#[tauri::command]
+pub async fn adb_root_backups(app: AppHandle, serial: String) -> AppResult<Vec<adb::root_apply::ThemeBackup>> {
+    blocking(app, move |state, app| adb_for(state, app)?.root_backups(&serial)).await
+}
+
+/// Restores one of those backups into /data/system/theme.
+#[tauri::command]
+pub async fn adb_root_restore(app: AppHandle, serial: String, backup: String) -> AppResult<Vec<String>> {
+    blocking(app, move |state, app| adb_for(state, app)?.root_restore(&serial, &backup)).await
+}
+
+/// Applies the open theme with root by writing its parts into
+/// `/data/system/theme` and restarting SystemUI. Needs `su` on the phone.
+#[tauri::command]
+pub async fn adb_root_apply(app: AppHandle, serial: String, op_id: Option<String>) -> AppResult<adb::root_apply::RootApplyResult> {
+    blocking(app, move |state, app| {
+        let adb = adb_for(state, app)?;
+        let built = build_package(state, Some(app))?;
+        let stage = state.paths.staging_dir().join("root-apply");
+        let cancel = register_op(state, &op_id);
+        let result = adb.root_apply(&serial, &built.data, &stage, cancel);
+        finish_op(state, &op_id);
+        let _ = std::fs::remove_dir_all(&stage);
+        result
+    })
+    .await
+}
+
+/// Whether the open theme's `uiVersion` fits the phone's theme format.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThemeCompatibility {
+    pub device_format: Option<u32>,
+    pub theme_ui_version: Option<u32>,
+    pub theme_adapter: Option<String>,
+    pub supported: bool,
+    pub detail: String,
+}
+
+#[tauri::command]
+pub async fn theme_compatibility(app: AppHandle, serial: String) -> AppResult<ThemeCompatibility> {
+    blocking(app, move |state, app| {
+        let adb = adb_for(state, app)?;
+        let device_format = adb.theme_format(&serial);
+        let (ui, adapter) = with_main(state, |project| {
+            let xml = project.text("description.xml");
+            let view = metadata::parse(xml.as_deref());
+            let field = |name: &str| {
+                view.fields
+                    .iter()
+                    .find(|f| f.name == name)
+                    .map(|f| f.value.trim().to_string())
+                    .filter(|v| !v.is_empty())
+            };
+            Ok((field("uiVersion").and_then(|v| v.parse::<u32>().ok()), field("miuiAdapterVersion")))
+        })?;
+        let supported = match (device_format, ui) {
+            (Some(format), Some(version)) => format >= version * 10,
+            _ => true,
+        };
+        let detail = match (device_format, ui) {
+            (Some(format), Some(version)) => format!(
+                "The phone renders theme format {:.1}; this theme targets uiVersion {}.",
+                format as f32 / 10.0,
+                version
+            ),
+            (Some(format), None) => format!("The phone renders theme format {:.1}; this theme does not declare a uiVersion.", format as f32 / 10.0),
+            (None, _) => "The phone did not report a theme format, so compatibility cannot be checked.".to_string(),
+        };
+        Ok(ThemeCompatibility { device_format, theme_ui_version: ui, theme_adapter: adapter, supported, detail })
+    })
+    .await
+}
+
 /// Per-part licence verdict for the open project, checked against the rights
 /// files already on the phone.
 #[tauri::command]

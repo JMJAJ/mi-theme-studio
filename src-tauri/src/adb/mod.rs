@@ -10,6 +10,7 @@ pub mod apps;
 pub mod mirror;
 pub mod stream;
 pub mod parse;
+pub mod root_apply;
 pub mod runner;
 pub mod theme_apply;
 pub mod theme_cache;

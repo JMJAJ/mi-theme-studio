@@ -34,6 +34,8 @@ pub struct ThemeManagerSupport {
     pub two_step: bool,
     /// Store/detail deep links resolve.
     pub can_open_store: bool,
+    /// `su` grants a root shell (Apply with root).
+    pub rooted: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -66,6 +68,19 @@ fn valid_store_id(id: &str) -> AppResult<&str> {
 }
 
 impl Adb {
+    /// Theme format the phone's framework accepts, from
+    /// `/system/media/theme/theme_compatibility.xml` (140 = 14.0). Themes whose
+    /// `uiVersion` exceeds it cannot be rendered by that build.
+    pub fn theme_format(&self, serial: &str) -> Option<u32> {
+        let out = self
+            .shell(serial, &["cat", "/system/media/theme/theme_compatibility.xml"], Duration::from_secs(15), None)
+            .ok()?;
+        let text = out.stdout_text();
+        let at = text.find("<version>")? + "<version>".len();
+        let end = at + text[at..].find("</version>")?;
+        text[at..end].trim().parse().ok()
+    }
+
     pub fn theme_manager_support(&self, serial: &str) -> AppResult<ThemeManagerSupport> {
         valid_serial(serial)?;
         let dump = self
@@ -73,7 +88,7 @@ impl Adb {
             .stdout_text();
         let installed = dump.contains(&format!("Package [{THEME_MANAGER_PACKAGE}]"));
         if !installed {
-            return Ok(ThemeManagerSupport { installed, version: None, can_apply: false, two_step: false, can_open_store: false });
+            return Ok(ThemeManagerSupport { installed, version: None, can_apply: false, two_step: false, can_open_store: false, rooted: self.rooted(serial) });
         }
         let apply = self
             .shell(serial, &["cmd", "package", "resolve-activity", "--brief", "--components", "-n", APPLY_ACTIVITY], Duration::from_secs(15), None)
@@ -94,6 +109,7 @@ impl Adb {
             can_apply: apply,
             two_step: dump.contains(SUPPORT_MARKER),
             can_open_store: store,
+            rooted: self.rooted(serial),
         })
     }
 

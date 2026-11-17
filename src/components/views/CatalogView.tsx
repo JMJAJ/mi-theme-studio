@@ -27,6 +27,7 @@ import {
   Phone,
   Monitor,
   PackageOpen,
+  Play,
   RefreshCw,
   Repeat,
   Search,
@@ -129,6 +130,37 @@ function ProgressBar({ received, total }: { received: number; total: number }) {
 // ---------------------------------------------------------------------------
 // cards
 
+// Animated previews seen on cards, so the theme page can show them too
+// (the store sends the GIF with the listing, not with the theme details).
+const knownGifs = new Map<string, string>();
+
+/** The animated preview over a cover: plays while the pointer is on the card (loaded on first hover). */
+function GifCover({ product, playing }: { product: StoreProduct; playing: boolean }) {
+  const [ready, setReady] = useState(false);
+  const [wanted, setWanted] = useState(false);
+  useEffect(() => {
+    if (playing) setWanted(true);
+  }, [playing]);
+  if (!product.gifUrl) return null;
+  return (
+    <>
+      {wanted && (
+        <img
+          className={`cover-gif ${playing && ready ? 'is-on' : ''}`}
+          src={product.gifUrl}
+          alt=""
+          referrerPolicy="no-referrer"
+          draggable={false}
+          onLoad={() => setReady(true)}
+        />
+      )}
+      <span className={`cover-anim ${playing && !ready ? 'is-loading' : ''}`} title="Animated preview: hover to play">
+        {playing && !ready ? <Loader2 className="spin" /> : <Play />} GIF
+      </span>
+    </>
+  );
+}
+
 /** Put a download to use in the open theme: pick parts of a theme/font, or place a wallpaper/ringtone. */
 function putToUse(item: DownloadedTheme) {
   // Nothing open yet: this download becomes the theme you work on.
@@ -230,10 +262,13 @@ function QuickAction({ product }: { product: StoreProduct }) {
 function ProductCard({ product, onOpen }: { product: StoreProduct; onOpen: () => void }) {
   const downloaded = useThemeStore((s) => s.downloads.some((d) => d.moduleId === product.moduleId));
   const progress = useThemeStore((s) => s.progress[product.moduleId]);
+  const [hover, setHover] = useState(false);
+  if (product.gifUrl) knownGifs.set(product.moduleId, product.gifUrl);
   return (
-    <button className={`product-card kind-${product.kind}`} onClick={onOpen} title={product.name}>
+    <button className={`product-card kind-${product.kind}`} onClick={onOpen} title={product.name} onPointerEnter={() => setHover(true)} onPointerLeave={() => setHover(false)} onFocus={() => setHover(true)} onBlur={() => setHover(false)}>
       <div className="cover">
         <RemoteImage src={product.imageUrl} alt={product.name} />
+        <GifCover product={product} playing={hover} />
         {downloaded && (
           <span className="cover-badge" title="Downloaded">
             <Check />
@@ -269,12 +304,15 @@ function ProductCard({ product, onOpen }: { product: StoreProduct; onOpen: () =>
 function FeatureCard({ product, onOpen }: { product: StoreProduct; onOpen: () => void }) {
   const downloaded = useThemeStore((s) => s.downloads.some((d) => d.moduleId === product.moduleId));
   const progress = useThemeStore((s) => s.progress[product.moduleId]);
+  const [hover, setHover] = useState(false);
+  if (product.gifUrl) knownGifs.set(product.moduleId, product.gifUrl);
   const second = product.secondImageUrl && product.secondImageUrl !== product.imageUrl ? product.secondImageUrl : null;
   return (
-    <button className={`feature-card kind-${product.kind}${second ? ' has-second' : ''}`} onClick={onOpen} title={product.name}>
+    <button className={`feature-card kind-${product.kind}${second ? ' has-second' : ''}`} onClick={onOpen} title={product.name} onPointerEnter={() => setHover(true)} onPointerLeave={() => setHover(false)}>
       <div className="covers">
         <div className="cover">
           <RemoteImage src={product.imageUrl} alt={product.name} />
+          <GifCover product={product} playing={hover} />
           {downloaded && (
             <span className="cover-badge" title="Downloaded">
               <Check />
@@ -814,13 +852,22 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
     if (record && hasProject && isPackage(record.kind)) putToUse(record);
   };
 
+  // The animated preview (seen on its store card) leads the screenshots.
+  const gif = knownGifs.get(detail.moduleId) ?? null;
+  const shots = gif ? [gif, ...detail.screenshots.filter((s) => s !== gif)] : detail.screenshots;
+
   return (
     <div className="store-detail">
       <div className="shots">
-        {detail.screenshots.length ? (
-          detail.screenshots.map((src, i) => (
-            <button key={src} className="shot" onClick={() => setLightbox(i)} aria-label={`Open screenshot ${i + 1}`}>
-              <RemoteImage src={src} alt={`${detail.name} screenshot ${i + 1}`} />
+        {shots.length ? (
+          shots.map((src, i) => (
+            <button key={src} className={`shot ${src === gif ? 'is-gif' : ''}`} onClick={() => setLightbox(i)} aria-label={src === gif ? 'Open the animated preview' : `Open screenshot ${i + 1}`}>
+              <RemoteImage src={src} alt={src === gif ? `${detail.name} animated preview` : `${detail.name} screenshot ${i + 1}`} />
+              {src === gif && (
+                <span className="cover-anim">
+                  <Play /> Animated
+                </span>
+              )}
             </button>
           ))
         ) : (
@@ -844,6 +891,7 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
                 name: detail.name,
                 imageUrl: detail.screenshots[0] ?? null,
                 secondImageUrl: detail.screenshots[1] ?? null,
+                gifUrl: gif,
                 priceCents: detail.priceCents,
                 currency: detail.currency,
                 sizeBytes: detail.sizeBytes,
@@ -984,8 +1032,8 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
         </aside>
       </div>
 
-      {lightbox !== null && detail.screenshots.length > 0 && (
-        <Lightbox images={detail.screenshots} index={lightbox} onIndex={setLightbox} onClose={() => setLightbox(null)} />
+      {lightbox !== null && shots.length > 0 && (
+        <Lightbox images={shots} index={lightbox} onIndex={setLightbox} onClose={() => setLightbox(null)} />
       )}
     </div>
   );

@@ -207,6 +207,8 @@ pub struct StoreProduct {
     pub name: String,
     pub image_url: Option<String>,
     pub second_image_url: Option<String>,
+    /// Animated preview (an animated GIF) the store shows for some themes.
+    pub gif_url: Option<String>,
     pub price_cents: u64,
     /// ISO currency code for `price_cents` (`moneyInfo`).
     pub currency: Option<String>,
@@ -403,6 +405,7 @@ fn parse_product(value: &Value, root: &str) -> Option<StoreProduct> {
         name,
         image_url: image(text(value, "imageUrl"), root),
         second_image_url: image(text(value, "secondImageUrl"), root),
+        gif_url: image(text(value, "gifUrl"), root),
         price_cents: price,
         currency: currency_of(value),
         size_bytes: number(value, "fileSizeInKB").filter(|n| *n > 0),

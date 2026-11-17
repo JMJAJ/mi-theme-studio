@@ -100,6 +100,21 @@ function ChoiceDialog({ dialog }: { dialog: Extract<DialogState, { type: 'choice
     dialog.resolve(id);
   };
   const cancel = dialog.choices.find((c) => c.id === 'cancel')?.id ?? dialog.choices[dialog.choices.length - 1].id;
+  // Many choices don't fit side by side: list them as full-width rows instead.
+  if (dialog.choices.length > 3) {
+    return (
+      <Modal title={dialog.title} onClose={() => done(cancel)}>
+        {dialog.message && <p className="message">{dialog.message}</p>}
+        <div className="choice-list">
+          {dialog.choices.map((choice) => (
+            <button key={choice.id} className={`btn ${choice.primary ? 'btn-primary' : choice.danger ? 'btn-danger' : ''}`} onClick={() => done(choice.id)} data-autofocus={choice.primary ? true : undefined}>
+              {choice.label}
+            </button>
+          ))}
+        </div>
+      </Modal>
+    );
+  }
   return (
     <Modal
       title={dialog.title}

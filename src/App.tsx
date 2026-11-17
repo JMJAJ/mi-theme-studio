@@ -27,6 +27,7 @@ import { matches, isTextTarget } from './lib/shortcuts';
 import { api } from './lib/api';
 import * as A from './state/actions';
 import { installZoom } from './state/zoom';
+import { startUpdateChecks } from './state/updater';
 
 const PACKAGE_RE = /\.(mtz|zip)$/i;
 
@@ -290,6 +291,7 @@ export function App() {
     if (started.current) return;
     started.current = true;
     void A.init();
+    startUpdateChecks();
   }, []);
 
   return (

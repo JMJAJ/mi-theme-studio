@@ -5,7 +5,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Camera, ChevronLeft, ChevronRight, Circle, ExternalLink, Loader2, Lock, MonitorPlay, MonitorSmartphone, Send, Smartphone, Sparkles, Square, Usb, X } from 'lucide-react';
 import { resourceUrl, screenshotUrl } from '../../lib/api';
 import { fileName } from '../../lib/paths';
-import { findWallpaper, pickIcons } from '../views/PreviewView';
+import { findWallpaper, pickIcons, useClock } from '../views/PreviewView';
+import { PhoneLockScreen, useHasLockLayout, useMamlSelection } from '../views/MamlPreview';
 import { TryOnButton } from '../common/TryOnButton';
 import { attachCanvas, startStream, stopStream, streamKey, streamScroll, streamTouch, useMirrorStream } from '../../state/mirrorStream';
 import * as A from '../../state/actions';
@@ -50,9 +51,10 @@ function ThemeScreen({ screen, box, ratio, previewIndex }: { screen: Screen; box
   const icons = useMemo(() => pickIcons(files), [files]);
   const previews = useMemo(() => files.filter((f) => f.component === 'previews' && f.kind === 'image'), [files]);
   const themeFont = usePackageFont(useMemo(() => themeFontFile(files), [files])).family ?? undefined;
+  const hasLockLayout = useHasLockLayout();
   const w = Math.min(Math.max(120, box.w - 72), Math.max(200, box.h - 40) / ratio);
   const s = w / 360;
-  const now = new Date();
+  const now = useClock();
   const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
   const date = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
 
@@ -70,45 +72,61 @@ function ThemeScreen({ screen, box, ratio, previewIndex }: { screen: Screen; box
   }
   const lock = screen === 'lock';
   const wallpaper = findWallpaper(files, lock);
+  // Everything on the phone is a shortcut to where you change it.
+  const openIcon = (path: string) => {
+    A.goTo('design', 'icons');
+    A.select(path, 'single');
+  };
+  const openLockPiece = (path: string, ord: number | null) => {
+    useMamlSelection.setState({ path, ord });
+    A.goTo('design', 'lockscreen');
+  };
   return (
     <Frame ratio={ratio} box={box}>
-      {wallpaper ? (
-        <img className="fill" src={resourceUrl('main', wallpaper.path, wallpaper.rev)} alt="" />
+      {lock && hasLockLayout ? (
+        <PhoneLockScreen width={w} height={w * ratio} font={themeFont} onPick={openLockPiece} />
       ) : (
-        <div className="fill" style={{ position: 'absolute', inset: 0, background: 'linear-gradient(160deg, #2b2f3a, #121317)' }} />
+        <>
+          {wallpaper ? (
+            <img className="fill" src={resourceUrl('main', wallpaper.path, wallpaper.rev)} alt="" />
+          ) : (
+            <div className="fill" style={{ position: 'absolute', inset: 0, background: 'linear-gradient(160deg, #2b2f3a, #121317)' }} />
+          )}
+          <button className="pp-hit" style={{ inset: '7% 2% 2% 2%' }} title="Change the wallpaper" aria-label="Change the wallpaper" onClick={() => A.goTo('design', 'wallpapers')} />
+        </>
       )}
-      <div className="mock-status" style={{ fontSize: 12 * s, color: '#fff', fontFamily: themeFont }}>
+      <button className="mock-status pp-click" title="Change the font" style={{ fontSize: 12 * s, color: '#fff', fontFamily: themeFont }} onClick={() => A.goTo('design', 'fonts')}>
         <span>{time}</span>
         <span>▮▮▮ ◔ 87%</span>
-      </div>
-      {lock ? (
-        <div className="mock-clock" style={{ color: '#fff', fontFamily: themeFont }}>
+      </button>
+      {lock && hasLockLayout ? null : lock ? (
+        <button className="mock-clock pp-click" title="Lock screen layout" style={{ color: '#fff', fontFamily: themeFont }} onClick={() => A.goTo('design', 'lockscreen')}>
           <div className="t" style={{ fontSize: 74 * s }}>
             {time}
           </div>
           <div style={{ fontSize: 14 * s, marginTop: 6 * s }}>{date}</div>
-        </div>
+        </button>
       ) : (
         <>
           <div className="mock-icons" style={{ rowGap: 18 * s }}>
             {icons.slice(4, 24).map((icon) => (
-              <div key={icon.file.path} className="mock-icon" title={icon.file.path}>
+              <button key={icon.file.path} className="mock-icon pp-click" title={`Change this icon · ${icon.file.path}`} onClick={() => openIcon(icon.file.path)}>
                 <div className="img">
                   <img src={resourceUrl('main', icon.file.path, icon.file.rev)} alt="" loading="lazy" />
                 </div>
                 <div className="lbl" style={{ fontSize: 10.5 * s }}>
                   {icon.label}
                 </div>
-              </div>
+              </button>
             ))}
           </div>
           <div className="mock-dock">
             {icons.slice(0, 4).map((icon) => (
-              <div key={icon.file.path} className="mock-icon">
+              <button key={icon.file.path} className="mock-icon pp-click" title={`Change this icon · ${icon.file.path}`} onClick={() => openIcon(icon.file.path)}>
                 <div className="img">
                   <img src={resourceUrl('main', icon.file.path, icon.file.rev)} alt="" loading="lazy" />
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </>
@@ -274,7 +292,7 @@ export function PhonePanel() {
                 </button>
               </div>
             ) : (
-              <span className="faint pp-note">Live mockup of your wallpaper{screen === 'home' ? ' and icons' : ' and clock'}. Lock screen layouts (MAML) render on the real phone.</span>
+              <span className="faint pp-note">Updates as you edit. Click the clock, wallpaper, an icon or the status bar to change it.</span>
             )}
           </div>
           {device.ready && (

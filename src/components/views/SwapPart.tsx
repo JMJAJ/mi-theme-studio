@@ -14,6 +14,7 @@ import { refreshDownloads, useThemeStore } from '../../state/themeStore';
 import { openStoreTab } from '../../state/storeTab';
 import { Modal } from '../common/Modal';
 import { PART_COPY, PART_ORDER, PartThumb, previewImages } from './PartArt';
+import { ZoomPan } from '../common/ZoomPan';
 
 type Source =
   | { kind: 'download'; key: string; theme: DownloadedTheme }
@@ -69,6 +70,9 @@ function SwapPartDialog({ request, onClose }: { request: SwapRequest; onClose: (
   const [error, setError] = useState<string | null>(null);
   const [phoneThemes, setPhoneThemes] = useState<CachedDeviceTheme[] | null>(null);
   const [clean, setClean] = useState(true);
+  // Wallpapers: which screen to change. Lock screen: its look depends on its lock wallpaper too.
+  const [wallWhich, setWallWhich] = useState<'both' | 'home' | 'lock'>('both');
+  const [withLockWall, setWithLockWall] = useState(true);
   const [targets, setTargets] = useState<Set<MediaTarget>>(new Set());
   const [busy, setBusy] = useState(false);
 
@@ -185,11 +189,20 @@ function SwapPartDialog({ request, onClose }: { request: SwapRequest; onClose: (
 
   const chosenParts = multi ? chips.filter((p) => picked.has(p.id)) : def ? [def] : [];
   const canSwap = pickedMedia ? targets.size > 0 : sourceReady && (multi ? chosenParts.length > 0 : sourceFiles.length > 0);
+  const takesWalls = chosenParts.some((p) => p.id === 'wallpapers');
+  const takesLock = chosenParts.some((p) => p.id === 'lockscreen');
+  const sourceHasWall = sourceReady && !!reference?.files.some((f) => f.component === 'wallpapers' && f.kind === 'image');
   const swap = async () => {
     setBusy(true);
-    const ok = pickedMedia
-      ? await A.applyDownloadedMedia(pickedMedia, [...targets])
-      : await A.swapParts(chosenParts.map((p) => ({ id: p.id, label: p.label })), clean);
+    let ok: boolean;
+    if (pickedMedia) ok = await A.applyDownloadedMedia(pickedMedia, [...targets]);
+    else {
+      // A single screen's wallpaper is taken on its own; everything else swaps as whole parts.
+      const whole = chosenParts.filter((p) => !(p.id === 'wallpapers' && wallWhich !== 'both'));
+      ok = whole.length ? await A.swapParts(whole.map((p) => ({ id: p.id, label: p.label })), clean) : true;
+      if (ok && takesWalls && wallWhich !== 'both') ok = await A.takeReferenceWallpaper(wallWhich);
+      if (ok && takesLock && !takesWalls && withLockWall && sourceHasWall) ok = await A.takeReferenceWallpaper('lock');
+    }
     setBusy(false);
     if (ok) onClose();
   };
@@ -244,7 +257,7 @@ function SwapPartDialog({ request, onClose }: { request: SwapRequest; onClose: (
       }
     >
       {multi && <p className="muted swap-hint">Tick the parts you want. Click a part to see it now and after.</p>}
-      <div className="swap-parts" role="tablist" aria-label="Part to swap">
+      {multi && <div className="swap-parts" role="tablist" aria-label="Part to swap">
         {chips.map((p) => (
           <button
             key={p.id}
@@ -274,10 +287,29 @@ function SwapPartDialog({ request, onClose }: { request: SwapRequest; onClose: (
             <Loader2 className="spin" /> Reading the theme…
           </span>
         )}
-      </div>
+      </div>}
 
       <div className={`swap ${multi ? 'is-multi' : ''}`}>
         <div className="swap-sources" hidden={multi}>
+          <label className="swap-what">
+            <span>Swap</span>
+            <select
+              className="select"
+              value={part}
+              onChange={(e) => {
+                setPart(e.target.value);
+                setPicked(new Set([e.target.value]));
+                if (selected?.startsWith('media:')) setSelected(null);
+              }}
+            >
+              {chips.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                  {compare.get(p.id) === 'differs' ? ' · different' : compare.get(p.id) === 'new' ? ' · you don’t have it' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="swap-group">Take it from</div>
           {mediaItems.length > 0 && (
             <>
@@ -323,7 +355,13 @@ function SwapPartDialog({ request, onClose }: { request: SwapRequest; onClose: (
             <figure>
               <figcaption>Now</figcaption>
               <div className="swap-art">
-                <PartThumb part={part} files={currentFiles} previews={currentPreviews} interactive />
+                {currentFiles.length ? (
+                  <ZoomPan key={`now:${part}`}>
+                    <PartThumb part={part} files={currentFiles} previews={currentPreviews} interactive />
+                  </ZoomPan>
+                ) : (
+                  <span className="swap-empty">Not in this theme yet</span>
+                )}
               </div>
               <span className="faint">{currentFiles.length ? `${plural(currentFiles.length, 'file')} · ${formatBytes(currentFiles.reduce((n, f) => n + f.size, 0))}` : 'Not in this theme'}</span>
             </figure>
@@ -336,9 +374,11 @@ function SwapPartDialog({ request, onClose }: { request: SwapRequest; onClose: (
                 ) : opening ? (
                   <Loader2 className="spin" />
                 ) : sourceReady && sourceFiles.length ? (
-                  <PartThumb part={part} files={sourceFiles} previews={sourcePreviews} slot="ref" interactive />
+                  <ZoomPan key={`new:${part}:${reference?.sourcePath}`}>
+                    <PartThumb part={part} files={sourceFiles} previews={sourcePreviews} slot="ref" interactive />
+                  </ZoomPan>
                 ) : (
-                  <span className="swap-empty">{sourceReady ? `No ${label.toLowerCase()} in this theme` : 'Pick a theme on the left'}</span>
+                  <span className="swap-empty">{sourceReady ? `No ${label.toLowerCase()} in this theme` : '← Pick a theme to see it here'}</span>
                 )}
               </div>
               <span className="faint ellipsis">
@@ -347,7 +387,7 @@ function SwapPartDialog({ request, onClose }: { request: SwapRequest; onClose: (
             </figure>
           </div>
 
-          {compare.size > 0 && (
+          {multi && compare.size > 0 && (
             <div className="swap-legend">
               <span>
                 <i className="swap-diff is-differs" /> different from yours
@@ -385,7 +425,38 @@ function SwapPartDialog({ request, onClose }: { request: SwapRequest; onClose: (
               ))}
             </div>
           ) : (
-            (multi ? chosenParts.length > 0 : currentFiles.length > 0) && (
+            <>
+              {takesWalls && sourceReady && (
+                <div className="swap-options">
+                  <span className="muted">Change the wallpaper of</span>
+                  <div className="segmented">
+                    {(
+                      [
+                        ['both', 'Home & lock'],
+                        ['home', 'Home only'],
+                        ['lock', 'Lock only'],
+                      ] as const
+                    ).map(([id, name]) => (
+                      <button key={id} aria-pressed={wallWhich === id} onClick={() => setWallWhich(id)}>
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {takesLock && !takesWalls && sourceHasWall && (
+                <label className="check swap-options">
+                  <input type="checkbox" checked={withLockWall} onChange={(e) => setWithLockWall(e.target.checked)} />
+                  <span>
+                    Also use its lock screen wallpaper
+                    <span className="faint"> · the clock is drawn over it, so without it the lock screen keeps your old picture.</span>
+                  </span>
+                </label>
+              )}
+            </>
+          )}
+          {!pickedMedia &&
+            (multi ? chosenParts.length > 0 : currentFiles.length > 0) && !(takesWalls && !multi && wallWhich !== 'both') && (
               <label className="check swap-options">
                 <input type="checkbox" checked={clean} onChange={(e) => setClean(e.target.checked)} />
                 <span>
@@ -393,8 +464,7 @@ function SwapPartDialog({ request, onClose }: { request: SwapRequest; onClose: (
                   <span className="faint"> · a clean swap, nothing old left behind. Untick to only add and overwrite.</span>
                 </span>
               </label>
-            )
-          )}
+            )}
           <p className="faint swap-foot">{PART_COPY[part] ?? def?.description}. Everything is undoable with Ctrl+Z.</p>
         </div>
       </div>

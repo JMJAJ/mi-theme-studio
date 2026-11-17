@@ -3,7 +3,8 @@
 // on the right. The full menu lives behind one button.
 import { TryOnButton } from '../common/TryOnButton';
 import { useRef, useState } from 'react';
-import { Clock3, Download, FilePen, XCircle, Menu, PanelRight, Redo2, Save, Search, Smartphone, Undo2 } from 'lucide-react';
+import { ArrowDownCircle, Clock3, Download, FilePen, Loader2, XCircle, Menu, PanelRight, Redo2, Save, Search, Smartphone, Undo2 } from 'lucide-react';
+import { installUpdate, useUpdater } from '../../state/updater';
 import { MenuPopup, type MenuAction, type MenuItem } from '../common/Menu';
 import { commandById, isEnabled, runCommand } from '../../state/commands';
 import { setState, updateLayout, useStore } from '../../state/store';
@@ -48,6 +49,24 @@ function appMenuItems(): MenuItem[] {
   }
   while (out[out.length - 1] === 'separator') out.pop();
   return out;
+}
+
+/** Shows up only when a newer version is out: one click downloads, installs and restarts. */
+function UpdateButton() {
+  const { status, version, notes, progress } = useUpdater();
+  if (status !== 'available' && status !== 'downloading' && status !== 'installing') return null;
+  const working = status !== 'available';
+  return (
+    <button
+      className="btn tb-update"
+      disabled={working}
+      title={working ? 'Updating Mi Theme Studio…' : `Mi Theme Studio ${version} is ready to install. Your theme is saved first if you want.${notes ? `\n\n${notes}` : ''}`}
+      onClick={() => void installUpdate()}
+    >
+      {working ? <Loader2 className="spin" /> : <ArrowDownCircle />}
+      {status === 'available' ? `Update to ${version}` : status === 'installing' ? 'Restarting…' : `Updating${progress !== undefined ? ` ${Math.round(progress * 100)}%` : '…'}`}
+    </button>
+  );
 }
 
 export function TitleBar() {
@@ -97,6 +116,7 @@ export function TitleBar() {
       </button>
 
       <div className="tb-actions">
+        <UpdateButton />
         {device.ready && <TryOnButton className="btn" />}
         <button className={`tb-phone tone-${device.tone}`} onClick={() => goTo('phone')} title={device.title}>
           <span className={`dot dot-${device.tone}`} />

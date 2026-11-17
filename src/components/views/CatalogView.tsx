@@ -1034,7 +1034,7 @@ function MediaActions({ item, compact = false }: { item: DownloadedTheme; compac
 // ---------------------------------------------------------------------------
 // downloads library
 
-function DownloadsLibrary({ navigate }: { navigate: (route: Route) => void }) {
+function DownloadsLibrary({ navigate, product, onProduct }: { navigate: (route: Route) => void; product: ProductKind; onProduct: (kind: ProductKind) => void }) {
   const downloads = useThemeStore((s) => s.downloads);
   const loaded = useThemeStore((s) => s.loaded);
   const hasProject = useStore((s) => !!s.project);
@@ -1045,57 +1045,70 @@ function DownloadsLibrary({ navigate }: { navigate: (route: Route) => void }) {
       </div>
     );
   }
-  if (!downloads.length) {
+  const kindLabel = KINDS.find((k) => k.kind === product)?.label.toLowerCase() ?? 'items';
+  // The Themes / Fonts / Wallpapers / Ringtones tabs above pick what is listed, newest first.
+  const items = downloads.filter((d) => d.kind === product).sort((a, b) => b.downloadedAtMs - a.downloadedAtMs);
+  const others = KINDS.filter((k) => k.kind !== product).map((k) => ({ ...k, count: downloads.filter((d) => d.kind === k.kind).length })).filter((k) => k.count > 0);
+  const elsewhere = others.length > 0 && (
+    <div className="dl-others">
+      <span className="faint">Also downloaded:</span>
+      {others.map((k) => (
+        <button key={k.kind} className="chip" onClick={() => onProduct(k.kind)}>
+          <k.icon /> {k.label} {k.count}
+        </button>
+      ))}
+    </div>
+  );
+  if (!items.length) {
     return (
       <div className="empty">
         <HardDrive />
-        <h3>Nothing downloaded yet</h3>
-        <p>Download free themes, fonts, wallpapers or ringtones from Discover. Downloads stay available offline.</p>
+        <h3>No {kindLabel} downloaded yet</h3>
+        <p>Download free {kindLabel} from Discover. Downloads stay available offline.</p>
+        {elsewhere}
       </div>
     );
   }
+  const ringtones = product === 'ringtone';
   return (
     <>
       <div className="section-head">
-        <h2>Downloaded</h2>
+        <h2>Downloaded {kindLabel}</h2>
         <span className="muted">
-          {plural(downloads.length, 'item')} · {formatBytes(downloads.reduce((n, d) => n + d.sizeBytes, 0))}
+          {plural(items.length, nounOf(product))} · {formatBytes(items.reduce((n, d) => n + d.sizeBytes, 0))}
         </span>
+        {elsewhere}
       </div>
-      <div className="download-list surface">
-        {downloads.map((d) => (
-          <div key={d.moduleId} className="download-row">
-            <button className={`thumb kind-${d.kind}`} onClick={() => navigate({ type: 'detail', moduleId: d.moduleId, name: d.name })} aria-label={`Open ${d.name}`}>
-              <RemoteImage src={d.cover} alt="" />
+      <div className={`dl-grid kind-${product}`}>
+        {items.map((d) => (
+          <div key={d.moduleId} className={`dl-card kind-${d.kind}`}>
+            <button className="dl-cover" onClick={() => navigate({ type: 'detail', moduleId: d.moduleId, name: d.name })} aria-label={`Open ${d.name}`}>
+              {ringtones ? <Music /> : <RemoteImage src={d.cover} alt="" />}
             </button>
-            <div className="grow" style={{ minWidth: 0 }}>
-              <div className="name ellipsis">{d.name}</div>
+            <div className="dl-body">
+              <div className="dl-name ellipsis" title={d.name}>
+                {d.name}
+              </div>
               <div className="faint ellipsis">
-                <span className="badge badge-outline">{nounOf(d.kind)}</span> {d.designer ? `${d.designer} · ` : ''}
+                {d.designer ? `${d.designer} · ` : ''}
                 {formatBytes(d.sizeBytes)} · {formatDateTime(d.downloadedAtMs)}
               </div>
-            </div>
-            <div className="row">
-              {isPackage(d.kind) ? (
-                <>
-                  {hasProject && (
-                    <button className="btn btn-sm btn-primary" onClick={() => putToUse(d)}>
-                      <Repeat /> Use in my theme…
-                    </button>
-                  )}
-                  <button className="btn btn-sm" onClick={() => void A.openDownloadAsProject(d)}>
-                    <PackageOpen /> Open
+              <div className="dl-actions">
+                <button className="btn btn-sm btn-primary grow" onClick={() => putToUse(d)} title={hasProject ? 'Take parts of it into the theme you are editing' : 'Start a new theme with it'}>
+                  {hasProject ? <Repeat /> : <Sparkles />} {hasProject ? 'Use in my theme…' : 'Start a theme'}
+                </button>
+                {isPackage(d.kind) && (
+                  <button className="btn btn-ghost btn-sm" title="Open as the theme you are working on" aria-label="Open as theme" onClick={() => void A.openDownloadAsProject(d)}>
+                    <PackageOpen />
                   </button>
-                </>
-              ) : (
-                <MediaActions item={d} compact />
-              )}
-              <button className="btn btn-ghost btn-sm" title="Show file" aria-label="Show file" onClick={() => void A.revealPath(d.path)}>
-                <FolderOpen />
-              </button>
-              <button className="btn btn-ghost btn-sm" title="Delete download" aria-label="Delete download" onClick={() => void removeDownload(d)}>
-                <Trash2 />
-              </button>
+                )}
+                <button className="btn btn-ghost btn-sm" title="Show file" aria-label="Show file" onClick={() => void A.revealPath(d.path)}>
+                  <FolderOpen />
+                </button>
+                <button className="btn btn-ghost btn-sm" title="Delete download" aria-label="Delete download" onClick={() => void removeDownload(d)}>
+                  <Trash2 />
+                </button>
+              </div>
             </div>
           </div>
         ))}
@@ -1316,7 +1329,7 @@ export function CatalogView() {
           ) : tab === 'saved' ? (
             <SavedLibrary navigate={navigate} />
           ) : (
-            <DownloadsLibrary navigate={navigate} />
+            <DownloadsLibrary navigate={navigate} product={product} onProduct={setProduct} />
           )}
         </div>
       </div>

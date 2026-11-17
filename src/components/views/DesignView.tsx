@@ -9,7 +9,7 @@ import { formatBytes, plural } from '../../lib/format';
 import type { ComponentDef, FileInfo, MetadataView } from '../../lib/types';
 import * as A from '../../state/actions';
 import { runCommand } from '../../state/commands';
-import { setState, useStore } from '../../state/store';
+import { getState, setState, useStore } from '../../state/store';
 import { ComponentView } from './ComponentView';
 import { ThemeInfo } from './ThemeInfo';
 import { Welcome } from './Welcome';
@@ -187,8 +187,10 @@ export function DesignView() {
   const project = useStore((s) => s.project);
   const part = useStore((s) => s.part);
   useEffect(() => {
-    // Leaving a part clears its selection so the next part starts clean.
-    return () => setState({ selection: [] });
+    // A new part starts clean, but keeps a file of that part picked on the way in (an icon clicked on the phone).
+    const { selection, fileIndex } = getState();
+    const keep = selection.filter((p) => !!part && fileIndex.get(p)?.component === part);
+    if (keep.length !== selection.length) setState({ selection: keep });
   }, [part]);
   if (!project) return <Welcome />;
   return part ? <PartView part={part} /> : <Overview />;

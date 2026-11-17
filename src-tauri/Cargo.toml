@@ -1,6 +1,6 @@
 [package]
 name = "mi-theme-studio"
-version = "0.3.21"
+version = "0.3.25"
 description = "Desktop studio for MIUI/HyperOS theme packages"
 authors = ["JMJAJ"]
 license = "MIT"
@@ -31,6 +31,8 @@ ureq = "3"
 sha1_smol = "1"
 png = "0.17"
 regex = { version = "1", default-features = false, features = ["std", "unicode-perl", "unicode-case"] }
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 [dev-dependencies]
 tempfile = "3"

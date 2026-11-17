@@ -516,7 +516,9 @@ button.sb-item:hover { background: var(--bg-hover); color: var(--text); }
 .modal-body { padding: 8px 16px 14px; overflow: auto; color: var(--text-2); font-size: var(--fs); line-height: 1.55; display: flex; flex-direction: column; gap: 12px; }
 .modal-body .message { white-space: pre-wrap; }
 .modal-body ul { margin: 0; padding-left: 18px; }
-.modal-foot { padding: 10px 16px 14px; display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--line); }
+.modal-foot { padding: 10px 16px 14px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--line); }
+.choice-list { display: flex; flex-direction: column; gap: 6px; }
+.choice-list .btn { width: 100%; justify-content: flex-start; height: 36px; padding: 0 14px; }
 
 /* ---------- palette ---------- */
 .palette { width: min(620px, calc(100vw - 40px)); background: var(--bg-2); border-radius: 9px; box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; max-height: 62vh; }
@@ -736,3 +738,26 @@ button.catalog-card:hover, button.icon-link:hover { border-color: var(--line-str
 .download-row .thumb.kind-ringtone { aspect-ratio: 1; border-radius: 50%; }
 .download-row .thumb.kind-font { aspect-ratio: 4 / 3; width: 64px; }
 .store-audio { width: 100%; max-width: 460px; margin-top: 14px; display: block; }
+
+/* Downloads: a cover grid per kind (the kind tabs pick which) */
+.dl-others { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-left: auto; font-size: var(--fs-xs); }
+.empty .dl-others { margin: 10px 0 0; justify-content: center; }
+.dl-others .chip svg { width: 12px; height: 12px; }
+.dl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 16px; }
+.dl-grid.kind-font { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.dl-grid.kind-ringtone { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.dl-card { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg-2); overflow: hidden; transition: border-color 0.15s; }
+.dl-card:hover { border-color: var(--line-strong); }
+.dl-cover { display: grid; place-items: center; padding: 0; border: 0; border-bottom: 1px solid var(--line); background: var(--bg-3); aspect-ratio: 9 / 16; overflow: hidden; cursor: pointer; }
+.dl-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.dl-card.kind-font .dl-cover { aspect-ratio: 16 / 10; background: #f4f4f5; }
+.dl-card.kind-font .dl-cover img { object-fit: contain; }
+.dl-card.kind-ringtone { flex-direction: row; align-items: stretch; }
+.dl-card.kind-ringtone .dl-cover { aspect-ratio: 1; width: 76px; border-bottom: 0; border-right: 1px solid var(--line); color: var(--accent); }
+.dl-card.kind-ringtone .dl-cover svg { width: 24px; height: 24px; }
+.dl-body { display: flex; flex-direction: column; gap: 3px; padding: 10px 10px 10px 12px; min-width: 0; flex: 1; }
+.dl-name { font-weight: 600; }
+.dl-body .faint { font-size: var(--fs-xs); }
+.dl-actions { display: flex; align-items: center; gap: 2px; margin-top: 7px; }
+.dl-actions .btn-primary { min-width: 0; justify-content: center; }
+.dl-actions .btn-ghost { flex: none; padding: 0 6px; }

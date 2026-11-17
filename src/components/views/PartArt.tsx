@@ -9,6 +9,7 @@ import type { FileInfo, ProjectSnapshot, Slot } from '../../lib/types';
 import { componentIcon } from '../common/icons';
 import { themeFontFile, usePackageFont } from '../common/themeFont';
 import { findWallpaper, pickIcons } from './PreviewView';
+import { MamlFit } from './MamlPreview';
 
 /** Order and wording that match how a theme looks on the phone. */
 export const PART_ORDER = ['wallpapers', 'lockscreen', 'icons', 'home', 'systemui', 'fonts', 'widgets', 'sounds', 'previews', 'settings', 'apps', 'framework', 'boot', 'other'];
@@ -80,6 +81,8 @@ export function PartThumb({
 }) {
   const images = files.filter((f) => f.kind === 'image');
   const url = (f: FileInfo) => resourceUrl(slot, f.path, f.rev);
+  // The lock screen drawn from its own layout beats a designer screenshot.
+  if (part === 'lockscreen' && files.some((f) => /(^|\/|!\/)manifest\.xml$/i.test(f.path))) return <MamlFit componentId={part} slot={slot} />;
   const shots = partPreviews(part, previews);
   if (shots.length && part !== 'icons') return <Phones files={shots} slot={slot} />;
   if (part === 'icons') {

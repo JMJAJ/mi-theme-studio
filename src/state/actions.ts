@@ -3,7 +3,7 @@
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
-import { api, errorCode, errorMessage, newOpId } from '../lib/api';
+import { api, errorCode, errorMessage, newOpId, resourceUrl } from '../lib/api';
 import { fileName, joinPath, parentOf, splitNested, validateName } from '../lib/paths';
 import type { AdbLogEntry, ConflictPolicy, DownloadedTheme, MediaTarget, ExportProgress, ProjectSnapshot, SaveResult, Slot } from '../lib/types';
 import { formatBytes, plural } from '../lib/format';
@@ -800,6 +800,49 @@ export async function writeGenerated(files: { path: string; bytes: Uint8Array }[
   applySnapshot(response.snapshot);
   if (done) toast('success', done, undefined, afterChange(1));
   return true;
+}
+
+/**
+ * Take the open reference theme's home and/or lock wallpaper into this theme,
+ * as wallpaper/default_wallpaper.* and wallpaper/default_lock_wallpaper.*.
+ * Only the chosen screen changes; a theme with one picture gives it to both.
+ */
+export async function takeReferenceWallpaper(which: 'home' | 'lock' | 'both') {
+  const { reference, project } = getState();
+  if (!reference || !project) return false;
+  const walls = reference.files.filter((f) => f.component === 'wallpapers' && f.kind === 'image');
+  const named = (re: RegExp) => walls.find((f) => re.test(fileName(f.path)));
+  const home = named(/^default_wallpaper\./i) ?? walls.find((f) => !/lock/i.test(f.path)) ?? walls[0];
+  const lock = named(/^default_lock_wallpaper\./i) ?? named(/lock/i) ?? home;
+  const jobs = [
+    ...(which !== 'lock' && home ? [{ stem: 'wallpaper/default_wallpaper', src: home }] : []),
+    ...(which !== 'home' && lock ? [{ stem: 'wallpaper/default_lock_wallpaper', src: lock }] : []),
+  ];
+  if (!jobs.length) {
+    toast('warning', `${reference.title} has no wallpaper to take.`);
+    return false;
+  }
+  const files: { path: string; bytes: Uint8Array }[] = [];
+  for (const job of jobs) {
+    const ext = (job.src.path.split('.').pop() ?? 'jpg').toLowerCase();
+    const response = await fetch(`${resourceUrl('ref', job.src.path, job.src.rev)}&take`);
+    if (!response.ok) {
+      toast('error', `Could not read ${fileName(job.src.path)} from ${reference.title}.`);
+      return false;
+    }
+    files.push({ path: `${job.stem}.${ext}`, bytes: new Uint8Array(await response.arrayBuffer()) });
+  }
+  // The same picture under another extension would be a second wallpaper: remove it.
+  const stale = project.files
+    .filter((f) => !f.path.includes('!/') && files.some((n) => n.path !== f.path && f.path.toLowerCase().startsWith(`${n.path.slice(0, n.path.lastIndexOf('.')).toLowerCase()}.`)))
+    .map((f) => f.path);
+  if (stale.length) {
+    const snapshot = await guard('Replace wallpaper', () => api.filesDelete(stale));
+    if (!snapshot) return false;
+    applySnapshot(snapshot);
+  }
+  const where = which === 'both' ? 'home and lock screen' : which === 'home' ? 'home screen' : 'lock screen';
+  return writeGenerated(files, 'Take wallpaper', `${where[0].toUpperCase()}${where.slice(1)} wallpaper taken from ${reference.title}`);
 }
 
 /** Replace a text file's contents (used by editors that are not the code editor, e.g. Colours). */

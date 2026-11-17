@@ -9,6 +9,17 @@ import * as A from '../../state/actions';
 import { useDeviceSummary } from '../shell/deviceSummary';
 import { MirrorButton } from '../common/MirrorButton';
 import { themeFontFile, usePackageFont } from '../common/themeFont';
+import { PhoneLockScreen, useHasLockLayout } from './MamlPreview';
+
+/** The current time, refreshed every 15 seconds so mock-up clocks keep up. */
+export function useClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 15000);
+    return () => window.clearInterval(id);
+  }, []);
+  return now;
+}
 
 type Screen = 'lock' | 'home' | 'previews' | 'screenshot';
 
@@ -160,7 +171,8 @@ export function PreviewView() {
 
   const wallpaper = (wallPath && files.find((f) => f.path === wallPath)) || findWallpaper(files, screen === 'lock');
   const icons = useMemo(() => pickIcons(files), [files]);
-  const now = new Date();
+  const hasLockLayout = useHasLockLayout();
+  const now = useClock();
   const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
   const date = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
 
@@ -197,9 +209,12 @@ export function PreviewView() {
     label = <span className="badge badge-outline">Package preview image{current ? ` · ${fileName(current.path)}` : ''}</span>;
   } else {
     const lock = screen === 'lock';
+    const realLock = lock && hasLockLayout;
     content = (
       <>
-        {wallpaper ? (
+        {realLock ? (
+          <PhoneLockScreen width={screenW} height={screenH} font={themeFont} />
+        ) : wallpaper ? (
           <img className="fill" src={resourceUrl('main', wallpaper.path, wallpaper.rev)} alt="" />
         ) : (
           <div className="fill" style={{ position: 'absolute', inset: 0, background: 'linear-gradient(160deg, #2b2f3a, #141519)' }} />
@@ -208,7 +223,7 @@ export function PreviewView() {
           <span>{time}</span>
           <span>▮▮▮ ◔ 87%</span>
         </div>
-        {lock ? (
+        {realLock ? null : lock ? (
           <div className="mock-clock" style={{ color: '#fff', fontFamily: themeFont }}>
             <div className="t" style={{ fontSize: 74 * s }}>{time}</div>
             <div style={{ fontSize: 14 * s, marginTop: 6 * s }}>{date}</div>
@@ -239,10 +254,16 @@ export function PreviewView() {
       </>
     );
     label = (
-      <span className="badge badge-warn" title="Wallpaper and icon images from the package placed on a generic layout. Lock screen MAML, fonts, clocks and system UI resources are not rendered.">
-        Static mockup · {wallpaper ? fileName(wallpaper.path) : 'no wallpaper'}
-        {!lock ? ` · ${icons.length} icons` : ''} · MAML not rendered
-      </span>
+      realLock ? (
+        <span className="badge badge-info" title="Drawn from the theme's lock screen manifest.xml at the current time. Animations, touch and live data (weather, notifications, music) only run on the phone.">
+          Lock screen layout · still preview
+        </span>
+      ) : (
+        <span className="badge badge-warn" title="Wallpaper and icon images from the package placed on a generic layout. System UI resources are not rendered.">
+          Mockup · {wallpaper ? fileName(wallpaper.path) : 'no wallpaper'}
+          {!lock ? ` · ${icons.length} icons` : ' · no lock screen layout in this theme'}
+        </span>
+      )
     );
   }
 

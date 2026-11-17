@@ -28,6 +28,13 @@
       "csp": "default-src 'self'; img-src 'self' data: blob: themeres: http://themeres.localhost https://themeres.localhost https://*.mi-img.com; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost themeres: http://themeres.localhost; font-src 'self' data: themeres: http://themeres.localhost; media-src 'self' themeres: http://themeres.localhost https://*.mi-img.com"
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk4MTIzQjg1N0QyOEE5RjEKUldUeHFTaDloVHNTbUgyMTMvTHRxalgzRWdITFg4WGdGaUVMdHY5MWo0cXY3cVN1MzI0VHVXTDIK",
+      "endpoints": ["https://github.com/JMJAJ/mi-theme-studio/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
+    }
+  },
   "bundle": {
     "active": true,
     "resources": {

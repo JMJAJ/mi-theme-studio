@@ -8,6 +8,7 @@ import { DEFAULT_LAYOUT } from '../../state/store';
 import * as A from '../../state/actions';
 import { MAX_ZOOM, MIN_ZOOM, resetZoom, setZoom, useZoom, zoomIn, zoomOut } from '../../state/zoom';
 import { REGIONS, REGION_NOTES, setFreeOnly, setRegion, useThemeStore } from '../../state/themeStore';
+import { checkForUpdate, installUpdate, useUpdater } from '../../state/updater';
 
 export type SettingsSection = 'general' | 'appearance' | 'phone' | 'store' | 'keys' | 'about';
 
@@ -247,6 +248,38 @@ function Keys({ query }: { query: string }) {
   );
 }
 
+function UpdatesRow() {
+  const { status, version, error, checkedAt, progress } = useUpdater();
+  const when = checkedAt ? new Date(checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
+  const text =
+    status === 'checking'
+      ? 'Checking…'
+      : status === 'available'
+        ? `Version ${version} is available.`
+        : status === 'downloading'
+          ? `Downloading ${version}${progress !== undefined ? ` · ${Math.round(progress * 100)}%` : '…'}`
+          : status === 'installing'
+            ? 'Installing and restarting…'
+            : status === 'none'
+              ? `You have the latest version${when ? ` (checked ${when})` : ''}.`
+              : status === 'error'
+                ? `Could not check: ${error}`
+                : 'Checks GitHub for new versions when the app starts and every few hours.';
+  return (
+    <Row title="Updates" description={text}>
+      {status === 'available' ? (
+        <button className="btn btn-primary btn-sm" onClick={() => void installUpdate()}>
+          Update and restart
+        </button>
+      ) : (
+        <button className="btn btn-sm" disabled={status === 'checking' || status === 'downloading' || status === 'installing'} onClick={() => void checkForUpdate(true)}>
+          Check for updates
+        </button>
+      )}
+    </Row>
+  );
+}
+
 function About() {
   const info = useStore((s) => s.appInfo);
   const mirror = useStore((s) => s.mirror);
@@ -259,6 +292,9 @@ function About() {
           <div className="muted">Version {info?.version ?? '—'}</div>
         </div>
       </div>
+      <Group title="Version">
+        <UpdatesRow />
+      </Group>
       <Group title="About">
         <Row title="Independent tool" description="Not affiliated with or endorsed by Xiaomi. Contains no Xiaomi application code or assets; store data is loaded from the public Theme Manager service on request." />
         <Row title="License" description="MIT License." />

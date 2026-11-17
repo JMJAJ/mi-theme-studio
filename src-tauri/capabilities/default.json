@@ -13,6 +13,8 @@
     "dialog:allow-message",
     "dialog:allow-ask",
     "dialog:allow-confirm",
-    "opener:allow-reveal-item-in-dir"
+    "opener:allow-reveal-item-in-dir",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

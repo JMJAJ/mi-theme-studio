@@ -7,6 +7,7 @@ import type { FileInfo, Slot } from '../../lib/types';
 import { setState, useStore } from '../../state/store';
 import * as A from '../../state/actions';
 import { issueIcon } from '../views/ProblemList';
+import { ZoomImage } from '../common/ZoomImage';
 
 function FileDetails({ file, slot }: { file: FileInfo; slot: Slot }) {
   const validation = useStore((s) => s.validation);
@@ -20,9 +21,7 @@ function FileDetails({ file, slot }: { file: FileInfo; slot: Slot }) {
       </div>
       {file.kind === 'image' && (
         <div className="insp-section">
-          <div className="insp-preview checker">
-            <img src={resourceUrl(slot, file.path, file.rev)} alt={`Preview of ${fileName(file.path)}`} />
-          </div>
+          <ZoomImage src={resourceUrl(slot, file.path, file.rev)} alt={`Preview of ${fileName(file.path)}`} />
         </div>
       )}
       <div className="insp-section">

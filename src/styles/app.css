@@ -464,6 +464,13 @@ p { margin: 0; }
 .insp-path { font: 11.5px/1.45 var(--mono); color: var(--muted); overflow-wrap: anywhere; margin-top: 3px; }
 .insp-preview { border-radius: 6px; border: 1px solid var(--line); overflow: hidden; display: grid; place-items: center; height: 180px; }
 .insp-preview img { max-width: 92%; max-height: 92%; object-fit: contain; }
+.zoom-image { display: flex; flex-direction: column; gap: 4px; }
+.zoom-box { position: relative; overflow: hidden; border-radius: 6px; border: 1px solid var(--line); touch-action: none; user-select: none; }
+.zoom-box img { position: absolute; left: 50%; top: 50%; max-width: none; transform-origin: center; will-change: transform; }
+.zoom-bar { display: flex; align-items: center; gap: 4px; font-size: var(--fs-xs); }
+.zoom-bar .tb-icon { width: 26px; height: 26px; }
+.zoom-bar .tb-icon svg, .zoom-bar .btn svg { width: 14px; height: 14px; }
+.zoom-pct { min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; color: var(--text-2, inherit); }
 .insp-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 
 /* ---------- dock ---------- */

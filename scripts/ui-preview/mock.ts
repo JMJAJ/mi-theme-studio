@@ -89,6 +89,16 @@ if (dialog) {
   setTimeout(() => useStore.setState({ dialog: { type: 'settings', section: dialog as never } }), 900);
 }
 if (params.get('menu')) setTimeout(() => (document.querySelector('[aria-label="Menu"]') as HTMLButtonElement | null)?.click(), 1200);
+const select = params.get('select');
+if (select) {
+  const { useStore } = await import('../../src/state/store');
+  setTimeout(() => useStore.setState((s) => ({ selection: [select], selectionAnchor: select, layout: { ...s.layout, inspector: true, sidebar: true } }) as never), 1200);
+  if (params.get('zoom')) setTimeout(() => {
+    const box = document.querySelector('.zoom-box');
+    const r = box?.getBoundingClientRect();
+    if (box && r) for (let i = 0; i < 6; i++) box.dispatchEvent(new WheelEvent('wheel', { deltaY: -120, clientX: r.left + r.width * 0.3, clientY: r.top + r.height * 0.4, bubbles: true, cancelable: true }));
+  }, 2600);
+}
 const pane = params.get('pane');
 if (pane) setTimeout(() => ([...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === pane) as HTMLButtonElement | undefined)?.click(), 2000);
 const click = params.get('click');

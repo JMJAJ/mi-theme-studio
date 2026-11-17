@@ -4,7 +4,7 @@ import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialo
 import { listen } from '@tauri-apps/api/event';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { api, errorCode, errorMessage, newOpId } from '../lib/api';
-import { fileName, joinPath, parentOf, validateName } from '../lib/paths';
+import { fileName, joinPath, parentOf, splitNested, validateName } from '../lib/paths';
 import type { AdbLogEntry, ConflictPolicy, DownloadedTheme, MediaTarget, ExportProgress, ProjectSnapshot, SaveResult, Slot } from '../lib/types';
 import { formatBytes, plural } from '../lib/format';
 import { useMirrorStream } from './mirrorStream';
@@ -300,10 +300,25 @@ export async function newProject() {
   });
   if (title === null) return;
   const snapshot = await guard('New theme', () => api.projectNew(title));
-  if (snapshot) {
-    resetWorkspace(snapshot);
-    toast('success', `Created “${snapshot.title}”. Save it to choose a file location.`);
-  }
+  if (!snapshot) return;
+  resetWorkspace(snapshot);
+  goTo('design');
+  const startWith = await choiceDialog({
+    title: `Start “${snapshot.title}” with…`,
+    message: 'Pick what to put in first. You can add or swap any part afterwards.',
+    choices: [
+      { id: 'wallpaper', label: 'A wallpaper', primary: true },
+      { id: 'icons', label: 'Wallpaper + icon pack' },
+      { id: 'store', label: 'Parts from a store theme' },
+      { id: 'empty', label: 'Nothing yet' },
+    ],
+  });
+  if (startWith === 'wallpaper' || startWith === 'icons') {
+    const picked = await openDialog({ title: 'Wallpaper picture', multiple: false, directory: false, filters: [{ name: 'Pictures', extensions: ['jpg', 'jpeg', 'png', 'webp'] }] });
+    if (picked && !Array.isArray(picked)) await setWallpaperFromFile(picked, 'both');
+    if (startWith === 'icons' && (await ensureContainer('icons'))) goTo('design', 'icons');
+  } else if (startWith === 'store') goTo('store');
+  else toast('success', `Created “${snapshot.title}”. Save it to choose a file location.`);
 }
 
 export async function openPackage(path?: string) {
@@ -739,21 +754,172 @@ export async function updateMetadata(fields: { name: string; value: string }[], 
 // ---------------------------------------------------------------------------
 // reference package
 
-export async function openReference() {
+export async function openReference(reveal = true) {
   const picked = await openDialog({ title: 'Open reference package (read-only)', multiple: false, directory: false, filters: PACKAGE_FILTERS });
-  if (!picked || Array.isArray(picked)) return;
+  if (!picked || Array.isArray(picked)) return null;
   const snapshot = await guard('Open reference', () => api.referenceOpen(picked), 'Opening reference…');
   if (snapshot) {
     applyReference(snapshot);
-    setState((s) => ({ sideTab: 'reference', layout: { ...s.layout, sidebar: true } }));
-    toast('success', `Reference “${snapshot.title}” opened read-only`);
+    if (reveal) {
+      setState((s) => ({ sideTab: 'reference', layout: { ...s.layout, sidebar: true } }));
+      toast('success', `Reference “${snapshot.title}” opened read-only`);
+    }
   }
+  return snapshot ?? null;
+}
+
+/** Open a theme cached by Theme Manager on the phone as the read-only reference package. */
+export async function openPhoneThemeAsReference(serial: string, localId: string, title: string) {
+  const snapshot = await guard('Open reference', () => api.adbCachedThemeReference(serial, localId), `Copying ${title} from the phone…`);
+  if (!snapshot) return null;
+  applyReference(snapshot);
+  return snapshot;
+}
+
+/** Next steps offered after something was put into the theme: undo it, or see it on the phone. */
+function afterChange(undoSteps: number) {
+  const ready = !!getState().adb?.devices.some((d) => d.serial === getState().selectedSerial && d.state === 'device');
+  return [
+    {
+      label: 'Undo',
+      run: () => {
+        void (async () => {
+          for (let i = 0; i < undoSteps; i++) await undo();
+        })();
+      },
+    },
+    { label: ready ? 'Try on phone' : 'Connect phone', run: () => (ready ? void tryOnPhone() : goTo('phone')) },
+  ];
+}
+
+/** Save files made inside the app (cropped wallpaper, generated icons) into the theme as one undoable change. */
+export async function writeGenerated(files: { path: string; bytes: Uint8Array }[], label: string, done?: string) {
+  if (!getState().project || !files.length) return false;
+  const response = await guard(label, () => api.filesWrite(files.map((f) => ({ path: f.path, data: Array.from(f.bytes) })), label), `${label}…`);
+  if (!response) return false;
+  applySnapshot(response.snapshot);
+  if (done) toast('success', done, undefined, afterChange(1));
+  return true;
+}
+
+/** Replace a text file's contents (used by editors that are not the code editor, e.g. Colours). */
+export async function writeText(path: string, text: string) {
+  const snapshot = await guard('Save', () => api.fileWriteText(path, text, false));
+  if (!snapshot) return false;
+  setState((s) => {
+    const drafts = { ...s.drafts };
+    delete drafts[path];
+    return { drafts };
+  });
+  applySnapshot(snapshot);
+  return true;
+}
+
+/** Create a part's component archive without asking for a name. */
+export async function ensureContainer(name: string) {
+  if (getState().project?.containers.some((c) => c.name === name)) return true;
+  const snapshot = await guard('Create component', () => api.containerCreate(name));
+  if (!snapshot) return false;
+  applySnapshot(snapshot);
+  return true;
+}
+
+/** Top-level paths (nested packages and loose files) that make up one part of a theme. */
+export function partPaths(snapshot: ProjectSnapshot, component: string) {
+  const paths = new Set(snapshot.containers.filter((c) => c.component === component).map((c) => c.name));
+  for (const f of snapshot.files) {
+    if (f.component !== component) continue;
+    const [outer, inner] = splitNested(f.path);
+    if (inner === null || !paths.has(outer)) paths.add(inner === null ? f.path : outer);
+  }
+  return [...paths];
+}
+
+/**
+ * Replace parts of the open theme (icons, lock screen, fonts…) with the same
+ * parts of the reference package. With `clean`, each part's current files are
+ * removed first so nothing from the old version lingers. Both steps undo.
+ */
+export async function swapParts(parts: { id: string; label: string }[], clean: boolean) {
+  const { project, reference } = getState();
+  if (!project || !reference || !parts.length) return false;
+  const usable = parts.filter((p) => partPaths(reference, p.id).length > 0);
+  const names = usable.map((p) => p.label).join(', ');
+  if (!usable.length) {
+    toast('warning', `“${reference.title}” has none of those parts`);
+    return false;
+  }
+  const source = usable.flatMap((p) => partPaths(reference, p.id));
+  const current = clean ? usable.flatMap((p) => partPaths(project, p.id)) : [];
+  if (current.length) {
+    const snapshot = await guard('Swap', () => api.filesDelete(current), 'Removing the current files…');
+    if (!snapshot) return false;
+    const gone = new Set(project.files.filter((f) => current.some((p) => f.path === p || f.path.startsWith(`${p}/`) || f.path.startsWith(`${p}!/`))).map((f) => f.path));
+    setState((s) => {
+      const drafts = { ...s.drafts };
+      for (const path of gone) delete drafts[path];
+      return { drafts };
+    });
+    applySnapshot(snapshot);
+  }
+  const response = await guard('Swap', () => api.referenceCopy(source, null, 'overwrite'), `Copying ${names.toLowerCase()}…`);
+  if (!response) return false;
+  applySnapshot(response.snapshot);
+  toast('success', `${names} now from “${reference.title}” (${plural(response.result.written.length, 'file')})`, undefined, afterChange(current.length ? 2 : 1));
+  return true;
+}
+
+/** Use an image from disk as the home and/or lock wallpaper, replacing the current one. */
+export async function setWallpaperFromFile(source: string, where: 'home' | 'lock' | 'both') {
+  const project = getState().project;
+  if (!project) return false;
+  const ext = (source.split('.').pop() ?? 'jpg').toLowerCase();
+  const walls = project.files.filter((f) => f.kind === 'image' && f.component === 'wallpapers');
+  const slots: { name: string; existing?: string }[] = [];
+  if (where !== 'lock') slots.push({ name: 'default_wallpaper', existing: walls.find((f) => /^default_wallpaper\./i.test(fileName(f.path)))?.path });
+  if (where !== 'home') slots.push({ name: 'default_lock_wallpaper', existing: walls.find((f) => /^default_lock_wallpaper\./i.test(fileName(f.path)))?.path });
+  for (const slot of slots) {
+    if (slot.existing && slot.existing.toLowerCase().endsWith(`.${ext}`)) {
+      const snapshot = await guard('Set wallpaper', () => api.fileReplace(slot.existing!, source));
+      if (!snapshot) return false;
+      applySnapshot(snapshot);
+    } else {
+      if (slot.existing) {
+        const snapshot = await guard('Set wallpaper', () => api.filesDelete([slot.existing!]));
+        if (!snapshot) return false;
+        applySnapshot(snapshot);
+      }
+      const response = await guard('Set wallpaper', () => api.filesImport([source], 'wallpaper', 'overwrite', [`${slot.name}.${ext}`]));
+      if (!response) return false;
+      applySnapshot(response.snapshot);
+    }
+  }
+  toast('success', `Wallpaper set for ${where === 'both' ? 'home and lock screen' : where === 'home' ? 'the home screen' : 'the lock screen'}`);
+  return true;
 }
 
 export async function closeReference() {
   await guard('Close reference', () => api.referenceClose());
   applyReference(null);
   setState((s) => ({ sideTab: 'files', tabs: s.tabs.filter((t) => t.slot !== 'ref'), activeTab: s.tabs.find((t) => t.id === s.activeTab)?.slot === 'ref' ? null : s.activeTab }));
+}
+
+/**
+ * "Use" on a store download while no theme is open: the download becomes the
+ * theme being worked on. A theme or font package opens as the project; a
+ * wallpaper or ringtone starts a new theme that already uses it.
+ */
+export async function startFromDownload(item: DownloadedTheme) {
+  if (item.kind === 'theme' || item.kind === 'font') {
+    if (!(await openDownloadAsProject(item))) return false;
+  } else {
+    const snapshot = await guard('New theme', () => api.projectNew(item.name));
+    if (!snapshot) return false;
+    resetWorkspace(snapshot);
+    if (!(await applyDownloadedMedia(item, item.kind === 'wallpaper' ? ['homeWallpaper', 'lockWallpaper'] : ['ringtone']))) return false;
+  }
+  goTo('design');
+  return true;
 }
 
 /** Open a downloaded store theme as an editable, untitled project. */
@@ -797,7 +963,7 @@ export async function applyDownloadedMedia(item: DownloadedTheme, targets: Media
     if (!snapshot) return false;
   }
   if (snapshot) applySnapshot(snapshot);
-  toast('success', `“${item.name}” is now the ${targets.map((t) => MEDIA_LABELS[t]).join(' and ')}`);
+  toast('success', `“${item.name}” is now the ${targets.map((t) => MEDIA_LABELS[t]).join(' and ')}`, undefined, afterChange(targets.length));
   return true;
 }
 

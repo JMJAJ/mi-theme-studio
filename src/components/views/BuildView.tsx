@@ -1,10 +1,12 @@
 import { useMemo } from 'react';
-import { AlertTriangle, CircleCheck, Download, FileText, FolderOpen, ListChecks, Loader2, Save, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, CircleCheck, Download, FolderOpen, ListChecks, Loader2, MoreHorizontal, Save, ShieldAlert } from 'lucide-react';
+import { openContextMenu } from '../common/Menu';
 import { useStore } from '../../state/store';
 import * as A from '../../state/actions';
 import { runCommand } from '../../state/commands';
 import { formatBytes, formatTime, plural } from '../../lib/format';
 import { ProblemList } from './ProblemList';
+import { ExportChecklist } from './ExportChecklist';
 
 export function BuildView() {
   const project = useStore((s) => s.project);
@@ -36,17 +38,25 @@ export function BuildView() {
             <button className="btn" onClick={() => void A.runValidation(false)} disabled={validating}>
               {validating ? <Loader2 className="spin" /> : <ListChecks />} Validate
             </button>
-            <button className="btn" onClick={() => void A.saveReport()}>
-              <FileText /> Save report…
+            <button
+              className="btn btn-icon"
+              title="More: save as, save report"
+              aria-label="More actions"
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                openContextMenu({ clientX: rect.left, clientY: rect.bottom + 4, preventDefault: () => e.preventDefault() }, [
+                  { label: 'Save as…', shortcut: 'Ctrl+Shift+S', onSelect: () => runCommand('file.saveAs') },
+                  { label: 'Save package report…', onSelect: () => void A.saveReport() },
+                ]);
+              }}
+            >
+              <MoreHorizontal />
             </button>
-            <button className="btn" onClick={() => runCommand('file.exportCopy')}>
-              <Download /> Export copy…
-            </button>
-            <button className="btn" onClick={() => runCommand('file.saveAs')}>
-              Save as…
-            </button>
-            <button className="btn btn-primary" onClick={() => runCommand('file.save')}>
+            <button className="btn" onClick={() => runCommand('file.save')}>
               <Save /> {project.sourcePath ? 'Save' : 'Save…'}
+            </button>
+            <button className="btn btn-primary" onClick={() => runCommand('file.exportCopy')}>
+              <Download /> Export .mtz…
             </button>
           </div>
         </div>
@@ -62,6 +72,8 @@ export function BuildView() {
             </div>
           </div>
         )}
+
+        <ExportChecklist />
 
         <div className="stats">
           <div className="stat">

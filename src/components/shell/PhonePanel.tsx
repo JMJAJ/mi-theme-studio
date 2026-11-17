@@ -1,5 +1,6 @@
 // Always-visible phone on the right: the theme being edited rendered on a
 // phone frame, or the real connected phone (screenshot / live mirror).
+import { themeFontFile, usePackageFont } from '../common/themeFont';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Camera, ChevronLeft, ChevronRight, Circle, ExternalLink, Loader2, Lock, MonitorPlay, MonitorSmartphone, Send, Smartphone, Sparkles, Square, Usb, X } from 'lucide-react';
 import { resourceUrl, screenshotUrl } from '../../lib/api';
@@ -48,6 +49,7 @@ function ThemeScreen({ screen, box, ratio, previewIndex }: { screen: Screen; box
   const files = useMemo(() => project?.files ?? [], [project]);
   const icons = useMemo(() => pickIcons(files), [files]);
   const previews = useMemo(() => files.filter((f) => f.component === 'previews' && f.kind === 'image'), [files]);
+  const themeFont = usePackageFont(useMemo(() => themeFontFile(files), [files])).family ?? undefined;
   const w = Math.min(Math.max(120, box.w - 72), Math.max(200, box.h - 40) / ratio);
   const s = w / 360;
   const now = new Date();
@@ -75,12 +77,12 @@ function ThemeScreen({ screen, box, ratio, previewIndex }: { screen: Screen; box
       ) : (
         <div className="fill" style={{ position: 'absolute', inset: 0, background: 'linear-gradient(160deg, #2b2f3a, #121317)' }} />
       )}
-      <div className="mock-status" style={{ fontSize: 12 * s, color: '#fff' }}>
+      <div className="mock-status" style={{ fontSize: 12 * s, color: '#fff', fontFamily: themeFont }}>
         <span>{time}</span>
         <span>▮▮▮ ◔ 87%</span>
       </div>
       {lock ? (
-        <div className="mock-clock" style={{ color: '#fff' }}>
+        <div className="mock-clock" style={{ color: '#fff', fontFamily: themeFont }}>
           <div className="t" style={{ fontSize: 74 * s }}>
             {time}
           </div>

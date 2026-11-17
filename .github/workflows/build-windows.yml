@@ -31,6 +31,12 @@ jobs:
       - name: Test native backend
         run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: Build NSIS installer (version from package.json)
+        # Published builds get the smallest, fully optimized binary; local builds
+        # (Cargo.toml [profile.release]) trade a little size for a much faster build.
+        env:
+          CARGO_PROFILE_RELEASE_LTO: fat
+          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 1
+          CARGO_PROFILE_RELEASE_INCREMENTAL: false
         run: npm run build:win:ci
       - uses: actions/upload-artifact@v7
         with:

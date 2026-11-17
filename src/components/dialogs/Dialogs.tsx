@@ -5,7 +5,7 @@ import { buildTree, folderOptions } from '../../lib/tree';
 import { displayFolder } from '../../lib/paths';
 import { formatBytes, plural } from '../../lib/format';
 import type { ConflictPolicy, CopyPlanItem } from '../../lib/types';
-import { closeDialog, useStore, type DialogState } from '../../state/store';
+import { closeDialog, dismissToast, useStore, type DialogState } from '../../state/store';
 import * as A from '../../state/actions';
 import { SettingsPanel } from './SettingsPanel';
 import { Modal } from '../common/Modal';
@@ -313,7 +313,19 @@ export function Toasts() {
       {toasts.map((t) => (
         <div key={t.id} className="toast">
           {t.level === 'error' ? <CircleX className="err" /> : t.level === 'warning' ? <AlertTriangle className="warn" /> : t.level === 'success' ? <CircleCheck className="ok" /> : <Info style={{ color: 'var(--info)' }} />}
-          <span>{t.message}</span>
+          <span className="grow">{t.message}</span>
+          {t.actions?.map((a) => (
+            <button
+              key={a.label}
+              className="btn btn-sm toast-action"
+              onClick={() => {
+                dismissToast(t.id);
+                a.run();
+              }}
+            >
+              {a.label}
+            </button>
+          ))}
         </div>
       ))}
     </div>

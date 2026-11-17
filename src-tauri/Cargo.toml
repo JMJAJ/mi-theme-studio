@@ -1,6 +1,6 @@
 [package]
 name = "mi-theme-studio"
-version = "0.3.14"
+version = "0.3.21"
 description = "Desktop studio for MIUI/HyperOS theme packages"
 authors = ["JMJAJ"]
 license = "MIT"
@@ -9,7 +9,9 @@ rust-version = "1.88"
 
 [lib]
 name = "mi_theme_studio_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Desktop only: the staticlib/cdylib outputs are for mobile targets and each one
+# repeated the whole optimized link.
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -33,9 +35,14 @@ regex = { version = "1", default-features = false, features = ["std", "unicode-p
 [dev-dependencies]
 tempfile = "3"
 
+# Local installer builds favour build time: parallel codegen, no cross-crate LTO and an
+# incremental cache, so a rebuild after a version bump takes seconds, not minutes.
+# CI release builds turn full optimization back on through CARGO_PROFILE_RELEASE_*
+# (see .github/workflows/build-windows.yml).
 [profile.release]
-codegen-units = 1
-lto = true
+codegen-units = 16
+lto = false
+incremental = true
 opt-level = "s"
 panic = "unwind"
 strip = true

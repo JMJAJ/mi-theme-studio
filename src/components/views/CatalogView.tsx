@@ -1,7 +1,7 @@
 // Theme store: browse and search the online catalog, inspect a theme
 // (screenshots, description, details), download free themes and apply all
 // or selected parts of them to the open project.
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -13,8 +13,8 @@ import {
   FolderOpen,
   Globe,
   HardDrive,
+  Heart,
   ImageOff,
-  Layers,
   LayoutGrid,
   Loader2,
   Lock,
@@ -28,19 +28,18 @@ import {
   Monitor,
   PackageOpen,
   RefreshCw,
+  Repeat,
   Search,
   Smartphone,
   Sparkles,
   Star,
   Trash2,
-  X,
 } from 'lucide-react';
 import { api, errorMessage } from '../../lib/api';
 import { formatBytes, formatDateTime, plural } from '../../lib/format';
-import { splitNested } from '../../lib/paths';
-import type { DownloadedTheme, ProductKind, ProjectSnapshot, StoreLink, StorePage, StoreProduct, StoreQuery, ThemeDetail } from '../../lib/types';
+import type { DownloadedTheme, ProductKind, StoreLink, StorePage, StoreProduct, StoreQuery, ThemeDetail } from '../../lib/types';
 import * as A from '../../state/actions';
-import { setState, useStore } from '../../state/store';
+import { getState, useStore } from '../../state/store';
 import {
   REGIONS,
   REGION_NOTES,
@@ -54,6 +53,8 @@ import {
   useThemeStore,
 } from '../../state/themeStore';
 import { DeviceThemes } from './DeviceThemes';
+import { openSwap } from './SwapPart';
+import { toggleSaved, useSaved } from '../../state/savedStore';
 import { useStoreTabRequest, type StoreTab } from '../../state/storeTab';
 
 const CONSENT_KEY = 'mts.catalog.consent.v1';
@@ -78,7 +79,19 @@ function readConsent() {
   }
 }
 
-function RemoteImage({ src, alt, className }: { src: string | null; alt: string; className?: string }) {
+function RemoteImage({
+  src,
+  alt,
+  className,
+  onLoad,
+  onFail,
+}: {
+  src: string | null;
+  alt: string;
+  className?: string;
+  onLoad?: (img: HTMLImageElement) => void;
+  onFail?: () => void;
+}) {
   const [failed, setFailed] = useState(false);
   if (!src || failed) {
     return (
@@ -87,7 +100,21 @@ function RemoteImage({ src, alt, className }: { src: string | null; alt: string;
       </span>
     );
   }
-  return <img className={className} src={src} alt={alt} loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} draggable={false} />;
+  return (
+    <img
+      className={className}
+      src={src}
+      alt={alt}
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onLoad={onLoad ? (e) => onLoad(e.currentTarget) : undefined}
+      onError={() => {
+        setFailed(true);
+        onFail?.();
+      }}
+      draggable={false}
+    />
+  );
 }
 
 function ProgressBar({ received, total }: { received: number; total: number }) {
@@ -101,6 +128,104 @@ function ProgressBar({ received, total }: { received: number; total: number }) {
 
 // ---------------------------------------------------------------------------
 // cards
+
+/** Put a download to use in the open theme: pick parts of a theme/font, or place a wallpaper/ringtone. */
+function putToUse(item: DownloadedTheme) {
+  // Nothing open yet: this download becomes the theme you work on.
+  if (!getState().project) return void A.startFromDownload(item);
+  return isPackage(item.kind) ? openSwap({ theme: item }) : openSwap({ media: item });
+}
+
+// Heart on a card or detail page: keep the item in the Saved tab to come back to.
+function SaveToggle({ product, className = 'cover-save' }: { product: StoreProduct; className?: string }) {
+  const saved = useSaved((s) => s.items.some((p) => p.moduleId === product.moduleId));
+  const run = (e: { stopPropagation: () => void; preventDefault: () => void }) => {
+    e.stopPropagation();
+    e.preventDefault();
+    toggleSaved(product);
+  };
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      aria-pressed={saved}
+      className={`${className} ${saved ? 'is-saved' : ''}`}
+      title={saved ? 'Remove from Saved' : 'Save for later'}
+      onClick={run}
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && run(e)}
+    >
+      <Heart />
+    </span>
+  );
+}
+
+function SavedLibrary({ navigate }: { navigate: (route: Route) => void }) {
+  const items = useSaved((s) => s.items);
+  if (!items.length) {
+    return (
+      <div className="empty">
+        <Heart />
+        <h3>Nothing saved yet</h3>
+        <p>Tap the heart on any theme, font, wallpaper or ringtone to keep it here for later.</p>
+      </div>
+    );
+  }
+  return (
+    <>
+      <div className="section-head">
+        <h2>Saved</h2>
+        <span className="muted">{plural(items.length, 'item')}</span>
+      </div>
+      <div className="product-grid">
+        {items.map((p) => (
+          <ProductCard key={p.moduleId} product={p} onOpen={() => navigate({ type: 'detail', moduleId: p.moduleId, name: p.name })} />
+        ))}
+      </div>
+    </>
+  );
+}
+
+// Hover action on a store card: get a free item, or use one that is already downloaded.
+function QuickAction({ product }: { product: StoreProduct }) {
+  const record = useThemeStore((s) => s.downloads.find((d) => d.moduleId === product.moduleId));
+  const busy = useThemeStore((s) => !!s.progress[product.moduleId]);
+  const hasProject = useStore((s) => !!s.project);
+  if (busy || (!record && product.priceCents > 0)) return null;
+  const run = (e: { stopPropagation: () => void; preventDefault: () => void }) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (record) putToUse(record);
+    else void downloadTheme(product.moduleId, product.name);
+  };
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      className="cover-quick"
+      title={
+        !record
+          ? `Download this ${nounOf(product.kind)}`
+          : hasProject
+            ? `Use this ${nounOf(product.kind)} in my theme`
+            : isPackage(product.kind)
+              ? `Open this ${nounOf(product.kind)} as the theme to work on`
+              : `Start a new theme with this ${nounOf(product.kind)}`
+      }
+      onClick={run}
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && run(e)}
+    >
+      {record ? (
+        <>
+          <Repeat /> {hasProject ? 'Use' : isPackage(product.kind) ? 'Open' : 'Start theme'}
+        </>
+      ) : (
+        <>
+          <Download /> Get
+        </>
+      )}
+    </span>
+  );
+}
 
 function ProductCard({ product, onOpen }: { product: StoreProduct; onOpen: () => void }) {
   const downloaded = useThemeStore((s) => s.downloads.some((d) => d.moduleId === product.moduleId));
@@ -119,6 +244,8 @@ function ProductCard({ product, onOpen }: { product: StoreProduct; onOpen: () =>
             <ProgressBar {...progress} />
           </div>
         )}
+        <SaveToggle product={product} />
+        <QuickAction product={product} />
       </div>
       <div className="meta">
         <span className="name ellipsis">{product.name}</span>
@@ -191,6 +318,66 @@ function FeatureCard({ product, onOpen }: { product: StoreProduct; onOpen: () =>
 }
 
 // One scrollable row with paging arrows, for big shelves that have a "See all".
+// A shelf only shows the handful of items the store put on the page. When it
+// has a "See all", the rest of that list is fetched as the shelf comes into
+// view, so a row is filled instead of ending halfway across the window.
+const shelfExtras = new Map<string, Promise<StoreProduct[]>>();
+const SHELF_FULL = 14;
+
+function Shelf({
+  products,
+  subjectId,
+  rail,
+  visible,
+  onOpen,
+}: {
+  products: StoreProduct[];
+  subjectId: string | null;
+  rail: boolean;
+  visible: (p: StoreProduct) => boolean;
+  onOpen: (p: StoreProduct) => void;
+}) {
+  const region = useThemeStore((s) => s.region);
+  const ref = useRef<HTMLDivElement>(null);
+  const [extra, setExtra] = useState<StoreProduct[]>([]);
+  const short = !!subjectId && products.length < SHELF_FULL;
+
+  useEffect(() => {
+    setExtra([]);
+    const el = ref.current;
+    if (!short || !subjectId || !el) return;
+    let cancelled = false;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        io.disconnect();
+        const key = `${region}:${subjectId}`;
+        let pending = shelfExtras.get(key);
+        if (!pending) {
+          pending = api.storePage({ kind: 'subject', id: subjectId }, 0, region).then((page) => page.sections.flatMap((sec) => sec.products));
+          shelfExtras.set(key, pending);
+          pending.catch(() => shelfExtras.delete(key));
+        }
+        pending.then((list) => !cancelled && setExtra(list)).catch(() => undefined);
+      },
+      { rootMargin: '300px 0px' },
+    );
+    io.observe(el);
+    return () => {
+      cancelled = true;
+      io.disconnect();
+    };
+  }, [subjectId, region, short]);
+
+  const all = extra.length ? dedupe([...products, ...extra.filter(visible)]) : products;
+  const cards = all.map((p) => <ProductCard key={p.moduleId} product={p} onOpen={() => onOpen(p)} />);
+  return (
+    <div ref={ref}>
+      {rail ? <ShelfRail count={all.length}>{cards}</ShelfRail> : <div className="product-grid">{cards}</div>}
+    </div>
+  );
+}
+
 function ShelfRail({ children, count }: { children: ReactNode; count: number }) {
   const ref = useRef<HTMLDivElement>(null);
   const [edge, setEdge] = useState({ start: true, end: true });
@@ -232,7 +419,84 @@ function ShelfRail({ children, count }: { children: ReactNode; count: number }) 
   );
 }
 
-function LinkTile({ link, onOpen }: { link: StoreLink; onOpen: () => void }) {
+// Columns for a row of banners: as many as fit, but drop a column or two when
+// that fills the last row better (11 banners → 6+5, never 4+4+3 with a hole).
+function pickColumns(count: number, width: number, minTile: number, gap = 14) {
+  const max = width > 0 ? Math.max(1, Math.min(6, Math.floor((width + gap) / (minTile + gap)))) : 4;
+  if (count <= max) return Math.max(1, count);
+  const holes = (c: number) => (c - (count % c)) % c;
+  let best = max;
+  for (let c = max - 1; c >= Math.max(2, Math.ceil(max * 0.6)); c--) if (holes(c) < holes(best)) best = c;
+  return best;
+}
+
+// Banner links: shortcut icons go in their own compact row; banners share one
+// grid whose tile shape follows the store's artwork so its text isn't cropped.
+function LinkGroup({ links, fill, onOpen }: { links: StoreLink[]; fill: boolean; onOpen: (l: StoreLink) => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  const [ratio, setRatio] = useState<number | null>(null);
+  const [broken, setBroken] = useState<Set<number>>(() => new Set());
+  const icons = links.filter((l) => l.icon);
+  const cards = links.map((l, j) => ({ l, j })).filter(({ l, j }) => !l.icon && (l.title || (l.imageUrl && !broken.has(j))));
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    ro.observe(el);
+    setWidth(el.clientWidth);
+    return () => ro.disconnect();
+  }, [cards.length > 0]);
+
+  const r = ratio ?? 485 / 340;
+  const cols = pickColumns(cards.length, width, r >= 1.8 ? 260 : 220);
+  const measure = (img: HTMLImageElement) => {
+    if (ratio || !img.naturalWidth || !img.naturalHeight) return;
+    setRatio(Math.min(2.6, Math.max(1, img.naturalWidth / img.naturalHeight)));
+  };
+
+  return (
+    <>
+      {icons.length > 0 && (
+        <div className="icon-links">
+          {icons.map((l, j) => (
+            <LinkTile key={`i-${l.pageId ?? l.moduleId}-${j}`} link={l} onOpen={() => onOpen(l)} />
+          ))}
+        </div>
+      )}
+      {cards.length > 0 && (
+        <div
+          ref={ref}
+          className={`catalog-grid${icons.length ? ' after-icons' : ''}${fill ? ' fill' : ''}`}
+          style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, ['--link-ratio' as string]: r }}
+        >
+          {cards.map(({ l, j }) => (
+            <LinkTile
+              key={`${l.pageId ?? l.moduleId}-${j}`}
+              link={l}
+              onOpen={() => onOpen(l)}
+              onLoad={measure}
+              onFail={() => setBroken((b) => new Set(b).add(j))}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function LinkTile({
+  link,
+  onOpen,
+  onLoad,
+  onFail,
+}: {
+  link: StoreLink;
+  onOpen: () => void;
+  onLoad?: (img: HTMLImageElement) => void;
+  onFail?: () => void;
+}) {
   if (link.icon) {
     return (
       <button className="icon-link" onClick={onOpen}>
@@ -246,7 +510,7 @@ function LinkTile({ link, onOpen }: { link: StoreLink; onOpen: () => void }) {
   return (
     <button className="catalog-card link-card" onClick={onOpen}>
       <div className="img">
-        <RemoteImage src={link.imageUrl} alt={link.title ?? ''} />
+        <RemoteImage src={link.imageUrl} alt={link.title ?? ''} onLoad={onLoad} onFail={onFail} />
       </div>
       {link.title && (
         <div className="cap">
@@ -319,10 +583,23 @@ function StoreList({
   }, [scrollRoot, pages, loading, error]);
 
   const visible = (p: StoreProduct) => !freeOnly || p.priceCents === 0;
+  // The store sends long shelves in pieces (one per page), each repeating the same
+  // heading. Join those back into one shelf so a category is a full grid, not a
+  // stack of half-empty rows.
   const sections = pages
     .flatMap((p) => p.sections)
     .map((s) => ({ ...s, products: s.products.filter(visible) }))
-    .filter((s) => s.products.length > 0 || s.links.length > 0);
+    .filter((s) => s.products.length > 0 || s.links.length > 0)
+    .reduce<StorePage['sections']>((merged, s) => {
+      const prev = merged[merged.length - 1];
+      if (prev && prev.products.length && s.products.length && !prev.links.length && !s.links.length && prev.title === s.title && prev.subjectId === s.subjectId) {
+        merged[merged.length - 1] = { ...prev, products: dedupe([...prev.products, ...s.products]) };
+      } else merged.push(s);
+      return merged;
+    }, []);
+  // A single-row rail only makes sense among several shelves; a page that is one
+  // or two shelves shows them in full.
+  const useRails = sections.filter((s) => s.products.length > 0).length >= 3;
   const hiddenPaid = freeOnly ? pages.flatMap((p) => p.sections).reduce((n, s) => n + s.products.filter((p) => p.priceCents > 0).length, 0) : 0;
   const last = pages[pages.length - 1];
   const openProduct = (p: StoreProduct) => navigate({ type: 'detail', moduleId: p.moduleId, name: p.name });
@@ -382,7 +659,7 @@ function StoreList({
         {sections.map((section, i) => (
           <div
             className={`section ${
-              (section.products.length > 0 && section.products.length <= 4 && !section.links.length) ||
+              (section.products.length === 1 && !section.links.length) ||
               (!section.products.length && section.links.length > 0 && section.links.length <= 2 && !section.links.some((l) => l.icon))
                 ? section.products.length === 1
                   ? 'shelf-card shelf-feature'
@@ -414,30 +691,15 @@ function StoreList({
             )}
             {section.products.length === 1 && !section.links.length ? (
               <FeatureCard product={section.products[0]} onOpen={() => openProduct(section.products[0])} />
-            ) : section.products.length > 4 && section.subjectId ? (
-              <ShelfRail count={section.products.length}>
-                {section.products.map((p) => (
-                  <ProductCard key={p.moduleId} product={p} onOpen={() => openProduct(p)} />
-                ))}
-              </ShelfRail>
             ) : (
-              section.products.length > 0 && (
-                <div className="product-grid" style={section.products.length <= 4 ? { ['--shelf-count' as string]: section.products.length } : undefined}>
-                  {section.products.map((p) => (
-                    <ProductCard key={p.moduleId} product={p} onOpen={() => openProduct(p)} />
-                  ))}
-                </div>
-              )
+              section.products.length > 0 && <Shelf products={section.products} subjectId={section.subjectId} rail={useRails && !!section.subjectId} visible={visible} onOpen={openProduct} />
             )}
             {section.links.length > 0 && (
-              <div
-                className={section.links.every((l) => l.icon) ? 'icon-links' : 'catalog-grid'}
-                style={!section.products.length && section.links.length <= 2 && !section.links.some((l) => l.icon) ? { gridTemplateColumns: `repeat(${section.links.length}, minmax(0, 1fr))` } : undefined}
-              >
-                {section.links.map((l, j) => (
-                  <LinkTile key={`${l.pageId ?? l.moduleId}-${j}`} link={l} onOpen={() => openLink(l)} />
-                ))}
-              </div>
+              <LinkGroup
+                links={section.links}
+                fill={!section.products.length && section.links.length <= 2 && !section.links.some((l) => l.icon)}
+                onOpen={openLink}
+              />
             )}
           </div>
         ))}
@@ -464,180 +726,6 @@ function StoreList({
 function dedupe(products: StoreProduct[]) {
   const seen = new Set<string>();
   return products.filter((p) => (seen.has(p.moduleId) ? false : (seen.add(p.moduleId), true)));
-}
-
-// ---------------------------------------------------------------------------
-// parts of a downloaded theme
-
-interface Part {
-  path: string;
-  label: string;
-  hint: string;
-  files: number;
-  bytes: number;
-}
-
-const PART_LABELS: Record<string, [string, string]> = {
-  'description.xml': ['Theme info', 'Title, author and version (description.xml)'],
-  'plugin_config.xml': ['Plugin config', 'Widget and plugin settings'],
-  wallpaper: ['Wallpapers', 'Home and lock screen wallpapers'],
-  preview: ['Store previews', 'Preview images shown in Theme Manager'],
-  fonts: ['Fonts', 'System font files'],
-  ringtones: ['Sounds', 'Ringtones and notification sounds'],
-  audio: ['Sounds', 'Ringtones and notification sounds'],
-  boots: ['Boot animation', 'Boot animation archives'],
-  icons: ['Icons', 'App icons and icon mask'],
-  lockscreen: ['Lock screen', 'Lock screen layout (MAML)'],
-  lockstyle: ['Lock style', 'Lock screen style'],
-  'com.android.systemui': ['Status bar & notifications', 'System UI'],
-  'miui.systemui.plugin': ['Control center', 'System UI plugin'],
-  'com.miui.home': ['Home screen', 'Launcher layout and assets'],
-  'framework-res': ['System framework', 'Colors and system resources'],
-  'framework-miui-res': ['MIUI framework', 'MIUI system resources'],
-  'com.android.settings': ['Settings app', 'Settings styling'],
-  'com.android.contacts': ['Contacts & dialer', 'Contacts styling'],
-  'com.android.mms': ['Messages', 'Messaging styling'],
-};
-
-function partsOf(ref: ProjectSnapshot): Part[] {
-  const map = new Map<string, Part>();
-  const labelFor = (name: string): [string, string] => {
-    if (PART_LABELS[name]) return PART_LABELS[name];
-    const def = ref.components.find((c) => c.id === name || c.defaultRoot === name);
-    if (def) return [def.label, def.description];
-    if (name.startsWith('clock_')) return [`Clock widget ${name.slice(6)}`, 'Home screen clock'];
-    if (name.startsWith('photoframe_')) return [`Photo frame ${name.slice(11)}`, 'Home screen widget'];
-    return [name, 'App overlay'];
-  };
-  for (const c of ref.containers) {
-    const [label, hint] = labelFor(c.name);
-    map.set(c.name, { path: c.name, label, hint, files: c.files, bytes: c.bytes });
-  }
-  for (const f of ref.files) {
-    const [outer, inner] = splitNested(f.path);
-    if (inner !== null) continue;
-    const top = outer.includes('/') ? outer.split('/')[0] : outer;
-    if (map.has(top) && ref.containers.some((c) => c.name === top)) continue;
-    const existing = map.get(top);
-    if (existing) {
-      existing.files += 1;
-      existing.bytes += f.size;
-    } else {
-      const [label, hint] = labelFor(top);
-      map.set(top, { path: top, label, hint, files: 1, bytes: f.size });
-    }
-  }
-  const order = (p: Part) => (p.path === 'description.xml' ? 2 : p.path === 'preview' ? 1 : 0);
-  return [...map.values()].sort((a, b) => order(a) - order(b) || a.label.localeCompare(b.label));
-}
-
-function PartsPicker({ theme, onClose }: { theme: DownloadedTheme; onClose: () => void }) {
-  const project = useStore((s) => s.project);
-  const reference = useStore((s) => s.reference);
-  const [opening, setOpening] = useState(false);
-  const ready = reference?.sourcePath === theme.path ? reference : null;
-  const parts = useMemo(() => (ready ? partsOf(ready) : []), [ready]);
-  const [selected, setSelected] = useState<Set<string> | null>(null);
-
-  useEffect(() => {
-    if (ready || opening) return;
-    setOpening(true);
-    void A.openDownloadAsReference(theme, false).finally(() => setOpening(false));
-  }, [theme.path, ready]);
-
-  useEffect(() => {
-    if (ready && !selected) setSelected(new Set(parts.filter((p) => p.path !== 'description.xml' && p.path !== 'preview').map((p) => p.path)));
-  }, [ready, parts]);
-
-  const chosen = parts.filter((p) => selected?.has(p.path));
-  const toggle = (path: string) =>
-    setSelected((s) => {
-      const next = new Set(s ?? []);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
-
-  return (
-    <div className="surface parts-picker">
-      <div className="section-head" style={{ padding: '12px 14px 0' }}>
-        <Layers width={16} className="muted" />
-        <h2>Apply parts to your theme</h2>
-        <div className="actions">
-          <button className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Close parts picker">
-            <X />
-          </button>
-        </div>
-      </div>
-      {!ready ? (
-        <div className="empty" style={{ padding: 24 }}>
-          <Loader2 className="spin" />
-          <p>Reading package…</p>
-        </div>
-      ) : (
-        <>
-          <div className="parts-toolbar">
-            <button className="btn btn-ghost btn-sm" onClick={() => setSelected(new Set(parts.map((p) => p.path)))}>
-              Select all
-            </button>
-            <button className="btn btn-ghost btn-sm" onClick={() => setSelected(new Set())}>
-              Select none
-            </button>
-            <span className="grow" />
-            <span className="muted">
-              {plural(chosen.length, 'part')} · {plural(chosen.reduce((n, p) => n + p.files, 0), 'file')} · {formatBytes(chosen.reduce((n, p) => n + p.bytes, 0))}
-            </span>
-          </div>
-          <div className="parts-list">
-            {parts.map((part) => (
-              <label key={part.path} className={`part-row ${selected?.has(part.path) ? 'is-on' : ''}`}>
-                <input type="checkbox" checked={!!selected?.has(part.path)} onChange={() => toggle(part.path)} />
-                <span className="grow" style={{ minWidth: 0 }}>
-                  <span className="part-name">{part.label}</span>
-                  <span className="part-hint ellipsis">
-                    {part.hint} · <code>{part.path}</code>
-                  </span>
-                </span>
-                <span className="faint nowrap">
-                  {plural(part.files, 'file')} · {formatBytes(part.bytes)}
-                </span>
-              </label>
-            ))}
-          </div>
-          <div className="parts-footer">
-            {project ? (
-              <>
-                <span className="muted grow">
-                  Copies into <strong>{project.title}</strong> as one undoable change. Existing files at the same paths are replaced; you can review before applying.
-                </span>
-                <button
-                  className="btn btn-primary"
-                  disabled={!chosen.length}
-                  onClick={() =>
-                    setState({
-                      dialog: { type: 'copyPlan', paths: chosen.map((p) => p.path), policy: 'overwrite', title: `Apply from “${theme.name}”` },
-                    })
-                  }
-                >
-                  <Layers /> Apply {plural(chosen.length, 'part')}…
-                </button>
-              </>
-            ) : (
-              <>
-                <span className="muted grow">Open or create a theme first, or start from this whole theme.</span>
-                <button className="btn" onClick={() => void A.newProject()}>
-                  New empty theme
-                </button>
-                <button className="btn btn-primary" onClick={() => void A.openDownloadAsProject(theme)}>
-                  <PackageOpen /> Use whole theme
-                </button>
-              </>
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -688,7 +776,7 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
   const [detail, setDetail] = useState<ThemeDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<number | null>(null);
-  const [picking, setPicking] = useState(false);
+  const hasProject = useStore((s) => !!s.project);
   const phoneReady = useStore((s) => !!s.adb?.devices.some((d) => d.serial === s.selectedSerial && d.state === 'device'));
 
   useEffect(() => {
@@ -723,7 +811,7 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
   const canDownload = detail.free || detail.bought;
   const start = async () => {
     const record = await downloadTheme(detail.moduleId, detail.name);
-    if (record) setPicking(true);
+    if (record && hasProject && isPackage(record.kind)) putToUse(record);
   };
 
   return (
@@ -745,7 +833,24 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
 
       <div className="detail-body">
         <div className="detail-main">
-          <h1 className="selectable">{detail.name}</h1>
+          <h1 className="selectable">
+            {detail.name}
+            <SaveToggle
+              className="detail-save"
+              product={{
+                moduleId: detail.moduleId,
+                productId: detail.productId,
+                kind: detail.kind,
+                name: detail.name,
+                imageUrl: detail.screenshots[0] ?? null,
+                secondImageUrl: detail.screenshots[1] ?? null,
+                priceCents: detail.priceCents,
+                currency: detail.currency,
+                sizeBytes: detail.sizeBytes,
+                tags: detail.tags,
+              }}
+            />
+          </h1>
           {detail.designer && (
             <div className="designer">
               {detail.designerIcon ? <img src={detail.designerIcon} alt="" referrerPolicy="no-referrer" /> : <span className="avatar">{detail.designer.slice(0, 1)}</span>}
@@ -830,20 +935,24 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
               </div>
               {isPackage(downloaded.kind) ? (
                 <>
-                  <button className="btn btn-primary" onClick={() => setPicking(true)}>
-                    <Layers /> Apply {downloaded.kind === 'font' ? 'font' : 'parts'} to my theme…
-                  </button>
-                  <button className="btn" onClick={() => void A.openDownloadAsProject(downloaded)}>
-                    <PackageOpen /> Open whole {nounOf(downloaded.kind)} as project
-                  </button>
-                  <button className="btn" onClick={() => void A.openDownloadAsReference(downloaded)}>
-                    <BookOpen /> Browse files as reference
+                  {hasProject && (
+                    <button className="btn btn-primary" onClick={() => putToUse(downloaded)}>
+                      <Repeat /> Use in my theme…
+                    </button>
+                  )}
+                  <button className={hasProject ? 'btn' : 'btn btn-primary'} onClick={() => void A.openDownloadAsProject(downloaded)}>
+                    <PackageOpen /> {hasProject ? `Open whole ${nounOf(downloaded.kind)} instead` : `Open as a new theme`}
                   </button>
                 </>
               ) : (
                 <MediaActions item={downloaded} />
               )}
-              <div className="detail-split">
+              <div className="detail-links">
+                {hasProject && isPackage(downloaded.kind) && (
+                  <button className="btn btn-ghost btn-sm" onClick={() => void A.openDownloadAsReference(downloaded)} title="Advanced: look through its files and copy single ones">
+                    <BookOpen /> Browse its files
+                  </button>
+                )}
                 <button className="btn btn-ghost btn-sm" onClick={() => void A.revealPath(downloaded.path)}>
                   <FolderOpen /> Show file
                 </button>
@@ -855,7 +964,8 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
           ) : (
             <>
               <button className="btn btn-primary" onClick={() => void start()}>
-                <Download /> Download{detail.sizeBytes ? ` · ${formatBytes(detail.sizeBytes)}` : ''}
+                <Download /> {hasProject && isPackage(detail.kind) ? 'Get & use in my theme' : 'Download'}
+                {detail.sizeBytes ? ` · ${formatBytes(detail.sizeBytes)}` : ''}
               </button>
               <span className="faint" style={{ fontSize: 'var(--fs-xs)' }}>
                 Saved to the app’s downloads folder and checked against the store’s SHA-1.
@@ -874,12 +984,6 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
         </aside>
       </div>
 
-      {picking && downloaded && (
-        <div className="section">
-          <PartsPicker theme={downloaded} onClose={() => setPicking(false)} />
-        </div>
-      )}
-
       {lightbox !== null && detail.screenshots.length > 0 && (
         <Lightbox images={detail.screenshots} index={lightbox} onIndex={setLightbox} onClose={() => setLightbox(null)} />
       )}
@@ -892,9 +996,9 @@ function MediaActions({ item, compact = false }: { item: DownloadedTheme; compac
   const cls = compact ? 'btn btn-sm' : 'btn';
   if (!hasProject) {
     return (
-      <span className="faint" style={{ fontSize: 'var(--fs-xs)' }}>
-        Open or create a theme to use this {nounOf(item.kind)}.
-      </span>
+      <button className={`${cls} ${compact ? '' : 'btn-primary'}`} onClick={() => void A.startFromDownload(item)}>
+        <Sparkles /> Start a new theme with this {nounOf(item.kind)}
+      </button>
     );
   }
   if (item.kind === 'wallpaper') {
@@ -933,7 +1037,7 @@ function MediaActions({ item, compact = false }: { item: DownloadedTheme; compac
 function DownloadsLibrary({ navigate }: { navigate: (route: Route) => void }) {
   const downloads = useThemeStore((s) => s.downloads);
   const loaded = useThemeStore((s) => s.loaded);
-  const [picking, setPicking] = useState<DownloadedTheme | null>(null);
+  const hasProject = useStore((s) => !!s.project);
   if (!loaded) {
     return (
       <div className="empty">
@@ -952,11 +1056,6 @@ function DownloadsLibrary({ navigate }: { navigate: (route: Route) => void }) {
   }
   return (
     <>
-      {picking && (
-        <div className="section" style={{ marginTop: 0, marginBottom: 18 }}>
-          <PartsPicker key={picking.moduleId} theme={picking} onClose={() => setPicking(null)} />
-        </div>
-      )}
       <div className="section-head">
         <h2>Downloaded</h2>
         <span className="muted">
@@ -979,9 +1078,11 @@ function DownloadsLibrary({ navigate }: { navigate: (route: Route) => void }) {
             <div className="row">
               {isPackage(d.kind) ? (
                 <>
-                  <button className="btn btn-sm" onClick={() => setPicking(d)}>
-                    <Layers /> Apply parts…
-                  </button>
+                  {hasProject && (
+                    <button className="btn btn-sm btn-primary" onClick={() => putToUse(d)}>
+                      <Repeat /> Use in my theme…
+                    </button>
+                  )}
                   <button className="btn btn-sm" onClick={() => void A.openDownloadAsProject(d)}>
                     <PackageOpen /> Open
                   </button>
@@ -1052,6 +1153,7 @@ export function CatalogView() {
   const [consent, setConsent] = useState(readConsent);
   const [search, setSearch] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
+  const projectTitle = useStore((s) => s.project?.title ?? null);
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -1087,7 +1189,8 @@ export function CatalogView() {
     setConsent(true);
   };
 
-  const needsNetwork = tab !== 'device' && !(tab === 'downloads' && !stack.length);
+  const needsNetwork = tab !== 'device' && !((tab === 'downloads' || tab === 'saved') && !stack.length);
+  const savedCount = useSaved((s) => s.items.length);
 
   return (
     <div className="center-body">
@@ -1106,6 +1209,9 @@ export function CatalogView() {
           </button>
           <button aria-pressed={tab === 'downloads' && !stack.length} onClick={() => switchTab('downloads')}>
             <HardDrive /> Downloaded
+          </button>
+          <button aria-pressed={tab === 'saved' && !stack.length} onClick={() => switchTab('saved')}>
+            <Heart /> Saved{savedCount ? ` ${savedCount}` : ''}
           </button>
           <button aria-pressed={tab === 'device'} onClick={() => switchTab('device')}>
             <Smartphone /> On device
@@ -1156,11 +1262,20 @@ export function CatalogView() {
               <Icon /> {label}
             </button>
           ))}
+          {projectTitle && (
+            <span className="store-context">
+              <span className="faint">Adding to</span>
+              <strong className="ellipsis">{projectTitle}</strong>
+              <button onClick={() => A.goTo('design')} title="Back to your theme">
+                <ArrowLeft /> Back to theme
+              </button>
+            </span>
+          )}
         </div>
       )}
       {stack.length > 0 && (
         <div className="crumbs">
-          <button onClick={() => setStack([])}>{tab === 'categories' ? 'Categories' : tab === 'downloads' ? 'Downloaded' : KINDS.find((k) => k.kind === product)?.label}</button>
+          <button onClick={() => setStack([])}>{tab === 'categories' ? 'Categories' : tab === 'downloads' ? 'Downloaded' : tab === 'saved' ? 'Saved' : KINDS.find((k) => k.kind === product)?.label}</button>
           {stack.map((r, i) => (
             <span key={i} className="row" style={{ gap: 4 }}>
               <ChevronRight width={13} className="faint" />
@@ -1198,6 +1313,8 @@ export function CatalogView() {
               )}
               <StoreList key={JSON.stringify(route.query)} query={route.query} refreshKey={refreshKey} scrollRoot={scroller} navigate={navigate} />
             </>
+          ) : tab === 'saved' ? (
+            <SavedLibrary navigate={navigate} />
           ) : (
             <DownloadsLibrary navigate={navigate} />
           )}

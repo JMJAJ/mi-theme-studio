@@ -12,6 +12,8 @@ import { displayFolder, fileName, parentOf } from '../../lib/paths';
 import type { FileInfo, Slot } from '../../lib/types';
 import { useStore } from '../../state/store';
 import * as A from '../../state/actions';
+import { Scissors } from 'lucide-react';
+import { openSoundTrim } from './SoundTrim';
 
 // ---------------------------------------------------------------- image
 
@@ -333,7 +335,7 @@ function FontPreview({ file, slot }: { file: FileInfo; slot: Slot }) {
   const [state, setState] = useState<'loading' | 'ok' | 'error'>('loading');
   const [sample, setSample] = useState('The quick brown fox jumps over the lazy dog 0123456789');
   useEffect(() => {
-    const face = new FontFace(family, `url("${resourceUrl(slot, file.path, file.rev)}")`);
+    const face = new FontFace(family, `url("${resourceUrl(slot, file.path, file.rev)}&font")`);
     face
       .load()
       .then((loadedFace) => {
@@ -398,6 +400,11 @@ function OtherFile({ file, slot }: { file: FileInfo; slot: Slot }) {
         {file.kind === 'audio' && (
           <div className="section">
             <audio controls src={resourceUrl(slot, file.path, file.rev)} style={{ width: '100%' }} />
+            {slot === 'main' && (
+              <button className="btn" style={{ marginTop: 10 }} onClick={() => openSoundTrim(file.path)}>
+                <Scissors /> Trim this sound…
+              </button>
+            )}
           </div>
         )}
         <dl className="kv surface surface-pad">

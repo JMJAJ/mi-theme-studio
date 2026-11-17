@@ -9,6 +9,8 @@ import { fileName } from '../../lib/paths';
 import type { DeviceApp, FileInfo } from '../../lib/types';
 import { useStore } from '../../state/store';
 import * as A from '../../state/actions';
+import { FolderInput, Wand2 } from 'lucide-react';
+import { GenerateIconsDialog, importIconsMatched } from './IconTools';
 
 interface AppsState {
   serial: string | null;
@@ -40,6 +42,7 @@ export function IconCoverage({ files, folder }: { files: FileInfo[]; folder: str
   const [filter, setFilter] = useState<'missing' | 'themed' | 'all'>('missing');
   const [query, setQuery] = useState('');
   const [showSystem, setShowSystem] = useState(true);
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
     if (ready && serial && loadedFor !== serial && !useApps.getState().loading) void loadApps(serial);
@@ -67,6 +70,7 @@ export function IconCoverage({ files, folder }: { files: FileInfo[]; folder: str
 
   const current = loadedFor === serial ? apps : [];
   const themed = current.filter((a) => icons.has(a.package)).length;
+  const missingApps = current.filter((a) => !icons.has(a.package) && (showSystem || !a.system));
   const q = query.trim().toLowerCase();
   const rows = current.filter((a) => {
     if (!showSystem && a.system) return false;
@@ -86,6 +90,12 @@ export function IconCoverage({ files, folder }: { files: FileInfo[]; folder: str
           </span>
         )}
         <div className="actions">
+          <button className="btn btn-sm" disabled={!current.length} onClick={() => void importIconsMatched(current, folder)} title="Pick many icon files; each goes to the app its file name matches">
+            <FolderInput /> Import icons…
+          </button>
+          <button className="btn btn-sm" disabled={!missingApps.length} onClick={() => setGenerating(true)} title="Make a matching letter icon for every app that has none">
+            <Wand2 /> Generate {missingApps.length || ''} missing…
+          </button>
           <button className="btn btn-ghost btn-sm" disabled={loading} onClick={() => void loadApps(serial)}>
             {loading ? <Loader2 className="spin" /> : <RefreshCw />} Refresh
           </button>
@@ -155,6 +165,7 @@ export function IconCoverage({ files, folder }: { files: FileInfo[]; folder: str
           {rows.length === 0 && <p className="muted">{filter === 'missing' ? 'Every app in this list has an icon.' : 'No apps match.'}</p>}
         </div>
       )}
+      {generating && <GenerateIconsDialog apps={missingApps} folder={folder} onClose={() => setGenerating(false)} />}
     </div>
   );
 }

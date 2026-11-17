@@ -82,7 +82,7 @@ export const COMMANDS: Command[] = [
   { id: 'file.open', group: 'File', label: 'Open package…', shortcut: 'Ctrl+O', icon: FolderOpen, run: () => A.openPackage(), global: true },
   { id: 'file.openPhone', group: 'File', label: 'Open a theme from the phone…', icon: Smartphone, run: () => openStoreTab('device') },
   { id: 'file.openDownloaded', group: 'File', label: 'Open a downloaded theme…', icon: Download, run: () => openStoreTab('downloads') },
-  { id: 'file.openReference', group: 'File', label: 'Open reference package…', icon: BookOpen, enabled: hasProject, run: A.openReference },
+  { id: 'file.openReference', group: 'File', label: 'Open reference package…', icon: BookOpen, enabled: hasProject, run: () => void A.openReference() },
   { id: 'file.save', group: 'File', label: 'Save', shortcut: 'Ctrl+S', icon: Save, enabled: hasProject, run: () => void A.save(), global: true },
   { id: 'file.saveAs', group: 'File', label: 'Save as…', shortcut: 'Ctrl+Shift+S', enabled: hasProject, run: () => void A.saveAs(), global: true },
   { id: 'file.exportCopy', group: 'File', label: 'Export a copy…', shortcut: 'Ctrl+E', icon: Download, enabled: hasProject, run: A.exportCopy, global: true },

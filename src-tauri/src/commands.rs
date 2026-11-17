@@ -341,6 +341,46 @@ pub async fn files_import(
     .await
 }
 
+/// A file produced inside the app (a cropped wallpaper, a generated icon).
+#[derive(Deserialize)]
+pub struct GeneratedFile {
+    pub path: String,
+    pub data: Vec<u8>,
+}
+
+/// Write files generated in the app into the project as one undoable change,
+/// replacing whatever is at those paths.
+#[tauri::command]
+pub async fn files_write(
+    app: AppHandle,
+    files: Vec<GeneratedFile>,
+    label: String,
+) -> AppResult<BulkResponse> {
+    blocking(app, move |state, _| {
+        let mut items = Vec::with_capacity(files.len());
+        for file in files {
+            let name = paths::file_name(&file.path).to_string();
+            paths::validate_name(&name)
+                .map_err(|issue| AppError::invalid(format!("`{name}`: {}", issue.describe())))?;
+            if file.data.is_empty() || file.data.len() as u64 > MAX_ASSET_BYTES {
+                return Err(AppError::invalid(format!("`{name}` is empty or too large.")));
+            }
+            items.push((file.path, file.data));
+        }
+        if items.is_empty() {
+            return Err(AppError::invalid("Nothing to write."));
+        }
+        with_main(state, |project| {
+            let result = project.add_files(items, ConflictPolicy::Overwrite, &label)?;
+            Ok(BulkResponse {
+                snapshot: snapshot(project, "main"),
+                result,
+            })
+        })
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn file_replace(
     app: AppHandle,

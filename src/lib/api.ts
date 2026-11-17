@@ -100,6 +100,8 @@ export const api = {
     call<ProjectSnapshot>('file_write_text', { path, text, allowInvalidXml }),
   filesImport: (sources: string[], folder: string, policy: ConflictPolicy, names?: string[]) =>
     call<BulkResponse>('files_import', { sources, folder, policy, names: names ?? null }),
+  /** Files made in the app (cropped wallpaper, generated icons): one undoable change, overwrites. */
+  filesWrite: (files: { path: string; data: number[] }[], label: string) => call<BulkResponse>('files_write', { files, label }),
   fileReplace: (path: string, source: string) => call<ProjectSnapshot>('file_replace', { path, source }),
   filesDelete: (paths: string[]) => call<ProjectSnapshot>('files_delete', { paths }),
   fileRename: (path: string, newName: string) => call<PathsResponse>('file_rename', { path, newName }),

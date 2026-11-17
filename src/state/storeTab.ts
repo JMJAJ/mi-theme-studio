@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { setState } from './store';
 
-export type StoreTab = 'discover' | 'categories' | 'downloads' | 'device';
+export type StoreTab = 'discover' | 'categories' | 'downloads' | 'saved' | 'device';
 
 export const useStoreTabRequest = create<{ tab: StoreTab | null; seq: number }>(() => ({ tab: null, seq: 0 }));
 

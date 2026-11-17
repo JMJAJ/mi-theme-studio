@@ -47,6 +47,10 @@ fn respond(
             },
         )
         .header("X-Content-Type-Options", "nosniff")
+        // Fonts are always fetched in CORS mode, and the webview page lives on a
+        // different origin than this scheme: without this header every font
+        // preview silently falls back to the UI font.
+        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .body(body)
         .unwrap_or_else(|_| Response::new(Vec::new()))
 }

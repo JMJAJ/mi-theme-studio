@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
-import { Archive, Download, FolderPlus, Grid2x2, List, Package, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
+import { Archive, Crop, Download, Scissors, Package, Plus, RefreshCw, Search, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { resourceUrl } from '../../lib/api';
 import { displayFolder, extension, fileName, parentOf } from '../../lib/paths';
 import { dimensions, formatBytes, plural } from '../../lib/format';
 import type { FileInfo } from '../../lib/types';
 import { getState, useStore } from '../../state/store';
 import * as A from '../../state/actions';
-import { openContextMenu } from '../common/Menu';
+import { openContextMenu, type MenuItem } from '../common/Menu';
 import { componentIcon } from '../common/icons';
 import { IconCoverage } from './IconCoverage';
+import { MamlPreview } from './MamlPreview';
+import { openWallpaperCrop } from './WallpaperCrop';
+import { openSoundTrim } from './SoundTrim';
 
 type Sort = 'name' | 'size' | 'status';
 
@@ -21,7 +24,8 @@ export function ComponentView({ componentId, embedded = false }: { componentId: 
   const [density, setDensity] = useState('all');
   const [sort, setSort] = useState<Sort>('name');
   const [bg, setBg] = useState<'checker' | 'bg-dark' | 'bg-light'>('checker');
-  const [pane, setPane] = useState<'files' | 'apps'>('files');
+  const hasLayout = componentId === 'lockscreen' || componentId === 'widgets';
+  const [pane, setPane] = useState<'files' | 'apps' | 'live'>(hasLayout ? 'live' : 'files');
 
   const def = project?.components.find((c) => c.id === componentId);
   const files = useMemo(() => (project?.files ?? []).filter((f) => f.component === componentId), [project, componentId]);
@@ -47,6 +51,38 @@ export function ComponentView({ componentId, embedded = false }: { componentId: 
   const destination = folder ?? (containers[0] ? `${containers[0].name}!/` : folders[0] ?? def.defaultRoot);
   const needsArchive = def.archive && def.defaultRoot && !containers.length && !project.files.some((f) => f.path.startsWith(`${def.defaultRoot}/`));
 
+  // The wallpaper the Crop button works on: the selected picture, else the first one.
+  const cropTarget = files.find((f) => f.kind === 'image' && selection.includes(f.path)) ?? files.find((f) => f.kind === 'image');
+  const addFiles = async () => {
+    // New parts that live in an archive get it created on the first add, no extra step.
+    if (needsArchive) {
+      if (!(await A.ensureContainer(def.defaultRoot))) return;
+      await A.addFilesDialog(`${def.defaultRoot}!/`);
+    } else await A.addFilesDialog(destination);
+  };
+  const viewMenu = (event: React.MouseEvent) => {
+    const on = (yes: boolean, label: string) => (yes ? `✓  ${label}` : `     ${label}`);
+    const items: MenuItem[] = [
+      { heading: 'Layout' },
+      { label: on(mode === 'grid', 'Grid'), onSelect: () => setMode('grid') },
+      { label: on(mode === 'list', 'List'), onSelect: () => setMode('list') },
+      { heading: 'Sort by' },
+      { label: on(sort === 'name', 'Name'), onSelect: () => setSort('name') },
+      { label: on(sort === 'size', 'Size'), onSelect: () => setSort('size') },
+      { label: on(sort === 'status', 'Changed first'), onSelect: () => setSort('status') },
+      { heading: 'Thumbnail background' },
+      { label: on(bg === 'checker', 'Checkerboard'), onSelect: () => setBg('checker') },
+      { label: on(bg === 'bg-dark', 'Black'), onSelect: () => setBg('bg-dark') },
+      { label: on(bg === 'bg-light', 'Light'), onSelect: () => setBg('bg-light') },
+    ];
+    if (densities.length > 1) {
+      items.push({ heading: 'Density' }, { label: on(density === 'all', 'All densities'), onSelect: () => setDensity('all') });
+      for (const d of densities) items.push({ label: on(density === d, d), onSelect: () => setDensity(d) });
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    openContextMenu({ clientX: rect.left, clientY: rect.bottom + 4, preventDefault: () => event.preventDefault() }, items);
+  };
+
   const onTileClick = (event: React.MouseEvent, file: FileInfo) => {
     const modeSel = event.shiftKey ? 'range' : event.ctrlKey || event.metaKey ? 'toggle' : 'single';
     A.select(file.path, modeSel, ordered);
@@ -57,6 +93,8 @@ export function ComponentView({ componentId, embedded = false }: { componentId: 
     openContextMenu(event, [
       { label: 'Open', onSelect: () => A.openFile(file.path) },
       { label: 'Replace…', icon: RefreshCw, disabled: keys.length > 1, onSelect: () => A.replaceFile(file.path) },
+      ...(file.kind === 'audio' ? [{ label: 'Trim…', icon: Scissors, disabled: keys.length > 1, onSelect: () => openSoundTrim(file.path) }] : []),
+      ...(componentId === 'wallpapers' && file.kind === 'image' ? [{ label: 'Crop & position…', icon: Crop, disabled: keys.length > 1, onSelect: () => openWallpaperCrop(file.path) }] : []),
       { label: 'Export file…', icon: Download, disabled: keys.length > 1, onSelect: () => A.extractFile(file.path) },
       { label: 'Show in explorer', onSelect: () => A.revealInExplorer(file.path) },
       'separator',
@@ -81,7 +119,21 @@ export function ComponentView({ componentId, embedded = false }: { componentId: 
           </div>
         </div>
       )}
-      {componentId === 'icons' && pane === 'apps' ? (
+      {hasLayout && (
+        <div className="toolbar">
+          <div className="segmented" role="tablist" aria-label="View">
+            <button role="tab" aria-pressed={pane === 'live'} onClick={() => setPane('live')}>
+              Preview
+            </button>
+            <button role="tab" aria-pressed={pane === 'files'} onClick={() => setPane('files')}>
+              Files
+            </button>
+          </div>
+        </div>
+      )}
+      {hasLayout && pane === 'live' ? (
+        <MamlPreview componentId={componentId} />
+      ) : componentId === 'icons' && pane === 'apps' ? (
         <div className="view">
           {needsArchive ? (
             <div className="view-pad">
@@ -109,46 +161,24 @@ export function ComponentView({ componentId, embedded = false }: { componentId: 
           <Search />
           <input className="input" placeholder={`Filter ${def.label.toLowerCase()}`} value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Filter" />
         </div>
-        {densities.length > 1 && (
-          <select className="select" value={density} onChange={(e) => setDensity(e.target.value)} aria-label="Density">
-            <option value="all">All densities</option>
-            {densities.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        )}
-        <select className="select" value={sort} onChange={(e) => setSort(e.target.value as Sort)} aria-label="Sort">
-          <option value="name">Sort: name</option>
-          <option value="size">Sort: size</option>
-          <option value="status">Sort: changed first</option>
-        </select>
-        <div className="segmented" role="group" aria-label="Layout">
-          <button aria-pressed={mode === 'grid'} onClick={() => setMode('grid')} title="Grid">
-            <Grid2x2 />
-          </button>
-          <button aria-pressed={mode === 'list'} onClick={() => setMode('list')} title="List">
-            <List />
-          </button>
-        </div>
+        <button className="btn btn-sm" onClick={viewMenu} title="Layout, sorting, background and density">
+          <SlidersHorizontal /> View{density !== 'all' ? ` · ${density}` : ''}
+        </button>
         {mode === 'grid' && (
-          <>
-            <input type="range" min={72} max={240} value={tile} onChange={(e) => setTile(Number(e.target.value))} aria-label="Thumbnail size" style={{ width: 90, accentColor: 'var(--accent)' }} />
-            <select className="select" value={bg} onChange={(e) => setBg(e.target.value as typeof bg)} aria-label="Thumbnail background">
-              <option value="checker">Checkerboard</option>
-              <option value="bg-dark">Black</option>
-              <option value="bg-light">Light</option>
-            </select>
-          </>
+          <input type="range" min={72} max={240} value={tile} onChange={(e) => setTile(Number(e.target.value))} aria-label="Thumbnail size" title="Thumbnail size" style={{ width: 90, accentColor: 'var(--accent)' }} />
         )}
         <span className="grow" />
+        {componentId === 'wallpapers' && cropTarget && (
+          <button className="btn btn-sm" onClick={() => openWallpaperCrop(cropTarget.path)} title={`Crop ${fileName(cropTarget.path)} to the phone's screen shape`}>
+            <Crop /> Crop &amp; position
+          </button>
+        )}
         {selection.length > 0 && selection.every((p) => files.some((f) => f.path === p)) && (
           <button className="btn btn-sm btn-danger" onClick={() => void A.deletePaths(selection)}>
             <Trash2 /> Delete {selection.length}
           </button>
         )}
-        {(folders.length > 0 || containers.length > 0) && (
+        {new Set([...containers.map((c) => `${c.name}!/`), ...folders]).size > 1 && (
           <select className="select" style={{ maxWidth: 220 }} value={destination} onChange={(e) => setFolder(e.target.value)} aria-label="Destination folder" title="Folder new files are added to">
             {[...new Set([...(containers.map((c) => `${c.name}!/`)), ...folders, ...(def.defaultRoot ? [def.defaultRoot] : [])])].map((f) => (
               <option key={f} value={f}>
@@ -157,27 +187,12 @@ export function ComponentView({ componentId, embedded = false }: { componentId: 
             ))}
           </select>
         )}
-        <button className="btn btn-sm btn-primary" onClick={() => void A.addFilesDialog(destination)} disabled={!!needsArchive}>
+        <button className="btn btn-sm btn-primary" onClick={() => void addFiles()}>
           <Plus /> Add files
         </button>
       </div>
 
       <div className="view" data-drop-folder={needsArchive ? undefined : destination}>
-        {needsArchive && (
-          <div className="view-pad" style={{ paddingBottom: 0 }}>
-            <div className="banner banner-info">
-              <Archive />
-              <span className="grow">
-                {def.label} resources are stored in a component archive named <code>{def.defaultRoot}</code> inside the package. Create it to start adding files.
-              </span>
-              <div className="actions">
-                <button className="btn btn-sm btn-primary" onClick={() => void A.createContainer(def.defaultRoot)}>
-                  <FolderPlus /> Create {def.defaultRoot}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
         {def.archive && !containers.length && files.some((f) => f.path.startsWith(`${def.defaultRoot}/`)) && (
           <div className="view-pad" style={{ paddingBottom: 0 }}>
             <div className="banner banner-warn">

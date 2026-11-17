@@ -8,6 +8,7 @@ import { useStore } from '../../state/store';
 import * as A from '../../state/actions';
 import { useDeviceSummary } from '../shell/deviceSummary';
 import { MirrorButton } from '../common/MirrorButton';
+import { themeFontFile, usePackageFont } from '../common/themeFont';
 
 type Screen = 'lock' | 'home' | 'previews' | 'screenshot';
 
@@ -89,6 +90,7 @@ export function PreviewView() {
   const files = useMemo(() => project?.files ?? [], [project]);
   const previews = useMemo(() => files.filter((f) => f.component === 'previews' && f.kind === 'image'), [files]);
   const walls = useMemo(() => files.filter((f) => f.component === 'wallpapers' && f.kind === 'image'), [files]);
+  const themeFont = usePackageFont(useMemo(() => themeFontFile(files), [files])).family ?? undefined;
 
   const [screen, setScreen] = useState<Screen>(project ? 'home' : 'screenshot');
   const [profile, setProfile] = useState<string>('auto');
@@ -202,12 +204,12 @@ export function PreviewView() {
         ) : (
           <div className="fill" style={{ position: 'absolute', inset: 0, background: 'linear-gradient(160deg, #2b2f3a, #141519)' }} />
         )}
-        <div className="mock-status" style={{ fontSize: 12 * s, color: '#fff' }}>
+        <div className="mock-status" style={{ fontSize: 12 * s, color: '#fff', fontFamily: themeFont }}>
           <span>{time}</span>
           <span>▮▮▮ ◔ 87%</span>
         </div>
         {lock ? (
-          <div className="mock-clock" style={{ color: '#fff' }}>
+          <div className="mock-clock" style={{ color: '#fff', fontFamily: themeFont }}>
             <div className="t" style={{ fontSize: 74 * s }}>{time}</div>
             <div style={{ fontSize: 14 * s, marginTop: 6 * s }}>{date}</div>
           </div>

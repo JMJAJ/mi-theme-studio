@@ -59,6 +59,7 @@ pub fn run() {
             commands::file_text,
             commands::file_write_text,
             commands::files_import,
+            commands::files_write,
             commands::file_replace,
             commands::files_delete,
             commands::file_rename,

@@ -505,6 +505,15 @@ impl Adb {
             std::thread::sleep(Duration::from_millis(1200));
             xml = self.ui_dump(serial).unwrap_or_default();
         }
+        // Store pages that answered "Can't connect to the network" carry a
+        // retry control; a reload usually loads the page.
+        for _ in 0..2 {
+            if !xml.contains("reload_info") || !self.tap_id(serial, "com.android.thememanager:id/reload_info") {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(3000));
+            xml = self.ui_dump(serial).unwrap_or_default();
+        }
         xml
     }
 
@@ -567,7 +576,11 @@ impl Adb {
                 xml = self.after_dialogs(serial);
             }
             if !xml.contains("applyBtn") && !xml.contains("downloadBtn") {
-                outcome.message = "The store page did not open on the phone".into();
+                // Font pages cannot be opened by deep link on this build
+                // ("Can't connect to the network"); Theme Manager's own search
+                // shows the font only when the phone's store region has it.
+                outcome.message =
+                    "The store page did not open. Fonts cannot be opened by link here — apply the font once in Theme Manager (search → Fonts). If it is not listed there, it is not in the phone's store region.".into();
                 out.push(outcome);
                 continue;
             }

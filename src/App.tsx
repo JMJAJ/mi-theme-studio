@@ -14,11 +14,14 @@ import { Workspace } from './components/views/Workspace';
 import { Inspector } from './components/inspector/Inspector';
 import { Dock } from './components/dock/Dock';
 import { DialogHost, Toasts } from './components/dialogs/Dialogs';
+import { SwapHost, openSwap } from './components/views/SwapPart';
+import { WallpaperCropHost, openWallpaperCrop } from './components/views/WallpaperCrop';
+import { SoundTrimHost } from './components/views/SoundTrim';
 import { CommandPalette } from './components/dialogs/CommandPalette';
 import { ContextMenuHost } from './components/common/Menu';
 import { Splitter } from './components/common/Splitter';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
-import { getState, hasUnsavedWork, updateLayout, useStore, choiceDialog, log } from './state/store';
+import { getState, hasUnsavedWork, updateLayout, useStore, choiceDialog, log, toast } from './state/store';
 import { COMMANDS, isEnabled, targetFolder } from './state/commands';
 import { matches, isTextTarget } from './lib/shortcuts';
 import { api } from './lib/api';
@@ -57,7 +60,7 @@ function useFileDrop() {
     const targetAt = (x: number, y: number) => {
       const ratio = window.devicePixelRatio || 1;
       const el = document.elementFromPoint(x / ratio, y / ratio) as HTMLElement | null;
-      return el?.closest<HTMLElement>('[data-drop-folder]') ?? null;
+      return el?.closest<HTMLElement>('[data-drop-part], [data-drop-folder]') ?? null;
     };
     const clear = () => {
       highlighted?.classList.remove('is-drop');
@@ -70,7 +73,7 @@ function useFileDrop() {
           const target = targetAt(payload.position.x, payload.position.y);
           if (target !== highlighted) {
             clear();
-            if (target && target.classList.contains('tree-row')) {
+            if (target && (target.classList.contains('tree-row') || target.dataset.dropPart)) {
               target.classList.add('is-drop');
               highlighted = target;
             }
@@ -93,6 +96,57 @@ function useFileDrop() {
           return;
         }
         const target = targetAt(payload.position.x, payload.position.y);
+        const part = target?.dataset.dropPart;
+        if (part) {
+          const project = state.project;
+          const def = project.components.find((c) => c.id === part);
+          // A theme package on a part card: take that part from it.
+          if (packages.length === 1 && paths.length === 1) {
+            const snapshot = await api.referenceOpen(packages[0]).catch(() => null);
+            if (snapshot) {
+              useStore.setState({ reference: snapshot, refIndex: new Map(snapshot.files.map((f) => [f.path, f])) });
+              openSwap({ part });
+            } else toast('error', 'Could not read that theme package.');
+            return;
+          }
+          // One picture on Wallpapers: ask where it goes and name it for the phone.
+          if (part === 'wallpapers' && paths.length === 1 && /\.(jpe?g|png|webp)$/i.test(paths[0])) {
+            const where = await choiceDialog({
+              title: 'Use this picture as wallpaper',
+              message: 'Where should it show?',
+              choices: [
+                { id: 'both', label: 'Home & lock screen', primary: true },
+                { id: 'home', label: 'Home screen' },
+                { id: 'lock', label: 'Lock screen' },
+                { id: 'cancel', label: 'Cancel' },
+              ],
+            });
+            if (where === 'both' || where === 'home' || where === 'lock') {
+              if (await A.setWallpaperFromFile(paths[0], where)) {
+                // Straight on to cropping it for the screen (lock screen copy when that is the only one set).
+                const re = where === 'lock' ? /(^|\/)default_lock_wallpaper\./i : /(^|\/)default_wallpaper\./i;
+                const set = getState().project?.files.find((f) => re.test(f.path));
+                if (set) openWallpaperCrop(set.path);
+              }
+            }
+            return;
+          }
+          const container = project.containers.find((c) => c.component === part);
+          const existing = project.files.find((f) => f.component === part);
+          const dest = container ? `${container.name}!/` : existing ? existing.path.split('/').slice(0, -1).join('/') : def && !def.archive ? def.defaultRoot : null;
+          if (dest === null && def?.archive && def.defaultRoot) {
+            // Parts kept in an archive get it created on the first drop.
+            if (await A.ensureContainer(def.defaultRoot)) await A.importFiles(paths, `${def.defaultRoot}!/`);
+            return;
+          }
+          if (dest === null) {
+            A.goTo('design', part);
+            toast('info', `Set up ${def?.label ?? part} here first, then drop the files again.`);
+            return;
+          }
+          await A.importFiles(paths, dest);
+          return;
+        }
         const folder = target?.dataset.dropFolder ?? targetFolder();
         if (packages.length === paths.length && packages.length === 1) {
           const choice = await choiceDialog({
@@ -275,6 +329,9 @@ export function App() {
       <StatusBar />
       <ErrorBoundary name="Dialog">
         <DialogHost />
+        <SwapHost />
+        <WallpaperCropHost />
+        <SoundTrimHost />
       </ErrorBoundary>
       <CommandPalette />
       <ContextMenuHost />

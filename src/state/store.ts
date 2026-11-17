@@ -38,10 +38,16 @@ export interface LogEntry {
   detail?: string;
 }
 
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
+
 export interface Toast {
   id: number;
   level: LogLevel;
   message: string;
+  actions?: ToastAction[];
 }
 
 export interface Draft {
@@ -245,11 +251,16 @@ export function log(level: LogLevel, message: string, detail?: string) {
   setState((s) => ({ logs: [...s.logs.slice(-499), entry] }));
 }
 
-export function toast(level: LogLevel, message: string, detail?: string) {
+export function toast(level: LogLevel, message: string, detail?: string, actions?: ToastAction[]) {
   log(level, message, detail);
   const id = nextId();
-  setState((s) => ({ toasts: [...s.toasts.slice(-3), { id, level, message }] }));
-  window.setTimeout(() => setState((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), level === 'error' ? 7000 : 3800);
+  setState((s) => ({ toasts: [...s.toasts.slice(-3), { id, level, message, actions }] }));
+  // Toasts that offer a next step stay long enough to be read and clicked.
+  window.setTimeout(() => setState((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })), actions?.length ? 9000 : level === 'error' ? 7000 : 3800);
+}
+
+export function dismissToast(id: number) {
+  setState((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
 }
 
 // ---- dialogs ----

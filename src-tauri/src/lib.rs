@@ -132,6 +132,14 @@ pub fn run() {
                 let state = app.state::<AppState>();
                 state::lock(&state.mirror).take();
                 state::lock(&state.stream).take();
+                // An adb server started from the bundled adb keeps running and
+                // locks the install folder, which breaks the next update.
+                let configured = state::lock(&state.settings).adb_path.clone();
+                if let (Some(location), _) = adb::locate(configured.as_deref()) {
+                    if location.source == "bundled" {
+                        adb::kill_server_quietly(std::path::Path::new(&location.path));
+                    }
+                }
             }
         });
 }

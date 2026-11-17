@@ -30,6 +30,27 @@ pub const REMOTE_DIR: &str = "/sdcard/Download/MiThemeStudio";
 /// adb shipped with the bundled scrcpy; the last place searched.
 pub static BUNDLED_ADB: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
 
+/// `adb kill-server`, without a console window, waiting at most two seconds.
+pub fn kill_server_quietly(adb: &Path) {
+    let mut command = std::process::Command::new(adb);
+    command.arg("kill-server").stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+    if let Ok(mut child) = command.spawn() {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            if matches!(child.try_wait(), Ok(Some(_))) {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let _ = child.kill();
+    }
+}
+
 static NEXT_LOG_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Serialize)]

@@ -66,4 +66,13 @@
     legacy_no_orphan:
       SetOutPath $INSTDIR
   ${EndIf}
+  ; adb or scrcpy started from this install keeps AdbWinApi.dll and other
+  ; files open, so stop them before files are replaced.
+  IfFileExists "$INSTDIR\scrcpy\adb.exe" 0 mts_no_bundled_adb
+    nsExec::Exec '"$INSTDIR\scrcpy\adb.exe" kill-server'
+    Pop $R8
+  mts_no_bundled_adb:
+  nsExec::Exec `powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-Process adb,scrcpy -ErrorAction SilentlyContinue | Where-Object { $$_.Path -like '$INSTDIR\*' } | Stop-Process -Force"`
+  Pop $R8
+  Sleep 500
 !macroend

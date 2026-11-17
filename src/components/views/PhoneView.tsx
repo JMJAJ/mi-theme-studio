@@ -14,7 +14,7 @@ import { formatVersion, useThemeCompatibility } from '../../state/compat';
 import { DeviceThemes } from './DeviceThemes';
 import { DeviceView } from './DeviceView';
 
-function useThemeSupport(serial: string | null, ready: boolean) {
+function useThemeSupport(serial: string | null, ready: boolean, nonce = 0) {
   const [support, setSupport] = useState<ThemeManagerSupport | null>(null);
   useEffect(() => {
     if (!serial || !ready) {
@@ -29,7 +29,7 @@ function useThemeSupport(serial: string | null, ready: boolean) {
     return () => {
       cancelled = true;
     };
-  }, [serial, ready]);
+  }, [serial, ready, nonce]);
   return support;
 }
 
@@ -148,10 +148,16 @@ export function PhoneView() {
   const project = useStore((s) => s.project);
   const busy = useStore((s) => s.busy);
   const shot = useStore((s) => s.screenshots[s.screenshots.length - 1]);
-  const support = useThemeSupport(serial, device.ready);
+  const [supportNonce, setSupportNonce] = useState(0);
+  const support = useThemeSupport(serial, device.ready, supportNonce);
   const compat = useThemeCompatibility();
   const [advanced, setAdvanced] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  async function prepareThemeManager() {
+    const next = await A.prepareThemeManager();
+    if (next) setSupportNonce((n) => n + 1);
+  }
 
   const system = details
     ? [details.hyperosVersion ? `HyperOS ${details.hyperosVersion}` : details.miuiVersion ? `MIUI ${details.miuiVersion}` : null, details.androidVersion ? `Android ${details.androidVersion}` : null].filter(Boolean).join(' · ')
@@ -198,6 +204,16 @@ export function PhoneView() {
               )}
               <div className="hero-actions">
                 <TryOnButton className="btn btn-primary" />
+                {project && support?.canApply && !support.rooted && (
+                  <button
+                    className="btn"
+                    disabled={!!busy}
+                    onClick={() => void A.tryOnPhone(true)}
+                    title="Mark the staged copy as the newest theme format so Theme Manager copies every part, even parts built for another format. Risky on older builds."
+                  >
+                    <AlertTriangle /> Force apply
+                  </button>
+                )}
                 <MirrorButton className="btn" />
                 <button className="btn" disabled={!!busy} onClick={() => void A.captureScreenshot()}>
                   <Camera /> Screenshot
@@ -211,6 +227,18 @@ export function PhoneView() {
                   </button>
                 )}
               </div>
+              {support?.installed && !support.canApply && !support.rooted && (
+                <div className="compat is-newer">
+                  <AlertTriangle />
+                  <div>
+                    <strong>One-click apply needs Theme Manager’s factory build</strong>
+                    <span>This build removed the editor entry point. Removing the update restores the system-partition build — no root, no APK patching. Theme Manager’s local data may reset.</span>
+                  </div>
+                  <button className="btn btn-sm" disabled={!!busy} onClick={() => void prepareThemeManager()}>
+                    Enable non-root apply
+                  </button>
+                </div>
+              )}
               {project && (
                 <p className="ph-note">
                   <Info /> Try on phone adds the theme to Theme Manager and applies it; each try replaces the previous one. On global HyperOS, Theme Manager wants a Xiaomi-signed licence for every part except wallpapers and sounds. Try-on reuses the licences already on the phone, so mixes of unmodified store parts apply; parts you edited have no licence and Xiaomi will not issue one.

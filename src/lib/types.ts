@@ -479,6 +479,13 @@ export interface ThemeManagerSupport {
   rooted: boolean;
 }
 
+export interface PrepareThemeManagerResult {
+  changed: boolean;
+  beforeVersion: string | null;
+  support: ThemeManagerSupport;
+  steps: string[];
+}
+
 export interface DeviceApp {
   label: string;
   package: string;

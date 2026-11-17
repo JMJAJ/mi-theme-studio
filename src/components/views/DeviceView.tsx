@@ -65,6 +65,7 @@ function CompatibilityNotice({ serial }: { serial: string }) {
 function ThemeManagerActions({ serial, hasProject, busy }: { serial: string; hasProject: boolean; busy: boolean }) {
   const [support, setSupport] = useState<ThemeManagerSupport | null>(null);
   const [checking, setChecking] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   useEffect(() => {
     let cancelled = false;
     setChecking(true);
@@ -77,6 +78,16 @@ function ThemeManagerActions({ serial, hasProject, busy }: { serial: string; has
       cancelled = true;
     };
   }, [serial]);
+  async function prepare() {
+    setPreparing(true);
+    try {
+      const next = await A.prepareThemeManager();
+      if (next) setSupport(next);
+    } finally {
+      setPreparing(false);
+    }
+  }
+
   if (checking && !support) {
     return (
       <p className="muted row" style={{ fontSize: 13 }}>
@@ -87,7 +98,26 @@ function ThemeManagerActions({ serial, hasProject, busy }: { serial: string; has
   if (!support?.installed) return null;
   return (
     <>
+      {!support.canApply && !support.rooted && (
+        <div className="banner banner-warn" style={{ marginTop: 4 }}>
+          <AlertTriangle />
+          <span>This Theme Manager build has no editor apply entry point. Removing its update restores the factory build (no root) and enables one-click apply.</span>
+          <button className="btn btn-sm" style={{ marginLeft: 'auto' }} disabled={busy || preparing} onClick={() => void prepare()}>
+            {preparing ? <RefreshCw className="spin" /> : <ShieldCheck />} Enable non-root apply
+          </button>
+        </div>
+      )}
       {hasProject && <TryOnButton className="btn" />}
+      {hasProject && support.canApply && !support.rooted && (
+        <button
+          className="btn"
+          disabled={busy}
+          onClick={() => void A.tryOnPhone(true)}
+          title="Mark the staged copy as the newest theme format so Theme Manager copies every part, even parts built for another format. Risky on older builds."
+        >
+          <AlertTriangle /> Force apply (all parts)
+        </button>
+      )}
       {hasProject && (
         <button className="btn" style={{ justifyContent: 'flex-start' }} disabled={busy} onClick={() => void A.checkLicences()}>
           <ShieldCheck /> Check licences

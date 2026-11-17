@@ -13,7 +13,7 @@ use crate::package::paths;
 use crate::project::history::History;
 use crate::project::snapshot::{snapshot, ProjectSnapshot};
 use crate::project::search::{self, ReplaceResult, ReplaceTarget, SearchOptions, SearchResult};
-use crate::project::{decode_text, BulkResult, ConflictPolicy, CopyPlanItem, Project};
+use crate::project::{decode_text, BulkResult, ConflictPolicy, CopyPlanItem, ExportData, ExportEntry, Project};
 use crate::state::{lock, AppState, Screenshot, ScreenshotInfo, MAX_ADB_LOG, MAX_SCREENSHOTS};
 use crate::storage::{self, RecoveryInfo, Settings};
 use crate::validation::{self, ValidationReport};
@@ -608,14 +608,41 @@ struct Built {
     source_path: Option<PathBuf>,
 }
 
+/// Staged packages sent through Theme Manager normally keep their declared
+/// `uiVersion`, which makes Theme Manager skip parts that require a newer
+/// format. Force apply rewrites only the staged copy's `uiVersion` so every
+/// part is copied; the open project and its file are untouched.
+const FORCE_UI_VERSION: u32 = 999;
+
 fn build_package(state: &AppState, app: Option<&AppHandle>) -> AppResult<Built> {
+    build_package_with_ui_version(state, app, None)
+}
+
+fn force_ui_version_in_entries(entries: &mut [ExportEntry], ui_version: u32) -> AppResult<()> {
+    let description = entries
+        .iter_mut()
+        .find(|entry| entry.path == DESCRIPTION_PATH)
+        .ok_or_else(|| AppError::invalid("The package has no description.xml; add one before forcing the apply."))?;
+    let (xml, lossy, _) = decode_text(description.bytes());
+    if lossy {
+        return Err(AppError::invalid("description.xml is not valid UTF-8."));
+    }
+    let updated = metadata::update(
+        Some(&xml),
+        &[FieldUpdate { name: "uiVersion".into(), value: ui_version.to_string() }],
+    )?;
+    description.data = ExportData::Owned(updated.into_bytes());
+    Ok(())
+}
+
+fn build_package_with_ui_version(state: &AppState, app: Option<&AppHandle>, force_ui_version: Option<u32>) -> AppResult<Built> {
     let emit = |stage: &'static str, done: usize, total: usize| {
         if let Some(app) = app {
             let _ = app.emit("export-progress", ExportProgress { stage, done, total });
         }
     };
     emit("collect", 0, 1);
-    let (entries, top, name, source_path) = with_main(state, |project| {
+    let (mut entries, top, name, source_path) = with_main(state, |project| {
         Ok((
             project.export_entries()?,
             project.history.top(),
@@ -623,6 +650,9 @@ fn build_package(state: &AppState, app: Option<&AppHandle>) -> AppResult<Built> 
             project.source_path.clone(),
         ))
     })?;
+    if let Some(ui_version) = force_ui_version {
+        force_ui_version_in_entries(&mut entries, ui_version)?;
+    }
     let write: Vec<WriteEntry> = entries
         .iter()
         .map(|e| WriteEntry {
@@ -1192,6 +1222,32 @@ pub async fn adb_theme_support(app: AppHandle, serial: String) -> AppResult<adb:
     blocking(app, move |state, app| adb_for(state, app)?.theme_manager_support(&serial)).await
 }
 
+/// Revert Theme Manager to its factory build so builds that lost the editor
+/// apply entry point can apply packages again. This removes the package update
+/// through the package manager; it does not root or patch the phone.
+#[tauri::command]
+pub async fn adb_prepare_theme_manager(
+    app: AppHandle,
+    serial: String,
+    confirmed: bool,
+    op_id: Option<String>,
+) -> AppResult<adb::theme_apply::PrepareThemeManagerResult> {
+    blocking(app, move |state, app| {
+        if !confirmed {
+            return Err(AppError::new(
+                "unconfirmed",
+                "Reverting Theme Manager to its factory build requires confirmation.",
+            ));
+        }
+        let adb = adb_for(state, app)?;
+        let cancel = register_op(state, &op_id);
+        let result = adb.prepare_theme_manager(&serial, cancel);
+        finish_op(state, &op_id);
+        result
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn adb_open_store_item(app: AppHandle, serial: String, module_id: String) -> AppResult<()> {
     blocking(app, move |state, app| adb_for(state, app)?.open_store_item(&serial, &module_id)).await
@@ -1209,6 +1265,7 @@ pub async fn adb_apply_theme(
     app: AppHandle,
     serial: String,
     confirmed: bool,
+    force: bool,
     op_id: Option<String>,
 ) -> AppResult<adb::theme_apply::ApplyResult> {
     blocking(app, move |state, app| {
@@ -1223,7 +1280,7 @@ pub async fn adb_apply_theme(
                 "This phone's Theme Manager has no editor apply entry point. Copy the package to the phone and apply it from Theme Manager instead.",
             ));
         }
-        let built = build_package(state, Some(app))?;
+        let built = build_package_with_ui_version(state, Some(app), force.then_some(FORCE_UI_VERSION))?;
         let staging = state.paths.staging_dir();
         let local = staging.join("apply-temp.mtz");
         storage::atomic_write(&local, &built.data)?;
@@ -1411,6 +1468,7 @@ pub async fn adb_license_downloads(
 #[tauri::command]
 pub async fn adb_try_on(app: AppHandle,
     serial: String,
+    force: bool,
     op_id: Option<String>,
 ) -> AppResult<adb::theme_install::TryOnResult> {
     blocking(app, move |state, app| {
@@ -1419,12 +1477,13 @@ pub async fn adb_try_on(app: AppHandle,
             .as_ref()
             .map(|p| p.title())
             .ok_or_else(|| AppError::invalid("Open a theme first."))?;
-        let built = build_package(state, Some(app))?;
-        let stage = state.paths.staging_dir().join("try-on");
-        let cancel = register_op(state, &op_id);
         // Xiaomi's editor entry point when the phone has it (Chinese builds);
         // otherwise Theme Manager's library.
         let support = adb.theme_manager_support(&serial).ok().filter(|s| s.can_apply);
+        let force_version = (force && support.is_some()).then_some(FORCE_UI_VERSION);
+        let built = build_package_with_ui_version(state, Some(app), force_version)?;
+        let stage = state.paths.staging_dir().join("try-on");
+        let cancel = register_op(state, &op_id);
         let result = match support {
             Some(support) => adb.try_on_with_editor_entry(&serial, &built.data, &stage, &support, cancel),
             None => adb.try_on(&serial, &built.data, &title, &stage, false, true, cancel),
@@ -1779,4 +1838,48 @@ pub async fn store_open_project(app: AppHandle, module_id: String) -> AppResult<
         Ok(snap)
     })
     .await
+}
+
+#[cfg(test)]
+mod force_ui_version_tests {
+    use super::force_ui_version_in_entries;
+    use crate::package::blob::Compression;
+    use crate::project::{ExportData, ExportEntry};
+
+    fn description(xml: &str) -> ExportEntry {
+        ExportEntry {
+            path: "description.xml".into(),
+            data: ExportData::Owned(xml.as_bytes().to_vec()),
+            compression: Compression::Deflated,
+        }
+    }
+
+    #[test]
+    fn rewrites_ui_version_for_current_root() {
+        let mut entries = vec![description(
+            r#"<?xml version="1.0"?><theme><uiVersion>15</uiVersion><title>T</title></theme>"#,
+        )];
+        force_ui_version_in_entries(&mut entries, 999).unwrap();
+        let text = String::from_utf8_lossy(entries[0].bytes());
+        assert!(text.contains("<uiVersion>999</uiVersion>"), "{text}");
+        assert!(text.contains("<title>T</title>"));
+    }
+
+    #[test]
+    fn adds_ui_version_when_missing() {
+        let mut entries = vec![description(r#"<MIUI-Theme><title>T</title></MIUI-Theme>"#)];
+        force_ui_version_in_entries(&mut entries, 999).unwrap();
+        let text = String::from_utf8_lossy(entries[0].bytes());
+        assert!(text.contains("<uiVersion>999</uiVersion>"), "{text}");
+    }
+
+    #[test]
+    fn rejects_missing_description() {
+        let mut entries = vec![ExportEntry {
+            path: "icons".into(),
+            data: ExportData::Owned(b"PK".to_vec()),
+            compression: Compression::Deflated,
+        }];
+        assert!(force_ui_version_in_entries(&mut entries, 999).is_err());
+    }
 }

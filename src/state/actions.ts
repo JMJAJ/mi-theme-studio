@@ -5,7 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { api, errorCode, errorMessage, newOpId, resourceUrl } from '../lib/api';
 import { fileName, joinPath, parentOf, splitNested, validateName } from '../lib/paths';
-import type { AdbLogEntry, ConflictPolicy, DownloadedTheme, MediaTarget, ExportProgress, ProjectSnapshot, SaveResult, Slot } from '../lib/types';
+import type { AdbLogEntry, ConflictPolicy, DownloadedTheme, MediaTarget, ExportProgress, ProjectSnapshot, SaveResult, Slot, ThemeManagerSupport } from '../lib/types';
 import { formatBytes, plural } from '../lib/format';
 import { useMirrorStream } from './mirrorStream';
 import {
@@ -1236,7 +1236,53 @@ export async function phoneIsRooted(serial: string) {
 }
 const ROOT_APPLY_OK_KEY = 'mts.rootApply.ok.v1';
 
-export async function tryOnPhone() {
+/**
+ * Revert Theme Manager to its factory build, which still carries the editor
+ * apply entry point on affected global builds. No root and no APK patching:
+ * the package manager removes the update, so the system-partition build runs.
+ */
+export async function prepareThemeManager(): Promise<ThemeManagerSupport | null> {
+  const device = readyDevice();
+  if (!device) {
+    toast('warning', 'Connect and authorize a phone first.');
+    return null;
+  }
+  if (getState().busy) return null;
+  const details = getState().deviceDetails[device.serial];
+  const name = details?.marketName ?? details?.model ?? device.model ?? device.serial;
+  const ok = await confirmDialog({
+    title: `Enable non-root one-click apply on ${name}?`,
+    message: 'This phone’s Theme Manager update removed the editor apply entry point. Removing the update restores the factory build, which can apply a theme directly.',
+    detail: [
+      'No root and no APK patching: Android’s package manager reverts Theme Manager to the build already in the system partition.',
+      'Theme Manager’s local themes and downloads may be reset by the downgrade. Store purchases and your Xiaomi account are not changed.',
+      'The store can update Theme Manager again later, which removes one-click apply until you prepare it again.',
+      'Apply only themes you created or have the rights to use.',
+    ],
+    confirmLabel: 'Prepare Theme Manager',
+    danger: true,
+  });
+  if (!ok) return null;
+  const opId = newOpId('prepare-tm');
+  operations.set(opId, 'Preparing Theme Manager');
+  setState({ busy: 'Preparing Theme Manager on the phone…' });
+  try {
+    const result = await api.adbPrepareThemeManager(device.serial, opId);
+    for (const step of result.steps) log('info', `Theme Manager: ${step}`);
+    if (!result.changed) toast('success', 'Theme Manager already has the editor apply entry point.');
+    else toast('success', `Theme Manager ${result.beforeVersion ?? ''} → ${result.support.version ?? 'factory build'}: one-click apply is ready.`);
+    return result.support;
+  } catch (error) {
+    if (errorCode(error) === 'cancelled') log('info', 'Preparing Theme Manager cancelled');
+    else toast('error', `Prepare Theme Manager: ${errorMessage(error)}`);
+    return null;
+  } finally {
+    operations.delete(opId);
+    setState({ busy: null });
+  }
+}
+
+export async function tryOnPhone(force = false) {
   const device = readyDevice();
   const project = getState().project;
   if (!device || !project) {
@@ -1246,7 +1292,7 @@ export async function tryOnPhone() {
   if (getState().busy) return;
   if (!(await applyAllDrafts())) return;
   const compat = await themeCompatibility();
-  if (compat && !compat.supported) {
+  if (compat && !compat.supported && !force) {
     const go = await confirmDialog({
       title: 'This theme is newer than the phone',
       message: compat.detail,
@@ -1268,7 +1314,21 @@ export async function tryOnPhone() {
     }
     return applyWithRoot(ok, true);
   }
-  let confirmed = false;
+  if (force) {
+    const ok = await confirmDialog({
+      title: `Force apply every part of “${project.title}”?`,
+      message: 'The staged copy is marked as the newest theme format so Theme Manager stops skipping parts whose uiVersion it considers too new.',
+      detail: [
+        'Parts built for another format (system UI, Settings, lock screen, fonts) may be copied even if this phone does not understand them; they can render wrong or cause UI glitches.',
+        'The project file is not modified — only the copy sent to the phone is changed.',
+        'Use Themes → My themes on the phone to go back to another theme.',
+      ],
+      confirmLabel: 'Force apply',
+      danger: true,
+    });
+    if (!ok) return;
+  }
+  let confirmed = force;
   try {
     confirmed = localStorage.getItem(TRY_ON_OK_KEY) === '1';
   } catch {
@@ -1299,7 +1359,7 @@ export async function tryOnPhone() {
   operations.set(opId, 'Trying on phone');
   setState({ busy: TRY_ON_BUSY });
   try {
-    const result = await api.adbTryOn(device.serial, opId);
+    const result = await api.adbTryOn(device.serial, opId, force);
     for (const step of result.steps) log('info', `Try on: ${step}`);
     if (result.applied) {
       toast('success', `“${project.title}” is now on the phone (${plural(result.parts.length, 'part')})`);
@@ -1620,7 +1680,7 @@ export async function openThemeSettingsOnDevice() {
  * point (only offered when the phone supports it), then capture a screenshot
  * so the result can be checked.
  */
-export async function applyOnDevice() {
+export async function applyOnDevice(force = false) {
   const device = readyDevice();
   const project = getState().project;
   if (!device || !project) {
@@ -1635,6 +1695,7 @@ export async function applyOnDevice() {
     message: 'The current package is exported, copied to the phone and handed to Theme Manager, which applies it as the active theme.',
     detail: [
       'This uses the same entry point as Xiaomi’s desktop theme editor. No root is used and no system settings are changed.',
+      ...(force ? ['Force apply rewrites the staged copy’s uiVersion so Theme Manager copies every part, including ones built for another format.'] : []),
       'To go back, pick your previous theme in Theme Manager → My themes (it stays installed).',
       'A screenshot is taken afterwards so you can check the result.',
     ],
@@ -1645,7 +1706,7 @@ export async function applyOnDevice() {
   operations.set(opId, 'Applying on phone');
   setState({ busy: 'Applying theme on the phone…' });
   try {
-    const result = await api.adbApplyTheme(device.serial, opId);
+    const result = await api.adbApplyTheme(device.serial, opId, force);
     for (const step of result.steps) log('info', `Apply: ${step}`);
     toast('success', `Sent to Theme Manager (${formatBytes(result.bytes)}). Check the phone.`);
     await new Promise((r) => setTimeout(r, 2500));

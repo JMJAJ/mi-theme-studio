@@ -5,8 +5,9 @@
 //! `ApplyThemeForScreenshot` activity is started with `api_called_from =
 //! ThemeEditor`. That activity only exists in some Theme Manager builds
 //! (verified absent in global 3.0.5.19 on HyperOS 3), so support is detected
-//! first and the apply call is refused when it is missing. Nothing here needs
-//! root, changes system settings, or touches Theme Manager's private data.
+//! first. When an update removed it, `prepare_theme_manager` can revert Theme
+//! Manager to the factory build through the package manager; nothing here
+//! needs root, patches an APK, or touches Theme Manager's private data.
 
 use super::{valid_serial, Adb, THEME_MANAGER_PACKAGE};
 use crate::error::{AppError, AppResult};
@@ -19,9 +20,10 @@ use std::time::Duration;
 pub const APPLY_ACTIVITY: &str = "com.android.thememanager/com.android.thememanager.ApplyThemeForScreenshot";
 /// Declared by Theme Manager builds that use the two-step (init/apply) flow.
 pub const SUPPORT_MARKER: &str = "com.android.thememanager.support3.0";
-const NEW_FLOW_INIT_PATH: &str = "/sdcard/Download/auto/temp.mtz";
+/// Theme Manager can read its own external files directory without storage
+/// permissions. A path such as `/sdcard/temp.mtz` instead opens DocumentsUI,
+/// so the single-step flow must use this one too.
 const NEW_FLOW_PATH: &str = "/sdcard/Android/data/com.android.thememanager/files/temp.mtz";
-const LEGACY_PATH: &str = "/sdcard/temp.mtz";
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -44,6 +46,21 @@ pub struct ApplyResult {
     pub remote_path: String,
     pub bytes: u64,
     pub steps: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrepareThemeManagerResult {
+    /// True when an update was removed and the factory build was restored.
+    pub changed: bool,
+    pub before_version: Option<String>,
+    pub support: ThemeManagerSupport,
+    pub steps: Vec<String>,
+}
+
+/// `pm uninstall-system-updates` prints `Success` on its own line.
+fn uninstall_succeeded(output: &str) -> bool {
+    output.lines().any(|line| line.trim() == "Success")
 }
 
 /// `am start` prints errors on stdout with exit code 0.
@@ -95,6 +112,17 @@ impl Adb {
         }
     }
 
+    fn apply_activity_resolves(&self, serial: &str) -> bool {
+        self.shell(
+            serial,
+            &["cmd", "package", "resolve-activity", "--brief", "--components", "-n", APPLY_ACTIVITY],
+            Duration::from_secs(15),
+            None,
+        )
+        .map(|out| resolves(&out.stdout_text(), "ApplyThemeForScreenshot"))
+        .unwrap_or(false)
+    }
+
     pub fn theme_manager_support(&self, serial: &str) -> AppResult<ThemeManagerSupport> {
         valid_serial(serial)?;
         let dump = self
@@ -104,10 +132,7 @@ impl Adb {
         if !installed {
             return Ok(ThemeManagerSupport { installed, version: None, can_apply: false, two_step: false, can_open_store: false, rooted: self.rooted(serial) });
         }
-        let apply = self
-            .shell(serial, &["cmd", "package", "resolve-activity", "--brief", "--components", "-n", APPLY_ACTIVITY], Duration::from_secs(15), None)
-            .map(|o| resolves(&o.stdout_text(), "ApplyThemeForScreenshot"))
-            .unwrap_or(false);
+        let apply = self.apply_activity_resolves(serial);
         let store = self
             .shell(
                 serial,
@@ -173,6 +198,79 @@ impl Adb {
         }
     }
 
+    /// Remove Theme Manager's update so the factory build (which still has the
+    /// editor apply entry point on affected global builds) is used. No root and
+    /// no APK is installed; this is the package manager's supported downgrade.
+    /// Theme Manager's own data may be reset by the downgrade.
+    pub fn prepare_theme_manager(
+        &self,
+        serial: &str,
+        cancel: Option<Arc<AtomicBool>>,
+    ) -> AppResult<PrepareThemeManagerResult> {
+        valid_serial(serial)?;
+        let before = self.theme_manager_support(serial)?;
+        if !before.installed {
+            return Err(AppError::not_found("Theme Manager is not installed on this phone."));
+        }
+        if before.can_apply {
+            return Ok(PrepareThemeManagerResult {
+                changed: false,
+                before_version: before.version.clone(),
+                support: before,
+                steps: vec!["Theme Manager already has the editor apply entry point.".into()],
+            });
+        }
+        let out = self
+            .shell(
+                serial,
+                &["pm", "uninstall-system-updates", THEME_MANAGER_PACKAGE],
+                Duration::from_secs(120),
+                cancel,
+            )?
+            .stdout_text();
+        if !uninstall_succeeded(&out) {
+            let detail = out
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .next_back()
+                .unwrap_or("no output");
+            return Err(AppError::new(
+                "prepare_failed",
+                format!("Theme Manager's update could not be removed: {detail}"),
+            ));
+        }
+        let mut ready = false;
+        for _ in 0..15 {
+            std::thread::sleep(Duration::from_millis(1000));
+            if self.apply_activity_resolves(serial) {
+                ready = true;
+                break;
+            }
+        }
+        let support = self.theme_manager_support(serial)?;
+        if !ready || !support.can_apply {
+            return Err(AppError::new(
+                "unsupported",
+                format!(
+                    "Theme Manager was reverted to {} but its factory build has no editor apply entry point on this phone.",
+                    support.version.as_deref().unwrap_or("the factory build")
+                ),
+            ));
+        }
+        let version = support.version.clone().unwrap_or_else(|| "the factory build".into());
+        Ok(PrepareThemeManagerResult {
+            changed: true,
+            before_version: before.version,
+            support,
+            steps: vec![
+                "Removed Theme Manager updates (factory build restored)".into(),
+                format!("Theme Manager is now {version}"),
+                "The editor apply entry point is available".into(),
+            ],
+        })
+    }
+
     /// Apply a package with Theme Manager's editor entry point. Requires
     /// `support.can_apply`; the caller must have asked the user first.
     pub fn apply_theme(&self, serial: &str, local: &Path, support: &ThemeManagerSupport, cancel: Option<Arc<AtomicBool>>) -> AppResult<ApplyResult> {
@@ -184,36 +282,27 @@ impl Adb {
             ));
         }
         let mut steps = Vec::new();
+        let bytes = self.push_to(serial, local, NEW_FLOW_PATH, cancel)?;
+        steps.push(format!("Copied {bytes} bytes to {NEW_FLOW_PATH} (verified)"));
         let base = ["-n", APPLY_ACTIVITY, "-e", "api_called_from", "ThemeEditor"];
-        if support.two_step {
-            let _ = self.shell(serial, &["rm", "-f", NEW_FLOW_INIT_PATH], Duration::from_secs(10), cancel.clone());
-            let mut init = base.to_vec();
-            init.extend_from_slice(&["-e", "theme_file_path", NEW_FLOW_INIT_PATH, "-e", "ver2_step", "ver2_step_init"]);
-            self.start(serial, &init, "Prepare Theme Manager")?;
-            steps.push("Prepared Theme Manager".into());
-            std::thread::sleep(Duration::from_millis(1000));
-            let bytes = self.push_to(serial, local, NEW_FLOW_PATH, cancel)?;
-            steps.push(format!("Copied {bytes} bytes to {NEW_FLOW_PATH} (verified)"));
-            let mut apply = base.to_vec();
-            apply.extend_from_slice(&["-e", "theme_file_path", NEW_FLOW_PATH, "-e", "ver2_step", "ver2_step_apply"]);
-            self.start(serial, &apply, "Apply theme")?;
-            steps.push("Asked Theme Manager to apply the theme".into());
-            Ok(ApplyResult { remote_path: NEW_FLOW_PATH.into(), bytes, steps })
-        } else {
-            let bytes = self.push_to(serial, local, LEGACY_PATH, cancel)?;
-            steps.push(format!("Copied {bytes} bytes to {LEGACY_PATH} (verified)"));
-            let mut apply = base.to_vec();
-            apply.extend_from_slice(&["-e", "theme_file_path", LEGACY_PATH]);
-            self.start(serial, &apply, "Apply theme")?;
-            steps.push("Asked Theme Manager to apply the theme".into());
-            Ok(ApplyResult { remote_path: LEGACY_PATH.into(), bytes, steps })
-        }
+        let mut apply = base.to_vec();
+        apply.extend_from_slice(&["-e", "theme_file_path", NEW_FLOW_PATH]);
+        self.start(serial, &apply, "Apply theme")?;
+        steps.push("Asked Theme Manager to apply the theme".into());
+        Ok(ApplyResult { remote_path: NEW_FLOW_PATH.into(), bytes, steps })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_uninstall_output() {
+        assert!(uninstall_succeeded("Uninstalling updates to com.android.thememanager...\nSuccess\n"));
+        assert!(!uninstall_succeeded("Failure [DELETE_FAILED_INTERNAL_ERROR]"));
+        assert!(!uninstall_succeeded(""));
+    }
 
     #[test]
     fn parses_am_and_resolve_output() {
@@ -243,5 +332,20 @@ mod live {
         let support = adb.theme_manager_support(&serial).unwrap();
         println!("{support:?}");
         assert!(support.installed);
+    }
+
+    #[test]
+    #[ignore]
+    fn prepares_and_applies_package_on_device() {
+        let (Ok(path), Ok(serial), Ok(mtz)) =
+            (std::env::var("MTS_ADB"), std::env::var("MTS_SERIAL"), std::env::var("MTS_MTZ"))
+        else {
+            return;
+        };
+        let adb = Adb { path: path.into(), log: Arc::new(|_| {}) };
+        let prepared = adb.prepare_theme_manager(&serial, None).unwrap();
+        assert!(prepared.support.can_apply);
+        let result = adb.apply_theme(&serial, Path::new(&mtz), &prepared.support, None).unwrap();
+        println!("{result:?}");
     }
 }

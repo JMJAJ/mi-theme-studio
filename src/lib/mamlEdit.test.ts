@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findStartTag, lenientXml, setAttributes } from './mamlEdit';
+import { findStartTag, lenientXml, removeElements, setAttributes } from './mamlEdit';
 
 const doc = `<?xml version="1.0"?>
 <!-- <Fake x="1"/> -->
@@ -34,5 +34,40 @@ describe('lenientXml', () => {
     const src = '<Lockscreen><Rectangle alpha="240" w="8" alpha="120" visibility="#a&#b"/><Text text="a &amp; b"/></Lockscreen>';
     const out = lenientXml(src);
     expect(out).toBe('<Lockscreen><Rectangle alpha="240" w="8" visibility="#a&amp;#b"/><Text text="a &amp; b"/></Lockscreen>');
+  });
+
+  it('separates attributes written without a space', () => {
+    const src = '<Lockscreen><Text x="155" align="left"alpha="#qq2"/></Lockscreen>';
+    const out = lenientXml(src);
+    expect(out).toBe('<Lockscreen><Text x="155" align="left" alpha="#qq2"/></Lockscreen>');
+  });
+});
+
+describe('removeElements', () => {
+  const src = `<Lockscreen>
+  <Image src="a.png"/>
+  <Group x="1">
+    <Text text="t"/>
+  </Group>
+  <Time src="t.png" />
+</Lockscreen>
+`;
+  it('removes a self-closing element and its line', () => {
+    expect(removeElements(src, [1])).toBe(`<Lockscreen>
+  <Group x="1">
+    <Text text="t"/>
+  </Group>
+  <Time src="t.png" />
+</Lockscreen>
+`);
+  });
+  it('removes an element with its children, and skips children of removed parents', () => {
+    expect(removeElements(src, [3, 2, 4])).toBe(`<Lockscreen>
+  <Image src="a.png"/>
+</Lockscreen>
+`);
+  });
+  it('keeps the line when other content shares it', () => {
+    expect(removeElements('<A><B/><C/></A>', [1])).toBe('<A><C/></A>');
   });
 });

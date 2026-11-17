@@ -7,7 +7,7 @@ import { create } from 'zustand';
 import { AlertTriangle, Info, Loader2, Pause, Play } from 'lucide-react';
 import { api, errorMessage, resourceUrl } from '../../lib/api';
 import { evalNumber, evalString, evaluate, formatDate, systemVars, type Vars } from '../../lib/maml';
-import { lenientXml, setAttributes } from '../../lib/mamlEdit';
+import { lenientXml, removeElements, setAttributes } from '../../lib/mamlEdit';
 import type { FileInfo, Slot } from '../../lib/types';
 import * as A from '../../state/actions';
 import { useStore } from '../../state/store';
@@ -152,9 +152,15 @@ function place(el: Element, ctx: Ctx, anim: Anim): CSSProperties {
   const tx = el.getAttribute('align') === 'center' ? '-50%' : el.getAttribute('align') === 'right' ? '-100%' : '0';
   const ty = el.getAttribute('alignV') === 'center' ? '-50%' : el.getAttribute('alignV') === 'bottom' ? '-100%' : '0';
   const angle = anim.angle ?? n('rotation', 'angle');
-  const transforms = [tx !== '0' || ty !== '0' ? `translate(${tx}, ${ty})` : '', angle ? `rotate(${angle}deg)` : ''].filter(Boolean);
+  // scale multiplies scaleX / scaleY, about the pivot (the element's top-left when none is given).
+  const s = has('scale') ? evalNumber(el.getAttribute('scale'), ctx.vars, 1) : 1;
+  const sx = s * (has('scaleX') ? evalNumber(el.getAttribute('scaleX'), ctx.vars, 1) : 1);
+  const sy = s * (has('scaleY') ? evalNumber(el.getAttribute('scaleY'), ctx.vars, 1) : 1);
+  const scaled = sx !== 1 || sy !== 1;
+  const transforms = [tx !== '0' || ty !== '0' ? `translate(${tx}, ${ty})` : '', angle ? `rotate(${angle}deg)` : '', scaled ? `scale(${sx}, ${sy})` : ''].filter(Boolean);
   if (transforms.length) style.transform = transforms.join(' ');
   if (has('pivotX') || has('pivotY')) style.transformOrigin = `${n('pivotX')}px ${n('pivotY')}px`;
+  else if (scaled) style.transformOrigin = '0 0';
   const alpha = (has('alpha') ? n('alpha') : 255) * (anim.alpha === undefined ? 1 : anim.alpha / 255);
   if (alpha < 255) style.opacity = Math.min(1, Math.max(0, alpha / 255));
   return style;
@@ -490,11 +496,14 @@ export interface Box {
 export type CanvasEdit =
   | { kind: 'move'; dx: number; dy: number; ords?: number[] }
   | { kind: 'resize'; sx: number; sy: number; fixed: { x: number; y: number }; box: Box }
-  | { kind: 'rotate'; delta: number; pivot: { x: number; y: number } };
+  | { kind: 'rotate'; delta: number; pivot: { x: number; y: number } }
+  | { kind: 'delete'; ords: number[] };
 
-/** Pieces whose size can be dragged (digit clocks and groups take their size from their pictures). */
-const RESIZABLE = new Set(['Image', 'Rectangle', 'Ellipse', 'Arc', 'Circle', 'Video', 'Text', 'DateTime']);
-const UNIFORM = new Set(['Text', 'DateTime', 'Circle']);
+/** Pieces whose size can be dragged (groups take their size from what is inside them). */
+const RESIZABLE = new Set(['Image', 'Rectangle', 'Ellipse', 'Arc', 'Circle', 'Video', 'Text', 'DateTime', 'Time', 'ImageNumber']);
+const UNIFORM = new Set(['Text', 'DateTime', 'Circle', 'Time', 'ImageNumber']);
+/** Drawn from fixed-size digit pictures: resized with MAML's `scale`, not w / h. */
+const SCALED = new Set(['Time', 'ImageNumber']);
 
 // Transparency of pictures, so a mostly-empty full-screen PNG is picked and
 // outlined by what it shows, not by its whole size.
@@ -775,7 +784,7 @@ export function MamlCanvas({
 
   const nodeOf = (ord: number) => ref.current?.querySelector<HTMLElement>(`[data-mk="${ord}"]`) ?? null;
 
-  // Esc clears the selection; arrow keys nudge every selected piece (Shift: 10 px).
+  // Esc clears the selection, Delete removes the selected pieces, arrow keys nudge them (Shift: 10 px).
   useEffect(() => {
     if (!onEdit || !onSelectMany) return;
     const onKey = (e: KeyboardEvent) => {
@@ -787,6 +796,9 @@ export function MamlCanvas({
       if (e.key === 'Escape') {
         e.preventDefault();
         onSelect?.(null);
+      } else if (e.key === 'Delete') {
+        e.preventDefault();
+        onEdit(all[0], { kind: 'delete', ords: all });
       } else if (dir[e.key]) {
         e.preventDefault();
         onEdit(all[0], { kind: 'move', dx: dir[e.key][0], dy: dir[e.key][1], ords: all });
@@ -1102,6 +1114,44 @@ export function useHasLockLayout() {
   return useStore((s) => !!s.project?.files.some((f) => f.component === 'lockscreen' && /(^|\/|!\/)manifest\.xml$/i.test(f.path)));
 }
 
+/**
+ * Resize a digit-picture piece with `scale`. The phone scales about pivotX / pivotY
+ * (the element's top-left by default), so a pivot at the align point is stored when
+ * there is none, and x / y are moved so the box lands where it was dragged to.
+ */
+function scaleAttrs(el: Element, vars: Vars, f: number, e: Box, next: Box): Record<string, string | null> {
+  const old = el.hasAttribute('scale') ? evalNumber(el.getAttribute('scale'), vars, 1) || 1 : 1;
+  const cur = el.getAttribute('scale')?.trim() ?? '';
+  const now = old * f;
+  const attrs: Record<string, string | null> = {
+    scale: !cur || /^-?\d+(\.\d+)?$/.test(cur) ? String(Math.round(now * 1000) / 1000) : `(${cur})*${+f.toFixed(4)}`,
+  };
+  // Unscaled size, and where x / y sit in it (align / alignV).
+  const w = e.w / old;
+  const h = e.h / old;
+  const fa = { left: 0, center: 0.5, right: 1 }[el.getAttribute('align') ?? 'left'] ?? 0;
+  const fv = { top: 0, center: 0.5, bottom: 1 }[el.getAttribute('alignV') ?? 'top'] ?? 0;
+  let px: number;
+  let py: number;
+  if (el.hasAttribute('pivotX') || el.hasAttribute('pivotY')) {
+    px = evalNumber(el.getAttribute('pivotX'), vars);
+    py = evalNumber(el.getAttribute('pivotY'), vars);
+  } else {
+    px = Math.round(fa * w);
+    py = Math.round(fv * h);
+    attrs.pivotX = String(px);
+    attrs.pivotY = String(py);
+  }
+  // Visible left = x - fa·w + px·(1 - scale); solve for the x that puts it at next.l.
+  const x = evalNumber(el.getAttribute('x'), vars);
+  const y = evalNumber(el.getAttribute('y'), vars);
+  const dx = Math.round(next.l + fa * w - px * (1 - now) - x);
+  const dy = Math.round(next.t + fv * h - py * (1 - now) - y);
+  if (dx) attrs.x = nudge(el.getAttribute('x'), dx);
+  if (dy) attrs.y = nudge(el.getAttribute('y'), dy);
+  return attrs;
+}
+
 /** Add a pixel offset to an x/y value, keeping formulas as formulas. */
 function nudge(value: string | null, d: number) {
   const v = (value ?? '0').trim() || '0';
@@ -1173,6 +1223,14 @@ export function MamlPreview({ componentId }: { componentId: string }) {
       if (next !== text) void live.apply(next);
       return;
     }
+    if (change.kind === 'delete') {
+      if (text === null) return;
+      const next = removeElements(text, change.ords);
+      if (next === text) return;
+      select(null);
+      void live.apply(next);
+      return;
+    }
     const vars = scene?.vars ?? new Map();
     if (change.kind === 'rotate') {
       const name = el.hasAttribute('angle') && !el.hasAttribute('rotation') ? 'angle' : 'rotation';
@@ -1187,6 +1245,10 @@ export function MamlPreview({ componentId }: { componentId: string }) {
     const { sx, sy, fixed: p, box: e } = change;
     const tag = el.tagName;
     const next = { l: p.x + (e.l - p.x) * sx, t: p.y + (e.t - p.y) * sy, w: e.w * sx, h: e.h * sy };
+    if (SCALED.has(tag)) {
+      void commit(ord, scaleAttrs(el, vars, sx, e, next));
+      return;
+    }
     const centered = tag === 'Circle';
     const align = centered ? 'center' : (el.getAttribute('align') ?? 'left');
     const alignV = centered ? 'center' : (el.getAttribute('alignV') ?? 'top');
@@ -1226,7 +1288,7 @@ export function MamlPreview({ componentId }: { componentId: string }) {
         <button className="btn btn-sm" onClick={() => setPlaying((p) => !p)} title={playing ? 'Stop animations to edit in the resting pose' : 'Play the layout’s animations'}>
           {playing ? <Pause /> : <Play />} {playing ? 'Stop animations' : 'Play animations'}
         </button>
-        <span className="muted">Click a piece to edit it, drag to move it (hold Alt to skip snapping). Drag on an empty spot or Shift+click to select several.{scene ? ` ${scene.w} × ${scene.h}` : ''}</span>
+        <span className="muted">Click a piece to edit it, drag to move it (hold Alt to skip snapping). Drag on an empty spot or Shift+click to select several. Delete removes the selection.{scene ? ` ${scene.w} × ${scene.h}` : ''}</span>
         {scene && scene.unknown.length > 0 && (
           <span className="badge badge-warn" title={`Drawn on the phone but not here: ${scene.unknown.join(', ')}`}>
             <AlertTriangle /> {scene.unknown.join(', ')} not drawn here

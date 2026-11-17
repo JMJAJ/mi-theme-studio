@@ -23,7 +23,8 @@ export function lineOf(text: string, offset: number) {
 
 /**
  * The phone's parser shrugs off mistakes a strict XML parser refuses: an attribute
- * written twice (the first one counts) and a bare `&` or `<` inside a value.
+ * written twice (the first one counts), a bare `&` or `<` inside a value, and two
+ * attributes with no space between them (`align="left"alpha="1"`).
  * Repairs only those, inside start tags, so element order (and every ordinal) is unchanged.
  */
 export function lenientXml(text: string): string {
@@ -36,7 +37,7 @@ export function lenientXml(text: string): string {
       seen.add(key);
       const q = value[0];
       const inner = value.slice(1, -1).replace(/&(?!(?:[a-zA-Z]+|#\d+|#x[0-9a-fA-F]+);)/g, '&amp;').replace(/</g, '&lt;');
-      return `${space}${key}=${q}${inner}${q}`;
+      return `${space || ' '}${key}=${q}${inner}${q}`;
     });
     return `<${name}${fixed}>`;
   });
@@ -63,4 +64,45 @@ export function setAttributes(text: string, ordinal: number, attrs: Record<strin
     }
   }
   return text.slice(0, tag.start) + body + text.slice(tag.end);
+}
+
+/** Where the element with this document-order index sits, from its start tag through its end tag. */
+function elementRange(text: string, ordinal: number): { start: number; end: number } | null {
+  const tag = findStartTag(text, ordinal);
+  if (!tag) return null;
+  if (/\/\s*>$/.test(text.slice(tag.start, tag.end))) return { start: tag.start, end: tag.end };
+  TOKEN.lastIndex = tag.end;
+  let depth = 1;
+  for (let m = TOKEN.exec(text); m; m = TOKEN.exec(text)) {
+    if (m[1] !== undefined) {
+      if (!/\/\s*>$/.test(m[0])) depth++;
+    } else if (m[0].startsWith('</') && --depth === 0) return { start: tag.start, end: m.index + m[0].length };
+  }
+  return null;
+}
+
+/**
+ * Remove elements (by document-order index) with everything inside them. A piece
+ * inside another removed one goes with its parent; the line each one sat on is
+ * removed too when nothing else is on it.
+ */
+export function removeElements(text: string, ordinals: number[]): string {
+  const ranges = [...new Set(ordinals)]
+    .map((o) => elementRange(text, o))
+    .filter((r): r is { start: number; end: number } => !!r)
+    .sort((a, b) => a.start - b.start)
+    .filter((r, i, all) => !all.slice(0, i).some((p) => p.start <= r.start && r.end <= p.end));
+  let out = text;
+  for (const r of ranges.reverse()) {
+    let { start, end } = r;
+    const lineStart = out.lastIndexOf('\n', start - 1) + 1;
+    const nl = out.indexOf('\n', end);
+    const lineEnd = nl === -1 ? out.length : nl + 1;
+    if (!out.slice(lineStart, start).trim() && !out.slice(end, lineEnd).trim()) {
+      start = lineStart;
+      end = lineEnd;
+    }
+    out = out.slice(0, start) + out.slice(end);
+  }
+  return out;
 }

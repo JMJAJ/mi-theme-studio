@@ -1252,14 +1252,15 @@ export async function prepareThemeManager(): Promise<ThemeManagerSupport | null>
   const name = details?.marketName ?? details?.model ?? device.model ?? device.serial;
   const ok = await confirmDialog({
     title: `Enable non-root one-click apply on ${name}?`,
-    message: 'This phone’s Theme Manager update removed the editor apply entry point. Removing the update restores the factory build, which can apply a theme directly.',
+    message: 'Theme Manager’s app data will be cleared. Imported themes, downloaded themes and their list in Themes → My themes are removed from the phone. Store purchases stay on your Xiaomi account and can be downloaded again.',
     detail: [
+      'Why: this phone’s Theme Manager update removed the editor apply entry point. Removing the update restores the factory build, which can apply a theme directly, and Android clears an app’s data when it removes an update.',
       'No root and no APK patching: Android’s package manager reverts Theme Manager to the build already in the system partition.',
-      'Theme Manager’s local themes and downloads may be reset by the downgrade. Store purchases and your Xiaomi account are not changed.',
+      'Your theme projects on this PC are not affected.',
       'The store can update Theme Manager again later, which removes one-click apply until you prepare it again.',
       'Apply only themes you created or have the rights to use.',
     ],
-    confirmLabel: 'Prepare Theme Manager',
+    confirmLabel: 'Clear data and prepare',
     danger: true,
   });
   if (!ok) return null;

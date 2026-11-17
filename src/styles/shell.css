@@ -558,6 +558,10 @@ button.mock-clock.pp-click { color: #fff; text-align: center; }
 .maml-rot { position: absolute; left: 50%; top: calc(var(--inv) * -30px); width: calc(var(--inv) * 13px); height: calc(var(--inv) * 13px); margin-left: calc(var(--inv) * -6.5px); border-radius: 50%; background: #ff6a14; border: calc(var(--inv) * 2px) solid #fff; pointer-events: auto; cursor: grab; box-sizing: border-box; }
 .maml-rot::after { content: ''; position: absolute; left: 50%; top: 100%; width: calc(var(--inv) * 1.5px); height: calc(var(--inv) * 16px); margin-left: calc(var(--inv) * -0.75px); background: #ff6a14; }
 .maml-canvas.is-edit [data-mk] { cursor: default; }
+.maml-guide { position: absolute; pointer-events: none; z-index: 49; width: 0; height: 0; border: 0 solid #ff2d95; }
+.maml-guide.is-v { top: 0; bottom: 0; height: auto; }
+.maml-guide.is-h { left: 0; right: 0; width: auto; }
+.maml-guide.is-mid { border-color: #22d3ee; }
 /* Inspector polish */
 .mi-note { margin: 0; padding: 10px 12px; font-size: var(--fs-sm); line-height: 1.45; color: var(--text-2); background: var(--accent-soft); border-bottom: 1px solid var(--line); }
 .mi-label { font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.05em; }

@@ -146,7 +146,9 @@ function createFindPanel(view: EditorView): Panel {
     mount() {
       sync();
       findInput.focus();
-      findInput.select();
+      // Caret at the end, not everything selected: typing keeps adding to the search.
+      const end = findInput.value.length;
+      findInput.setSelectionRange(end, end);
     },
     update(update: ViewUpdate) {
       if (update.docChanged || update.selectionSet || update.transactions.some((t) => t.effects.some((e) => e.is(setSearchQuery)))) sync();

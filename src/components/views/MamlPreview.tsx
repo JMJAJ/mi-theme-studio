@@ -586,9 +586,51 @@ function piecesAt(canvas: HTMLElement, x: number, y: number) {
 type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
 
+/** Lines a dragged piece snaps to: the screen's edges and centre, and every other visible piece's edges and centre. */
+interface Snaps {
+  xs: number[];
+  ys: number[];
+}
+function snapTargets(canvas: HTMLElement, node: HTMLElement, scale: number, w: number, h: number): Snaps {
+  const xs = [0, w / 2, w];
+  const ys = [0, h / 2, h];
+  const full = w * h;
+  for (const el of Array.from(canvas.querySelectorAll<HTMLElement>('[data-mk]'))) {
+    if (el === node || el.contains(node) || node.contains(el)) continue;
+    const tag = el.dataset.mt ?? '';
+    if (tag === 'Wallpaper' || CONTAINERS.has(tag)) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width * r.height < 1) continue;
+    const b = visibleBox(el, canvas, scale);
+    if (!b || b.w * b.h < 1 || b.w * b.h > full * 0.6) continue;
+    xs.push(b.l, b.l + b.w / 2, b.l + b.w);
+    ys.push(b.t, b.t + b.h / 2, b.t + b.h);
+  }
+  return { xs, ys };
+}
+/** The smallest shift that puts one of `vals` on one of `lines`, if within `thr`. */
+function snap1(vals: number[], lines: number[], thr: number) {
+  let best = 0;
+  let dist = thr;
+  for (const v of vals)
+    for (const t of lines) {
+      const d = Math.abs(t - v);
+      if (d < dist) {
+        dist = d;
+        best = t - v;
+      }
+    }
+  return best;
+}
+/** Which snap lines a box now sits on. */
+function guidesFor(b: Box, s: Snaps) {
+  const on = (vals: number[], lines: number[]) => [...new Set(lines.filter((t) => vals.some((v) => Math.abs(v - t) < 0.5)))];
+  return { x: on([b.l, b.l + b.w / 2, b.l + b.w], s.xs), y: on([b.t, b.t + b.h / 2, b.t + b.h], s.ys) };
+}
+
 type DragState =
-  | { kind: 'move'; ord: number; node: HTMLElement; x: number; y: number; moved: boolean }
-  | { kind: 'resize'; ord: number; node: HTMLElement; handle: Handle; x: number; y: number; box: Box; origin: { x: number; y: number }; uniform: boolean; sx: number; sy: number; fixed: { x: number; y: number }; oldOrigin: string }
+  | { kind: 'move'; ord: number; node: HTMLElement; x: number; y: number; moved: boolean; box: Box | null; snaps: Snaps; dx: number; dy: number }
+  | { kind: 'resize'; ord: number; node: HTMLElement; handle: Handle; x: number; y: number; box: Box; origin: { x: number; y: number }; uniform: boolean; sx: number; sy: number; fixed: { x: number; y: number }; oldOrigin: string; snaps: Snaps }
   | { kind: 'rotate'; ord: number; node: HTMLElement; cx: number; cy: number; start: number; delta: number; origin: { x: number; y: number }; oldOrigin: string };
 
 /**
@@ -618,6 +660,7 @@ export function MamlCanvas({
   const [boxes, setBoxes] = useState<{ sel: Box | null; hover: Box | null; tag: string }>({ sel: null, hover: null, tag: '' });
   const [, setMaskTick] = useState(0);
   const [live, setLive] = useState<Box | null>(null);
+  const [guides, setGuides] = useState<{ x: number[]; y: number[] } | null>(null);
   const editable = !!onSelect;
 
   useEffect(() => {
@@ -650,7 +693,7 @@ export function MamlCanvas({
     const node = nodeOf(selected);
     if (!node) return;
     const uniform = UNIFORM.has(node.dataset.mt ?? '') || (handle.length === 2 && !e.shiftKey && !!srcOf(node));
-    drag.current = { kind: 'resize', ord: selected, node, handle, x: e.clientX, y: e.clientY, box: boxes.sel, origin: layoutOrigin(node, canvas), uniform, sx: 1, sy: 1, fixed: { x: 0, y: 0 }, oldOrigin: node.style.transformOrigin };
+    drag.current = { kind: 'resize', ord: selected, node, handle, x: e.clientX, y: e.clientY, box: boxes.sel, origin: layoutOrigin(node, canvas), uniform, sx: 1, sy: 1, fixed: { x: 0, y: 0 }, oldOrigin: node.style.transformOrigin, snaps: snapTargets(canvas, node, scale, scene.w, scene.h) };
     canvas.setPointerCapture(e.pointerId);
   };
   const startRotate = (e: React.PointerEvent) => {
@@ -692,8 +735,10 @@ export function MamlCanvas({
               const ord = node ? ords[index] : null;
               onSelect!(ord);
               if (node && ord !== null && onEdit) {
-                drag.current = { kind: 'move', ord, node, x: e.clientX, y: e.clientY, moved: false };
-                (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                const canvas = e.currentTarget as HTMLElement;
+                // Measure now: boxes.sel may still be the previous selection.
+                drag.current = { kind: 'move', ord, node, x: e.clientX, y: e.clientY, moved: false, box: visibleBox(node, canvas, scale), snaps: snapTargets(canvas, node, scale, scene.w, scene.h), dx: 0, dy: 0 };
+                canvas.setPointerCapture(e.pointerId);
               }
             }
           : undefined
@@ -713,13 +758,26 @@ export function MamlCanvas({
           });
           return;
         }
+        // Snap within 6 screen pixels; hold Alt to place freely.
+        const thr = e.altKey ? 0 : 6 / scale;
         if (d.kind === 'move') {
-          const dx = (e.clientX - d.x) / scale;
-          const dy = (e.clientY - d.y) / scale;
+          let dx = (e.clientX - d.x) / scale;
+          let dy = (e.clientY - d.y) / scale;
           if (Math.abs(dx) + Math.abs(dy) > 3 / scale) d.moved = true;
           if (d.moved) {
+            const b = d.box;
+            if (b) {
+              dx += snap1([b.l + dx, b.l + b.w / 2 + dx, b.l + b.w + dx], d.snaps.xs, thr);
+              dy += snap1([b.t + dy, b.t + b.h / 2 + dy, b.t + b.h + dy], d.snaps.ys, thr);
+            }
+            d.dx = dx;
+            d.dy = dy;
             d.node.style.translate = `${dx}px ${dy}px`;
-            if (sel) setLive({ ...sel, l: sel.l + dx, t: sel.t + dy });
+            if (b) {
+              const nb = { ...b, l: b.l + dx, t: b.t + dy };
+              setLive(nb);
+              setGuides(thr ? guidesFor(nb, d.snaps) : null);
+            }
           }
         } else if (d.kind === 'resize') {
           const dx = (e.clientX - d.x) / scale;
@@ -729,10 +787,10 @@ export function MamlCanvas({
           let t = b.t;
           let r = b.l + b.w;
           let bt = b.t + b.h;
-          if (d.handle.includes('w')) l += dx;
-          if (d.handle.includes('e')) r += dx;
-          if (d.handle.includes('n')) t += dy;
-          if (d.handle.includes('s')) bt += dy;
+          if (d.handle.includes('w')) l += dx + snap1([l + dx], d.snaps.xs, thr);
+          if (d.handle.includes('e')) r += dx + snap1([r + dx], d.snaps.xs, thr);
+          if (d.handle.includes('n')) t += dy + snap1([t + dy], d.snaps.ys, thr);
+          if (d.handle.includes('s')) bt += dy + snap1([bt + dy], d.snaps.ys, thr);
           let sx = Math.max(4, r - l) / b.w;
           let sy = Math.max(4, bt - t) / b.h;
           if (!d.handle.includes('w') && !d.handle.includes('e')) sx = d.uniform ? sy : 1;
@@ -745,7 +803,9 @@ export function MamlCanvas({
           d.fixed = { x: fx, y: fy };
           d.node.style.transformOrigin = `${fx - d.origin.x}px ${fy - d.origin.y}px`;
           d.node.style.scale = `${sx} ${sy}`;
-          setLive({ l: fx + (b.l - fx) * sx, t: fy + (b.t - fy) * sy, w: b.w * sx, h: b.h * sy });
+          const nb = { l: fx + (b.l - fx) * sx, t: fy + (b.t - fy) * sy, w: b.w * sx, h: b.h * sy };
+          setLive(nb);
+          setGuides(thr ? guidesFor(nb, d.snaps) : null);
         } else {
           const c = (e.currentTarget as HTMLElement).getBoundingClientRect();
           const at = (Math.atan2((e.clientY - c.top) / scale - d.cy, (e.clientX - c.left) / scale - d.cx) * 180) / Math.PI;
@@ -756,14 +816,15 @@ export function MamlCanvas({
           d.node.style.rotate = `${delta}deg`;
         }
       }}
-      onPointerUp={(e) => {
+      onPointerUp={() => {
         const d = drag.current;
         drag.current = null;
         setLive(null);
+        setGuides(null);
         if (!d) return;
         if (d.kind === 'move') {
           d.node.style.translate = '';
-          if (d.moved) onEdit!(d.ord, { kind: 'move', dx: Math.round((e.clientX - d.x) / scale), dy: Math.round((e.clientY - d.y) / scale) });
+          if (d.moved && (Math.round(d.dx) || Math.round(d.dy))) onEdit!(d.ord, { kind: 'move', dx: Math.round(d.dx), dy: Math.round(d.dy) });
         } else if (d.kind === 'resize') {
           d.node.style.scale = '';
           d.node.style.transformOrigin = d.oldOrigin;
@@ -784,6 +845,8 @@ export function MamlCanvas({
       )}
       {scene.nodes}
       {editable && boxes.hover && !drag.current && <div className="maml-hover" style={{ left: boxes.hover.l, top: boxes.hover.t, width: boxes.hover.w, height: boxes.hover.h, borderWidth: 1.5 * inv }} />}
+      {guides?.x.map((x) => <div key={`x${x}`} className={`maml-guide is-v ${Math.abs(x - scene.w / 2) < 0.5 ? 'is-mid' : ''}`} style={{ left: x, borderLeftWidth: inv }} />)}
+      {guides?.y.map((y) => <div key={`y${y}`} className={`maml-guide is-h ${Math.abs(y - scene.h / 2) < 0.5 ? 'is-mid' : ''}`} style={{ top: y, borderTopWidth: inv }} />)}
       {editable && (live ?? sel) && (
         <div className="maml-sel" style={{ left: (live ?? sel)!.l, top: (live ?? sel)!.t, width: (live ?? sel)!.w, height: (live ?? sel)!.h, borderWidth: 2 * inv, ['--inv' as string]: inv }}>
           {onEdit && !live && (
@@ -958,7 +1021,7 @@ export function MamlPreview({ componentId }: { componentId: string }) {
         <button className="btn btn-sm" onClick={() => setPlaying((p) => !p)} title={playing ? 'Stop animations to edit in the resting pose' : 'Play the layout’s animations'}>
           {playing ? <Pause /> : <Play />} {playing ? 'Stop animations' : 'Play animations'}
         </button>
-        <span className="muted">Click any piece to edit it, drag it to move it.{scene ? ` ${scene.w} × ${scene.h}` : ''}</span>
+        <span className="muted">Click any piece to edit it, drag it to move it (snaps to centres and edges; hold Alt to place freely).{scene ? ` ${scene.w} × ${scene.h}` : ''}</span>
         {scene && scene.unknown.length > 0 && (
           <span className="badge badge-warn" title={`Drawn on the phone but not here: ${scene.unknown.join(', ')}`}>
             <AlertTriangle /> {scene.unknown.join(', ')} not drawn here

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { xml } from '@codemirror/lang-xml';
 import { Decoration, EditorView, keymap, type DecorationSet } from '@codemirror/view';
@@ -276,6 +276,16 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
     [isXml, file.path],
   );
 
+  // A stable change handler: the editor component reconfigures itself whenever
+  // this function changes, and that reset the find bar after every keystroke.
+  const latest = useRef({ draft, loaded, readOnly, path: file.path });
+  latest.current = { draft, loaded, readOnly, path: file.path };
+  const onChange = useCallback((value: string) => {
+    setText(value);
+    const { draft: d, loaded: l, readOnly: ro, path } = latest.current;
+    if (!ro && l) A.setDraft(path, value, d?.baseRev ?? l.rev, d?.original ?? l.text);
+  }, []);
+
   if (error) {
     return (
       <div className="empty">
@@ -349,10 +359,7 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
             view.current = v;
           }}
           basicSetup={BASIC_SETUP}
-          onChange={(value) => {
-            setText(value);
-            if (!readOnly) A.setDraft(file.path, value, draft?.baseRev ?? loaded.rev, draft?.original ?? loaded.text);
-          }}
+          onChange={onChange}
         />
       </div>
     </div>

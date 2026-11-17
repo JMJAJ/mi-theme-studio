@@ -801,3 +801,7 @@ button.catalog-card:hover, button.icon-link:hover { border-color: var(--line-str
 .cm-searchMatch-selected { background-color: rgba(255, 106, 20, 0.55) !important; outline: 1px solid var(--accent); }
 .cm-revealLine { background-color: rgba(255, 106, 20, 0.14) !important; box-shadow: inset 3px 0 0 var(--accent); animation: cm-reveal 1.4s ease-out; }
 @keyframes cm-reveal { from { background-color: rgba(255, 106, 20, 0.45); } }
+
+/* Find bar: only the box outline lights up, the input inside stays plain */
+.cm-find-field:focus-within { border-color: color-mix(in srgb, var(--accent) 80%, transparent); box-shadow: 0 0 6px rgba(255, 106, 20, 0.28); }
+.cm-find .cm-find-input, .cm-find .cm-find-input:focus, .cm-find .cm-find-input:focus-visible { border: 0 !important; outline: none !important; box-shadow: none !important; background: transparent !important; padding: 0; height: 100%; }

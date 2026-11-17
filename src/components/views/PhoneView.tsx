@@ -3,7 +3,7 @@
 // attention.
 import { TryOnButton } from '../common/TryOnButton';
 import { useEffect, useState } from 'react';
-import { Camera, ChevronDown, ChevronRight, Info, Palette, Send, Smartphone, Usb } from 'lucide-react';
+import { Bug, Camera, Check, ChevronDown, ChevronRight, Copy, Info, Loader2, MonitorPlay, Palette, RotateCcw, Send, Settings2, ShieldCheck, Smartphone, Sparkles, Usb } from 'lucide-react';
 import { api, screenshotUrl } from '../../lib/api';
 import type { ThemeManagerSupport } from '../../lib/types';
 import * as A from '../../state/actions';
@@ -32,6 +32,114 @@ function useThemeSupport(serial: string | null, ready: boolean) {
   return support;
 }
 
+const STEPS = [
+  { icon: Settings2, title: 'Turn on Developer options', text: 'Settings → About phone → tap “OS version” 7 times until it says you are a developer.' },
+  { icon: Bug, title: 'Turn on USB debugging', text: 'Settings → Additional settings → Developer options → USB debugging. On HyperOS also turn on “USB debugging (Security settings)” to copy themes.' },
+  { icon: Usb, title: 'Plug in and allow', text: 'Use a data cable, keep the phone unlocked and tap Allow on “Allow USB debugging?”. Tick “Always allow from this computer”.' },
+];
+
+const PERKS = [
+  { icon: Sparkles, title: 'Try on phone', text: 'Apply the theme you are editing in one click' },
+  { icon: MonitorPlay, title: 'Mirror the screen', text: 'See and control the phone live, right here' },
+  { icon: Camera, title: 'Screenshots', text: 'Grab the screen for previews and covers' },
+  { icon: Copy, title: 'Themes on the phone', text: 'Open or copy parts from installed themes' },
+];
+
+/** Not connected yet: what to do, live status, and fixes when the phone does not show up. */
+function ConnectGuide() {
+  const device = useDeviceSummary();
+  const adb = useStore((s) => s.adb);
+  const busy = useStore((s) => s.busy);
+  const [checking, setChecking] = useState(false);
+  const unauthorized = device.tone === 'warn';
+  const noAdb = !!adb && !adb.location;
+  // Which step the person is on, as far as the computer can tell.
+  const current = unauthorized ? 2 : 0;
+  const check = async () => {
+    setChecking(true);
+    await A.refreshAdb(false, true);
+    setChecking(false);
+  };
+  return (
+    <>
+      <section className="connect">
+        <div className="connect-art" aria-hidden="true">
+          <div className={`connect-phone tone-${device.tone}`}>
+            <span className="connect-cam" />
+            {unauthorized ? <ShieldCheck /> : <Smartphone />}
+          </div>
+          <div className="connect-cable" />
+          <div className="connect-plug" />
+        </div>
+        <div className="connect-body">
+          <div className={`connect-status tone-${device.tone}`}>
+            <span className={`dot dot-${device.tone} ${device.tone === 'faint' ? 'is-pulse' : ''}`} />
+            {noAdb ? 'ADB is not installed or not found' : unauthorized ? 'Phone found: tap Allow on the phone' : device.label === 'No device' ? 'Waiting for your phone…' : device.label}
+          </div>
+          <h1>{unauthorized ? 'Allow this computer on your phone' : 'Connect your Xiaomi phone'}</h1>
+          <p className="muted connect-lead">
+            {unauthorized
+              ? 'The phone is plugged in but has not trusted this computer yet. Unlock it and accept the USB debugging prompt.'
+              : 'A one-time setup over USB. After that the phone is picked up automatically whenever you plug it in.'}
+          </p>
+          <ol className="connect-steps">
+            {STEPS.map((step, i) => (
+              <li key={step.title} className={i < current ? 'is-done' : i === current ? 'is-current' : ''}>
+                <span className="connect-num">{i < current ? <Check /> : i + 1}</span>
+                <step.icon className="connect-icon" />
+                <div>
+                  <strong>{step.title}</strong>
+                  <span className="muted">{step.text}</span>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <div className="hero-actions">
+            <button className="btn btn-primary" disabled={checking} onClick={() => void check()}>
+              {checking ? <Loader2 className="spin" /> : <RotateCcw />} Check again
+            </button>
+            <button className="btn" disabled={!!busy} onClick={() => void A.restartAdb()}>
+              Restart ADB
+            </button>
+            <span className="faint connect-auto">Checks automatically every few seconds</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="connect-perks">
+        {PERKS.map((p) => (
+          <div key={p.title} className="connect-perk">
+            <p.icon />
+            <strong>{p.title}</strong>
+            <span className="muted">{p.text}</span>
+          </div>
+        ))}
+      </section>
+
+      <details className="connect-help">
+        <summary>Phone still not showing up?</summary>
+        <ul>
+          <li>
+            <strong>Charging-only cable.</strong> Many cables only charge. Try the one that came with the phone, or another USB port (not a hub).
+          </li>
+          <li>
+            <strong>USB mode.</strong> Pull down the notification shade on the phone, tap the USB notification and pick “File transfer”.
+          </li>
+          <li>
+            <strong>No prompt on the phone.</strong> Developer options → “Revoke USB debugging authorizations”, unplug, plug back in.
+          </li>
+          <li>
+            <strong>“Offline” or stuck.</strong> Press Restart ADB above, or unplug and replug.
+          </li>
+          <li>
+            <strong>Windows does not see the phone at all.</strong> Install the Google USB driver or Xiaomi’s driver, then replug.
+          </li>
+        </ul>
+      </details>
+    </>
+  );
+}
+
 export function PhoneView() {
   const device = useDeviceSummary();
   const serial = useStore((s) => s.selectedSerial);
@@ -40,7 +148,7 @@ export function PhoneView() {
   const busy = useStore((s) => s.busy);
   const shot = useStore((s) => s.screenshots[s.screenshots.length - 1]);
   const support = useThemeSupport(serial, device.ready);
-  const [advanced, setAdvanced] = useState(!device.ready);
+  const [advanced, setAdvanced] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const system = details
@@ -89,25 +197,7 @@ export function PhoneView() {
             </div>
           </section>
         ) : (
-          <section className="phone-hero is-empty">
-            <div className="ph-shot">
-              <Usb />
-            </div>
-            <div className="ph-body">
-              <div className="hero-kicker">Phone</div>
-              <h1>{device.label === 'No device' ? 'Connect your phone' : device.label}</h1>
-              <ol className="ph-steps">
-                <li>On the phone: Settings → About phone → tap the OS version 7 times.</li>
-                <li>Settings → Additional settings → Developer options → turn on USB debugging.</li>
-                <li>Connect the cable and allow debugging when the phone asks.</li>
-              </ol>
-              <div className="hero-actions">
-                <button className="btn btn-primary" onClick={() => void A.refreshAdb(false, true)}>
-                  Check again
-                </button>
-              </div>
-            </div>
-          </section>
+          <ConnectGuide />
         )}
 
         {device.ready && (

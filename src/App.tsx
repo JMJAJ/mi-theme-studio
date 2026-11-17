@@ -28,6 +28,7 @@ import { api } from './lib/api';
 import * as A from './state/actions';
 import { installZoom } from './state/zoom';
 import { startUpdateChecks } from './state/updater';
+import { useDeviceSummary } from './components/shell/deviceSummary';
 
 const PACKAGE_RE = /\.(mtz|zip)$/i;
 
@@ -280,6 +281,7 @@ function SectionView() {
 export function App() {
   const layout = useStore((s) => s.layout);
   const section = useStore((s) => s.section);
+  const deviceReady = useDeviceSummary().ready;
   const started = useRef(false);
   useGlobalShortcuts();
   useInterfaceZoom();
@@ -316,7 +318,7 @@ export function App() {
             )}
           </main>
         </div>
-        {layout.phone && (
+        {layout.phone && !(section === 'phone' && !deviceReady) && (
           <div className="phone-dock">
             <Splitter orientation="vertical" label="Resize phone preview" value={layout.phoneWidth} min={280} max={620} direction={-1} onChange={(phoneWidth) => updateLayout({ phoneWidth })} />
             {/* Scales with the window: never more than about a third of it. */}

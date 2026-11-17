@@ -3,13 +3,27 @@ name: Build Windows installer
 on:
   push:
     branches: [main]
+    # Docs-only changes don't need a new installer.
+    paths-ignore: ['**.md', 'docs/**', '.gitignore']
   workflow_dispatch:
 
 permissions:
   contents: write
 
+# A newer push replaces a build still running for an older one.
+concurrency:
+  group: build-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Tests and checks don't need debug info; it makes Windows linking much slower.
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  CARGO_TERM_COLOR: always
+
 jobs:
-  windows-installer:
+  # Checks run on their own runner, at the same time as the installer build.
+  test:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -17,11 +31,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - uses: dtolnay/rust-toolchain@stable
+      # Rust stable is already installed on GitHub's Windows runners.
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-      - run: npm ci
+          cache-on-failure: true
+      - run: npm ci --prefer-offline --no-audit --no-fund
       - name: Fetch bundled scrcpy (pinned, checksum-verified)
         run: npm run fetch:scrcpy
       - name: Type-check and test frontend
@@ -30,12 +45,26 @@ jobs:
           npm test
       - name: Test native backend
         run: cargo test --manifest-path src-tauri/Cargo.toml
+
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-on-failure: true
+      - run: npm ci --prefer-offline --no-audit --no-fund
       - name: Build NSIS installer (version from package.json)
-        # Published builds get the smallest, fully optimized binary; local builds
-        # (Cargo.toml [profile.release]) trade a little size for a much faster build.
+        # Thin LTO keeps the binary small and fast while building in a fraction
+        # of the time fat LTO with one codegen unit took. Local builds use the
+        # faster settings in Cargo.toml [profile.release].
         env:
-          CARGO_PROFILE_RELEASE_LTO: fat
-          CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 1
+          CARGO_PROFILE_RELEASE_LTO: thin
           CARGO_PROFILE_RELEASE_INCREMENTAL: false
           # Signs the installer so the in-app updater accepts it (public key in tauri.conf.json).
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -49,8 +78,23 @@ jobs:
             release/*.zip
             release/latest.json
           if-no-files-found: error
+          # Already compressed; zipping again only costs time.
+          compression-level: 0
+
+  # Publishes only when both the checks and the build passed.
+  release:
+    needs: [test, windows-installer]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: package.json
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v7
+        with:
+          name: mi-theme-studio-windows
+          path: release
       - name: Publish GitHub release for this version
-        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -59,5 +103,9 @@ jobs:
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "Release $tag already exists; the build is kept as a workflow artifact only."
           else
-            gh release create "$tag" release/*.exe release/*.zip release/latest.json               --target "$GITHUB_SHA"               --title "Mi Theme Studio $tag"               --generate-notes               --latest
+            gh release create "$tag" release/*.exe release/*.zip release/latest.json \
+              --target "$GITHUB_SHA" \
+              --title "Mi Theme Studio $tag" \
+              --generate-notes \
+              --latest
           fi

@@ -585,3 +585,39 @@ button.mock-clock.pp-click { color: #fff; text-align: center; }
 .mi-anchor .segmented button[aria-pressed='true'], .mi-section .segmented button[aria-pressed='true'] { background: var(--accent-soft); color: var(--accent-strong); }
 .mi-bold { height: 28px; justify-content: center; }
 .mi-field .btn { height: 28px; }
+
+/* Phone page: connect guide */
+.connect { display: flex; gap: clamp(20px, 4vw, 56px); align-items: center; padding: clamp(20px, 3vw, 36px); border: 1px solid var(--line); border-radius: 18px; background: radial-gradient(90% 120% at 0% 0%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 60%), var(--bg-2); flex-wrap: wrap; }
+.connect-art { position: relative; width: 150px; height: 300px; flex: none; margin: 0 auto; }
+.connect-phone { position: absolute; left: 10px; top: 0; width: 130px; height: 250px; border-radius: 26px; background: linear-gradient(170deg, #1d1f25, #0b0c0f); box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55), inset 0 0 0 2px #2a2c33; display: grid; place-items: center; }
+.connect-phone > svg { width: 34px; height: 34px; color: var(--faint, #666); }
+.connect-phone.tone-warn > svg { color: var(--warn, #f5b54a); }
+.connect-cam { position: absolute; top: 12px; left: 50%; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: #000; box-shadow: 0 0 0 2px #23252b; }
+.connect-cable { position: absolute; left: 73px; top: 250px; width: 4px; height: 38px; background: linear-gradient(#3a3c44, #26272c); border-radius: 2px; }
+.connect-plug { position: absolute; left: 66px; top: 244px; width: 18px; height: 12px; border-radius: 3px; background: #3a3c44; animation: connect-plug 2.4s ease-in-out infinite; }
+@keyframes connect-plug { 0%, 100% { transform: translateY(10px); } 50% { transform: translateY(0); } }
+.connect-body { flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.connect-body h1 { font-size: clamp(24px, 2.2vw, 32px); letter-spacing: -0.02em; margin: 0; }
+.connect-lead { margin: 0; max-width: 62ch; line-height: 1.55; }
+.connect-status { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; height: 26px; padding: 0 11px; border-radius: 13px; border: 1px solid var(--line-strong); font-size: var(--fs-sm); color: var(--text-2); background: var(--bg-3); }
+.connect-status.tone-warn { border-color: color-mix(in srgb, var(--warn, #f5b54a) 50%, transparent); color: var(--warn, #f5b54a); }
+.dot.is-pulse { animation: connect-pulse 1.6s ease-in-out infinite; }
+@keyframes connect-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+.connect-steps { list-style: none; margin: 8px 0 6px; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.connect-steps li { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-1); }
+.connect-steps li.is-current { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: color-mix(in srgb, var(--accent) 6%, var(--bg-1)); }
+.connect-steps li.is-done { opacity: 0.6; }
+.connect-steps li > div { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); line-height: 1.45; }
+.connect-num { position: absolute; top: 12px; right: 12px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; background: var(--bg-3); color: var(--text-2); }
+.connect-steps li.is-current .connect-num { background: var(--accent); color: #160800; }
+.connect-steps li.is-done .connect-num { background: var(--ok, #34d399); color: #04130c; }
+.connect-num svg { width: 12px; height: 12px; }
+.connect-icon { width: 20px; height: 20px; color: var(--accent-strong); }
+.connect-auto { font-size: var(--fs-xs); align-self: center; }
+.connect-perks { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 14px 0; }
+.connect-perk { display: flex; flex-direction: column; gap: 4px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-2); font-size: var(--fs-sm); line-height: 1.4; }
+.connect-perk svg { width: 18px; height: 18px; color: var(--muted); margin-bottom: 4px; }
+.connect-help { margin: 0 0 18px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-2); font-size: var(--fs-sm); }
+.connect-help summary { cursor: pointer; font-weight: 600; }
+.connect-help ul { margin: 10px 0 2px; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; color: var(--text-2); line-height: 1.5; }
+@media (max-width: 1000px) { .connect-steps, .connect-perks { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

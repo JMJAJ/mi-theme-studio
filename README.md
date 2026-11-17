@@ -14,6 +14,7 @@
 
 [**Download**](https://github.com/JMJAJ/mi-theme-studio/releases/latest) ·
 [Features](#features) ·
+[FAQ](#faq) ·
 [Keyboard shortcuts](#keyboard-shortcuts) ·
 [Build from source](#build-from-source) ·
 [Documentation](#documentation)
@@ -22,7 +23,7 @@
 
 ---
 
-Mi Theme Studio is a desktop editor for `.mtz` theme packages. Open a theme, change its wallpapers, icons, lock screen, fonts and sounds, see the result on a phone frame or on your real phone, and export a package that is verified entry by entry.
+Mi Theme Studio is a free, open-source **MIUI and HyperOS theme editor** for Windows: a theme maker and `.mtz` file editor for **Xiaomi, Redmi and POCO** phones. Open a theme, change its wallpapers, icons, lock screen, fonts and sounds, see the result on a phone frame or on your real phone, and export a package that is verified entry by entry.
 
 Everything runs locally. Packages are edited in memory, saves are atomic and backed up, and files the editor does not understand are written back untouched.
 
@@ -85,6 +86,23 @@ Everything runs locally. Packages are edited in memory, saves are atomic and bac
 - Markdown package report covering metadata, components, problems and reused resources.
 
 Checks are structural. A clean report does not guarantee that a package installs on a particular device.
+
+## FAQ
+
+**How do I open or edit an `.mtz` file?**
+An `.mtz` file is a MIUI / HyperOS theme package (a ZIP archive with nested component archives). Open it in Mi Theme Studio with `Ctrl+O`, edit any part, and save. Untouched parts are written back byte for byte.
+
+**Can I make my own Xiaomi theme from scratch?**
+Yes. `Ctrl+N` creates a new theme, or you can start from a free theme downloaded from the built-in store and change it.
+
+**Does it work with both MIUI and HyperOS themes?**
+It reads and writes the shared `.mtz` format used by MIUI and HyperOS, and warns when a theme was made for a newer system than your phone (`theme_compatibility.xml`).
+
+**Do I need root to apply a theme?**
+Rooted phones get every part applied. On normal phones, wallpapers, lock screens and sounds work through Theme Manager; other parts are a work in progress (see the note above).
+
+**Does it work on macOS or Linux?**
+Not yet; current releases are Windows 10 / 11 only.
 
 ## Keyboard shortcuts
 

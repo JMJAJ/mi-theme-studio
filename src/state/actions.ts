@@ -1317,7 +1317,7 @@ export async function tryOnPhone(force = false) {
   if (force) {
     const ok = await confirmDialog({
       title: `Force apply every part of “${project.title}”?`,
-      message: 'The staged copy is marked as the newest theme format so Theme Manager stops skipping parts whose uiVersion it considers too new.',
+      message: 'The staged copy is marked with the newest theme format this phone renders, so Theme Manager stops skipping parts that need a newer uiVersion than the theme declares.',
       detail: [
         'Parts built for another format (system UI, Settings, lock screen, fonts) may be copied even if this phone does not understand them; they can render wrong or cause UI glitches.',
         'The project file is not modified — only the copy sent to the phone is changed.',

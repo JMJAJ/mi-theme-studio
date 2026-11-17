@@ -10,6 +10,7 @@ Thumbs.db
 *.mtz
 /source/
 /poc/
+/_work/
 /testing/
 /src-tauri/target/
 /src-tauri/gen/

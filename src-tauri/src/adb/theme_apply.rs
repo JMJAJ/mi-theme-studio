@@ -24,6 +24,23 @@ pub const SUPPORT_MARKER: &str = "com.android.thememanager.support3.0";
 /// permissions. A path such as `/sdcard/temp.mtz` instead opens DocumentsUI,
 /// so the single-step flow must use this one too.
 const NEW_FLOW_PATH: &str = "/sdcard/Android/data/com.android.thememanager/files/temp.mtz";
+const FILES_DIR: &str = "/sdcard/Android/data/com.android.thememanager/files";
+
+/// `pm uninstall-system-updates` only has something to remove when the
+/// running build was installed over the system one (its code lives in /data).
+fn is_updated_system_app(dump: &str) -> bool {
+    dump.lines()
+        .map(str::trim)
+        .any(|line| line.starts_with("codePath=/data/"))
+}
+
+/// Theme Manager opens the system file picker when it cannot read the path.
+fn picker_in_front(activities: &str) -> bool {
+    activities
+        .lines()
+        .filter(|l| l.contains("ResumedActivity"))
+        .any(|l| l.contains("documentsui") || l.contains("DocumentsActivity") || l.contains("FilePicker"))
+}
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -220,6 +237,18 @@ impl Adb {
                 steps: vec!["Theme Manager already has the editor apply entry point.".into()],
             });
         }
+        let dump = self
+            .shell(serial, &["dumpsys", "package", THEME_MANAGER_PACKAGE], Duration::from_secs(20), None)?
+            .stdout_text();
+        if !is_updated_system_app(&dump) {
+            return Err(AppError::new(
+                "unsupported",
+                format!(
+                    "Theme Manager {} is already this phone's factory build and has no editor apply entry point, so there is no update to remove.",
+                    before.version.as_deref().unwrap_or("")
+                ),
+            ));
+        }
         let out = self
             .shell(
                 serial,
@@ -232,8 +261,7 @@ impl Adb {
             let detail = out
                 .lines()
                 .map(str::trim)
-                .filter(|line| !line.is_empty())
-                .next_back()
+                .rfind(|line| !line.is_empty())
                 .unwrap_or("no output");
             return Err(AppError::new(
                 "prepare_failed",
@@ -281,15 +309,70 @@ impl Adb {
                 "This phone's Theme Manager has no editor apply entry point. Copy the package to the phone and apply it from Theme Manager instead.",
             ));
         }
+        // adb's /sdcard is the owner's storage; Theme Manager also refuses to
+        // apply in Second space, so another foreground user cannot work.
+        let user = self
+            .shell(serial, &["am", "get-current-user"], Duration::from_secs(10), None)
+            .ok()
+            .and_then(|o| o.stdout_text().trim().parse::<u32>().ok());
+        if user.is_some_and(|u| u != 0) {
+            return Err(AppError::new(
+                "unsupported",
+                "The phone is in another user or Second space. Switch back to the main user and try again.",
+            ));
+        }
         let mut steps = Vec::new();
+        self.ensure_files_dir(serial)?;
         let bytes = self.push_to(serial, local, NEW_FLOW_PATH, cancel)?;
         steps.push(format!("Copied {bytes} bytes to {NEW_FLOW_PATH} (verified)"));
         let base = ["-n", APPLY_ACTIVITY, "-e", "api_called_from", "ThemeEditor"];
         let mut apply = base.to_vec();
         apply.extend_from_slice(&["-e", "theme_file_path", NEW_FLOW_PATH]);
         self.start(serial, &apply, "Apply theme")?;
+        std::thread::sleep(Duration::from_millis(2000));
+        let front = self
+            .shell(serial, &["dumpsys activity activities | grep ResumedActivity"], Duration::from_secs(15), None)
+            .map(|o| o.stdout_text())
+            .unwrap_or_default();
+        if picker_in_front(&front) {
+            let _ = self.shell(serial, &["input", "keyevent", "KEYCODE_BACK"], Duration::from_secs(10), None);
+            return Err(AppError::new(
+                "apply_failed",
+                "Theme Manager could not read the copied package and opened the file picker instead. Open Theme Manager once, then try again.",
+            ));
+        }
         steps.push("Asked Theme Manager to apply the theme".into());
         Ok(ApplyResult { remote_path: NEW_FLOW_PATH.into(), bytes, steps })
+    }
+
+    /// Theme Manager runs under a shared uid that must own its external files
+    /// folder. A folder created by adb's shell user may not be readable by it,
+    /// so let Theme Manager create the folder itself when it is missing.
+    fn ensure_files_dir(&self, serial: &str) -> AppResult<()> {
+        let exists = |adb: &Self| {
+            adb.shell(serial, &[&format!("[ -d {FILES_DIR} ] && echo yes")], Duration::from_secs(10), None)
+                .map(|o| o.stdout_text().trim() == "yes")
+                .unwrap_or(false)
+        };
+        if exists(self) {
+            return Ok(());
+        }
+        let _ = self.shell(
+            serial,
+            &["monkey", "-p", THEME_MANAGER_PACKAGE, "-c", "android.intent.category.LAUNCHER", "1"],
+            Duration::from_secs(20),
+            None,
+        );
+        for _ in 0..15 {
+            std::thread::sleep(Duration::from_millis(1000));
+            if exists(self) {
+                return Ok(());
+            }
+        }
+        Err(AppError::new(
+            "apply_failed",
+            "Theme Manager has not created its storage folder yet. Open Theme Manager on the phone once, then try again.",
+        ))
     }
 }
 
@@ -302,6 +385,14 @@ mod tests {
         assert!(uninstall_succeeded("Uninstalling updates to com.android.thememanager...\nSuccess\n"));
         assert!(!uninstall_succeeded("Failure [DELETE_FAILED_INTERNAL_ERROR]"));
         assert!(!uninstall_succeeded(""));
+    }
+
+    #[test]
+    fn detects_updated_build_and_picker() {
+        assert!(is_updated_system_app("    codePath=/data/app/~~x==/com.android.thememanager-y==\n    codePath=/product/app/MIUIThemeManagerGlobal\n"));
+        assert!(!is_updated_system_app("    codePath=/product/app/MIUIThemeManagerGlobal\n"));
+        assert!(picker_in_front("  topResumedActivity=ActivityRecord{1 u0 com.google.android.documentsui/com.android.documentsui.picker.PickActivity t9}"));
+        assert!(!picker_in_front("  topResumedActivity=ActivityRecord{1 u0 com.mi.android.globallauncher/com.miui.home.launcher.Launcher t2}"));
     }
 
     #[test]

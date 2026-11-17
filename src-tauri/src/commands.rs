@@ -610,9 +610,17 @@ struct Built {
 
 /// Staged packages sent through Theme Manager normally keep their declared
 /// `uiVersion`, which makes Theme Manager skip parts that require a newer
-/// format. Force apply rewrites only the staged copy's `uiVersion` so every
+/// format. Force apply raises only the staged copy's `uiVersion` so every
 /// part is copied; the open project and its file are untouched.
-const FORCE_UI_VERSION: u32 = 999;
+///
+/// The target is the newest format the phone renders (HyperOS 3 = 17), which
+/// unlocks the same parts as an arbitrarily large value without claiming a
+/// format no build knows. 999 is only used when the phone does not report one.
+const FORCE_UI_VERSION_FALLBACK: u32 = 999;
+
+fn force_ui_version_for(adb: &Adb, serial: &str) -> u32 {
+    adb.theme_format(serial).map(|format| format / 10).filter(|&v| v > 0).unwrap_or(FORCE_UI_VERSION_FALLBACK)
+}
 
 fn build_package(state: &AppState, app: Option<&AppHandle>) -> AppResult<Built> {
     build_package_with_ui_version(state, app, None)
@@ -626,6 +634,15 @@ fn force_ui_version_in_entries(entries: &mut [ExportEntry], ui_version: u32) -> 
     let (xml, lossy, _) = decode_text(description.bytes());
     if lossy {
         return Err(AppError::invalid("description.xml is not valid UTF-8."));
+    }
+    // Raise only: a theme that already declares a newer format keeps it.
+    let declared = metadata::parse(Some(&xml))
+        .fields
+        .iter()
+        .find(|f| f.name == "uiVersion")
+        .and_then(|f| f.value.trim().parse::<u32>().ok());
+    if declared.is_some_and(|v| v >= ui_version) {
+        return Ok(());
     }
     let updated = metadata::update(
         Some(&xml),
@@ -1280,7 +1297,8 @@ pub async fn adb_apply_theme(
                 "This phone's Theme Manager has no editor apply entry point. Copy the package to the phone and apply it from Theme Manager instead.",
             ));
         }
-        let built = build_package_with_ui_version(state, Some(app), force.then_some(FORCE_UI_VERSION))?;
+        let force_version = force.then(|| force_ui_version_for(&adb, &serial));
+        let built = build_package_with_ui_version(state, Some(app), force_version)?;
         let staging = state.paths.staging_dir();
         let local = staging.join("apply-temp.mtz");
         storage::atomic_write(&local, &built.data)?;
@@ -1480,7 +1498,7 @@ pub async fn adb_try_on(app: AppHandle,
         // Xiaomi's editor entry point when the phone has it (Chinese builds);
         // otherwise Theme Manager's library.
         let support = adb.theme_manager_support(&serial).ok().filter(|s| s.can_apply);
-        let force_version = (force && support.is_some()).then_some(FORCE_UI_VERSION);
+        let force_version = (force && support.is_some()).then(|| force_ui_version_for(&adb, &serial));
         let built = build_package_with_ui_version(state, Some(app), force_version)?;
         let stage = state.paths.staging_dir().join("try-on");
         let cancel = register_op(state, &op_id);
@@ -1871,6 +1889,13 @@ mod force_ui_version_tests {
         force_ui_version_in_entries(&mut entries, 999).unwrap();
         let text = String::from_utf8_lossy(entries[0].bytes());
         assert!(text.contains("<uiVersion>999</uiVersion>"), "{text}");
+    }
+
+    #[test]
+    fn never_lowers_ui_version() {
+        let mut entries = vec![description(r#"<theme><uiVersion>18</uiVersion></theme>"#)];
+        force_ui_version_in_entries(&mut entries, 17).unwrap();
+        assert!(String::from_utf8_lossy(entries[0].bytes()).contains("<uiVersion>18</uiVersion>"));
     }
 
     #[test]

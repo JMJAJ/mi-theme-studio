@@ -28,7 +28,7 @@ Mi Theme Studio is a free, open-source **MIUI and HyperOS theme editor** for Win
 Everything runs locally. Packages are edited in memory, saves are atomic and backed up, and files the editor does not understand are written back untouched.
 
 > [!IMPORTANT]
-> **Phone support.** Full customization (applying every part of a theme: icons, system UI, fonts, lock screen and the rest) currently works only on **rooted** phones. Support for normal (non-rooted) phones is a **work in progress**: some things already work, such as wallpapers, lock screens and sounds through Theme Manager, while other parts are refused by Theme Manager without a Xiaomi licence. Designing, editing and exporting themes on your PC works the same either way.
+> **Phone support.** Full customization (applying every part of a theme: icons, system UI, fonts, lock screen and the rest) currently works only on **rooted** phones. Normal (non-rooted) phones can apply a whole theme through Theme Manager's own editor entry point when the phone's factory Theme Manager build has it (see **Phone** below); otherwise only wallpapers, lock screens and sounds apply, and other parts are refused without a Xiaomi licence. Non-root support is still being tested across devices. Designing, editing and exporting themes on your PC works the same either way.
 
 > [!NOTE]
 > Mi Theme Studio is an independent, unofficial tool. It is not affiliated with, endorsed by or sponsored by Xiaomi. MIUI, HyperOS and Xiaomi are trademarks of their respective owners.
@@ -75,6 +75,9 @@ Everything runs locally. Packages are edited in memory, saves are atomic and bac
 - Detects devices over ADB, including unauthorized, offline and multiple-device states, and shows model, HyperOS / MIUI and Android version, resolution and density.
 - **Rooted phones: full customization.** Every part of the theme is applied, including icons, system UI, fonts and lock screen, with a backup you can restore.
 - **Normal phones (work in progress).** **Try on phone** places the theme in Theme Manager's local library and applies it, without root. Theme Manager applies wallpapers, lock screen and sounds from locally imported themes; other parts need a licence that Xiaomi only issues for unmodified store themes, so they may be refused.
+- **Non-root one-click apply.** When Theme Manager has its editor entry point (`ApplyThemeForScreenshot`, the one Xiaomi's desktop theme editor uses), the whole package is applied directly. Some store updates removed it; **Enable non-root apply** removes Theme Manager's update with Android's package manager so the factory build already on the phone is used again. No root, no APK patching. Theme Manager's local themes and downloads may be reset, and a later store update removes the entry point again until you re-run it. Phones whose factory build lacks the entry point are reported as unsupported.
+- **Force apply (non-root).** Theme Manager skips parts (system UI, Settings, status bar, AOD, overlays) when the theme declares an older `uiVersion` than the part needs. Force apply raises the `uiVersion` of the copy sent to the phone to the newest format the phone renders, so every part is copied. The project file is never changed. Parts made for another format can render wrong; go back from Themes → My themes. Hidden on rooted phones, which already get every part.
+- Non-root apply checks the cases that cannot work and says so instead of failing silently: Second space or another active user, Theme Manager's storage folder not created yet, and Theme Manager falling back to the file picker.
 - Compares the theme's format with the phone's (`theme_compatibility.xml`) and warns before applying a theme made for a newer system, in the store, on the Phone page and on Try on phone.
 - Browse themes already cached on the phone and open them as read-only references.
 - Copy a package to the phone after confirmation, verified by file size.
@@ -99,7 +102,7 @@ Yes. `Ctrl+N` creates a new theme, or you can start from a free theme downloaded
 It reads and writes the shared `.mtz` format used by MIUI and HyperOS, and warns when a theme was made for a newer system than your phone (`theme_compatibility.xml`).
 
 **Do I need root to apply a theme?**
-Rooted phones get every part applied. On normal phones, wallpapers, lock screens and sounds work through Theme Manager; other parts are a work in progress (see the note above).
+Rooted phones get every part applied. On normal phones, the whole theme can be applied without root if the phone's factory Theme Manager build has the editor entry point (**Enable non-root apply**, then **Try on phone** or **Force apply**). Otherwise wallpapers, lock screens and sounds work through Theme Manager and other parts may be refused.
 
 **Does it work on macOS or Linux?**
 Not yet; current releases are Windows 10 / 11 only.

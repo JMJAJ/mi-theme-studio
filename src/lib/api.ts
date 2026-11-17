@@ -2,6 +2,8 @@
 // device work happens in Rust; the UI only calls these.
 import { invoke } from '@tauri-apps/api/core';
 import type { DeviceApp, TryOnResult,
+  LicenceReport,
+  LicenseOutcome,
   MirrorStatus,
   ApplyResult,
   ThemeManagerSupport,
@@ -141,6 +143,8 @@ export const api = {
   adbListApps: (serial: string) => call<DeviceApp[]>('adb_list_apps', { serial }),
   adbAddToThemeManager: (serial: string, opId: string) => call<TryOnResult>('adb_add_to_theme_manager', { serial, opId }),
   adbTryOn: (serial: string, opId: string) => call<TryOnResult>('adb_try_on', { serial, opId }),
+  adbLicenceReport: (serial: string) => call<LicenceReport>('adb_licence_report', { serial }),
+  adbLicenseDownloads: (serial: string, opId: string) => call<LicenseOutcome[]>('adb_license_downloads', { serial, opId }),
   adbCachedThemeOpen: (serial: string, localId: string) =>
     call<ProjectSnapshot>('adb_cached_theme_open', { serial, localId }),
   adbScreenshot: (serial: string, model: string | null, opId: string) =>

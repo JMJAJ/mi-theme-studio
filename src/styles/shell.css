@@ -198,6 +198,46 @@
 .store-sections > .shelf-card .link-card { display: flex; flex-direction: column; height: 100%; }
 .store-sections > .shelf-card .link-card .img { flex: 1; aspect-ratio: auto; min-height: 180px; }
 
+/* Single-theme shelf: screenshots beside the details instead of one giant cover. */
+.feature-card { display: flex; gap: clamp(12px, 1.4vw, 18px); width: 100%; padding: 0; border: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; min-width: 0; }
+.feature-card .covers { display: flex; gap: 10px; flex: none; width: clamp(110px, 36%, 190px); }
+.feature-card.has-second .covers { width: clamp(200px, 58%, 360px); }
+.feature-card .cover { position: relative; flex: 1; min-width: 0; aspect-ratio: 9 / 16; border-radius: 12px; overflow: hidden; background: var(--bg-3); border: 1px solid var(--line); display: grid; place-items: center; transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease; }
+.feature-card .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.feature-card:hover .cover, .feature-card:focus-visible .cover { transform: translateY(-2px); border-color: var(--line-strong); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4); }
+.feature-card:focus-visible { box-shadow: none; }
+.feature-card:focus-visible .cover { box-shadow: var(--focus); }
+.feature-card.kind-font .cover { aspect-ratio: 4 / 3; }
+.feature-card.kind-font .cover img { object-fit: contain; background: var(--bg-2); }
+.feature-card.kind-ringtone .cover { aspect-ratio: 1; border-radius: 50%; }
+.feature-card .info { display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; min-width: 0; flex: 1; padding-bottom: 2px; }
+.feature-card .name { font-size: var(--fs-lg); font-weight: 600; line-height: 1.25; display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow-wrap: anywhere; }
+.feature-card .sub { display: flex; align-items: center; gap: 7px; font-size: var(--fs-xs); }
+.feature-card .tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.feature-card .tags .badge { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feature-card .view-btn { align-self: flex-start; pointer-events: none; }
+.feature-card:hover .view-btn { border-color: var(--line-strong); color: var(--text); }
+@container (max-width: 340px) { .feature-card.has-second .covers { width: 50%; } .feature-card.has-second .cover + .cover { display: none; } }
+
+/* Big shelves with "See all": one row that scrolls, never an orphan tile on a second line. */
+.shelf-rail-wrap { position: relative; }
+.store-sections .shelf-rail { --rail-n: 3; display: grid; grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: calc((100% - (var(--rail-n) - 1) * 14px) / var(--rail-n)); overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none; padding: 4px 2px 10px; margin: -4px -2px -10px; }
+.store-sections .shelf-rail::-webkit-scrollbar { display: none; }
+.store-sections .shelf-rail > * { scroll-snap-align: start; }
+.store-sections .shelf-rail:has(.kind-font) { grid-auto-columns: 240px; }
+@container (min-width: 600px) { .store-sections .shelf-rail { --rail-n: 4; } }
+@container (min-width: 760px) { .store-sections .shelf-rail { --rail-n: 5; } }
+@container (min-width: 920px) { .store-sections .shelf-rail { --rail-n: 6; } }
+@container (min-width: 1080px) { .store-sections .shelf-rail { --rail-n: 7; } }
+@container (min-width: 1240px) { .store-sections .shelf-rail { --rail-n: 8; } }
+@container (min-width: 1400px) { .store-sections .shelf-rail { --rail-n: 9; } }
+@container (min-width: 1580px) { .store-sections .shelf-rail { --rail-n: 10; } }
+.rail-nav { position: absolute; top: calc(50% - 36px); z-index: 2; width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border-radius: 50%; border: 1px solid var(--line-strong); background: var(--bg-1); color: var(--text); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45); cursor: pointer; transition: background 0.12s ease; }
+.rail-nav:hover { background: var(--bg-hover); }
+.rail-nav svg { width: 18px; height: 18px; }
+.rail-nav.prev { left: -8px; }
+.rail-nav.next { right: -8px; }
+
 /* ---------- live mirror ---------- */
 .pp-canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; cursor: pointer; touch-action: none; }
 .pp-overlay { background: rgba(5, 5, 7, 0.72); }

@@ -38,6 +38,51 @@ const MAX_PART_BYTES: u64 = 128 * 1024 * 1024;
 /// issues for unmodified store themes.
 pub const LICENSE_FREE_PARTS: [&str; 7] = ["audioeffect", "wallpaper", "lockscreen", "ringtone", "alarm", "notification", "bootaudio"];
 
+/// One part of a staged theme: the resource code and the SHA-1 Theme Manager
+/// will compute for it (`rights/theme/<sha1>.mra` is where its licence has to
+/// be for the pre-apply check to pass).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StagedPart {
+    pub code: String,
+    pub sha1: String,
+}
+
+impl StagedPart {
+    pub fn is_license_free(&self) -> bool {
+        LICENSE_FREE_PARTS.contains(&self.code.as_str())
+    }
+}
+
+/// Where a part of the current theme stands on the phone: applied without a
+/// licence, covered by a rights file already on the phone, or refused (413).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LicencePart {
+    pub code: String,
+    pub sha1: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LicenceReport {
+    pub parts: Vec<LicencePart>,
+    pub licensed: usize,
+    pub free: usize,
+    pub missing: usize,
+}
+
+/// Result of applying one downloaded store item on the phone to deposit its
+/// licence in Theme Manager's rights folder.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LicenseOutcome {
+    pub module_id: String,
+    pub name: String,
+    pub ok: bool,
+    pub message: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TryOnResult {
@@ -130,16 +175,41 @@ fn sha1_hex(data: &[u8]) -> String {
     sha1_smol::Sha1::from(data).digest().to_string()
 }
 
+/// Lists the parts Theme Manager would apply for `package` — the same mapping
+/// `stage_library` uses — without writing anything.
+pub fn package_parts(package: &[u8]) -> AppResult<Vec<StagedPart>> {
+    let mut zip = ZipArchive::new(Cursor::new(package))?;
+    let mut parts: Vec<StagedPart> = Vec::new();
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i)?;
+        if entry.is_dir() || entry.size() > MAX_PART_BYTES {
+            continue;
+        }
+        let name = entry.name()?.to_string();
+        if name.starts_with("preview/") {
+            continue;
+        }
+        let Some(code) = resource_code(&name) else { continue };
+        if parts.iter().any(|p| p.code == code) {
+            continue;
+        }
+        let mut data = Vec::new();
+        entry.read_to_end(&mut data)?;
+        parts.push(StagedPart { code, sha1: sha1_hex(&data) });
+    }
+    Ok(parts)
+}
+
 /// Writes the library records for `package` into `stage` (laid out like
-/// `.data`). Returns the theme ID and the part codes.
-pub fn stage_library(package: &[u8], title: &str, author: &str, stage: &Path, license_free_only: bool) -> AppResult<(String, Vec<String>)> {
+/// `.data`). Returns the theme ID and the staged parts (code and content hash).
+pub fn stage_library(package: &[u8], title: &str, author: &str, stage: &Path, license_free_only: bool) -> AppResult<(String, Vec<StagedPart>)> {
     let io = |e: std::io::Error| AppError::io("Could not stage the theme for the phone", e);
     let mut zip = ZipArchive::new(Cursor::new(package))?;
     let theme_id = new_id();
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
     let mut theme = record(&theme_id, title, author, "Sent from Mi Theme Studio", &sha1_hex(package), package.len() as u64, now);
     let mut subs = Vec::new();
-    let mut codes = Vec::new();
+    let mut parts: Vec<StagedPart> = Vec::new();
     let mut previews: std::collections::BTreeMap<String, Vec<String>> = Default::default();
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i)?;
@@ -165,13 +235,14 @@ pub fn stage_library(package: &[u8], title: &str, author: &str, stage: &Path, li
         if license_free_only && !LICENSE_FREE_PARTS.contains(&code.as_str()) {
             continue;
         }
-        if codes.contains(&code) {
+        if parts.iter().any(|p| p.code == code) {
             continue;
         }
         let mut data = Vec::new();
         entry.read_to_end(&mut data).map_err(io)?;
         let id = new_id();
-        let mut part = record(&id, title, author, "", &sha1_hex(&data), data.len() as u64, now);
+        let sha1 = sha1_hex(&data);
+        let mut part = record(&id, title, author, "", &sha1, data.len() as u64, now);
         part["parentResources"] = json!([related(&theme_id, "theme")]);
         for (dir, file, bytes) in [("content", format!("{id}.mrc"), data), ("meta", format!("{id}.mrm"), to_json(&part))] {
             let folder = stage.join(dir).join(&code);
@@ -179,9 +250,9 @@ pub fn stage_library(package: &[u8], title: &str, author: &str, stage: &Path, li
             std::fs::write(folder.join(file), bytes).map_err(io)?;
         }
         subs.push(related(&id, &code));
-        codes.push(code);
+        parts.push(StagedPart { code, sha1 });
     }
-    if codes.is_empty() {
+    if parts.is_empty() {
         return Err(AppError::invalid(if license_free_only {
             "The theme has no wallpapers or sounds to try on."
         } else {
@@ -198,7 +269,7 @@ pub fn stage_library(package: &[u8], title: &str, author: &str, stage: &Path, li
         std::fs::create_dir_all(&folder).map_err(io)?;
         std::fs::write(folder.join(file), bytes).map_err(io)?;
     }
-    Ok((theme_id, codes))
+    Ok((theme_id, parts))
 }
 
 /// `[x1,y1][x2,y2]` → centre point.
@@ -294,9 +365,11 @@ impl Adb {
         refused_license(&out.stdout_text())
     }
 
-    /// Modification time of the active theme folder (seconds).
+    /// Modification time of the active theme folder (seconds). Some builds do
+    /// not have `config.config`, so missing paths must not fail the command.
     pub(super) fn theme_stamp(&self, serial: &str) -> Option<String> {
-        let out = self.shell(serial, &["stat", "-c", "%Y", "/data/system/theme", "/data/system/theme/config.config"], Duration::from_secs(10), None).ok()?;
+        let command = "stat -c %Y /data/system/theme /data/system/theme/config.config 2>/dev/null; true";
+        let out = self.shell(serial, &[command], Duration::from_secs(10), None).ok()?;
         Some(out.stdout_text().split_whitespace().collect::<Vec<_>>().join(" "))
     }
 
@@ -344,6 +417,196 @@ impl Adb {
         removed
     }
 
+    /// Theme Manager checks every non-free part against a Xiaomi-signed rights
+    /// file named after the part's SHA-1 (`rights/theme/<sha1>.mra`) and only
+    /// asks the server when that file is missing — and the server only knows
+    /// store packages, so a locally composed theme can never be licensed that
+    /// way. The signature covers the content hashes listed inside the file, not
+    /// the file name, so any rights file already on the phone that lists
+    /// `<sha1>` is accepted verbatim. Copy it into place, which is what makes
+    /// mixes of unmodified store parts apply without a server round trip.
+    fn reuse_device_licences(&self, serial: &str, parts: &[StagedPart], steps: &mut Vec<String>) -> Vec<String> {
+        let mut reused = 0;
+        let mut missing = Vec::new();
+        for part in parts.iter().filter(|p| !p.is_license_free()) {
+            let Some(found) = self.find_licence(serial, &part.sha1) else {
+                missing.push(part.code.clone());
+                continue;
+            };
+            // An earlier try-on may already have put the licence in place; the
+            // grep then finds that copy and `cp` would fail on the same file.
+            if found.ends_with(&format!("/{}.mra", part.sha1)) {
+                reused += 1;
+                continue;
+            }
+            let copy = format!("cp {} {LIBRARY_ROOT}/rights/theme/{}.mra", found, part.sha1);
+            if self.exec(&["-s", serial, "shell", &copy], Duration::from_secs(10), None, true).is_ok_and(|o| o.success()) {
+                reused += 1;
+            } else {
+                missing.push(part.code.clone());
+            }
+        }
+        if reused > 0 {
+            steps.push(format!("Reused {reused} licence(s) already on the phone"));
+        }
+        if !missing.is_empty() {
+            steps.push(format!("No licence on this phone for: {}", missing.join(", ")));
+        }
+        missing
+    }
+
+    /// Any rights file on the phone that lists `sha1` (a licence is bound to the
+    /// content hash, not to the theme it came from).
+    fn find_licence(&self, serial: &str, sha1: &str) -> Option<String> {
+        let find = format!("grep -l {} {LIBRARY_ROOT}/rights/theme/*.mra 2>/dev/null | head -n 1", sha1);
+        self.exec(&["-s", serial, "shell", &find], Duration::from_secs(10), None, true)
+            .ok()
+            .map(|o| o.stdout_text().trim().to_string())
+            .filter(|p| p.starts_with(LIBRARY_ROOT) && p.ends_with(".mra") && !p.chars().any(char::is_whitespace))
+    }
+
+    /// Per-part verdict for the current theme before it is tried on: `free`
+    /// (wallpaper/sounds), `licensed` (a rights file on the phone covers it) or
+    /// `missing` (Theme Manager will ask Xiaomi and get 413).
+    pub fn licence_report(&self, serial: &str, package: &[u8]) -> AppResult<LicenceReport> {
+        let parts = package_parts(package)?;
+        let mut report = LicenceReport { parts: Vec::new(), licensed: 0, free: 0, missing: 0 };
+        for part in parts {
+            let status = if part.is_license_free() {
+                report.free += 1;
+                "free"
+            } else if self.find_licence(serial, &part.sha1).is_some() {
+                report.licensed += 1;
+                "licensed"
+            } else {
+                report.missing += 1;
+                "missing"
+            };
+            report.parts.push(LicencePart { code: part.code, sha1: part.sha1, status: status.into() });
+        }
+        Ok(report)
+    }
+
+    /// Taps a view by resource id on whatever page is in front.
+    fn tap_id(&self, serial: &str, id: &str) -> bool {
+        let Ok(xml) = self.ui_dump(serial) else { return false };
+        let Some((x, y)) = enabled_node(&xml, id) else { return false };
+        self.shell(serial, &["input", "tap", &x.to_string(), &y.to_string()], Duration::from_secs(10), None).is_ok()
+    }
+
+    /// Dumps the UI, acknowledging a blocking modal first ("Compatibility
+    /// issues" / "Got it"); those store pages work once acknowledged.
+    fn after_dialogs(&self, serial: &str) -> String {
+        let mut xml = self.ui_dump(serial).unwrap_or_default();
+        for _ in 0..3 {
+            if !xml.contains("android:id/button1") || !self.tap_id(serial, "android:id/button1") {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(1200));
+            xml = self.ui_dump(serial).unwrap_or_default();
+        }
+        xml
+    }
+
+    /// Waits for Theme Manager to write the licence of a store product.
+    fn wait_for_rights(&self, serial: &str, product_id: &str, timeout: Duration, cancel: &Option<Arc<AtomicBool>>) -> bool {
+        let path = format!("{LIBRARY_ROOT}/rights/theme/{product_id}.mra");
+        let deadline = Instant::now() + timeout;
+        let mut tick = 0u32;
+        while Instant::now() < deadline {
+            if cancel.as_ref().is_some_and(|c| c.load(Ordering::Relaxed)) {
+                return false;
+            }
+            if self.shell(serial, &["test", "-f", &path], Duration::from_secs(5), None).is_ok() {
+                return true;
+            }
+            tick += 1;
+            if tick % 3 == 0 {
+                // "Compatibility issues" can sit in front of the apply.
+                let _ = self.after_dialogs(serial);
+            }
+            std::thread::sleep(Duration::from_millis(1000));
+        }
+        false
+    }
+
+    /// Applies each downloaded store theme/font on the phone once so Theme
+    /// Manager deposits its rights file; afterwards its parts can be mixed into
+    /// any theme. `items` is (module id, name, product id).
+    pub fn license_store_items(
+        &self,
+        serial: &str,
+        items: &[(String, String, Option<String>)],
+        cancel: Option<Arc<AtomicBool>>,
+    ) -> Vec<LicenseOutcome> {
+        let mut out = Vec::new();
+        for (module_id, name, product_id) in items {
+            let cancelled = || cancel.as_ref().is_some_and(|c| c.load(Ordering::Relaxed));
+            let mut outcome = LicenseOutcome { module_id: module_id.clone(), name: name.clone(), ok: false, message: String::new() };
+            if cancelled() {
+                outcome.message = "Cancelled".into();
+                out.push(outcome);
+                continue;
+            }
+            if let Some(pid) = product_id {
+                if self.shell(serial, &["test", "-f", &format!("{LIBRARY_ROOT}/rights/theme/{pid}.mra")], Duration::from_secs(5), None).is_ok() {
+                    outcome.ok = true;
+                    outcome.message = "Already licensed".into();
+                    out.push(outcome);
+                    continue;
+                }
+            }
+            let _ = self.open_store_item(serial, module_id);
+            std::thread::sleep(Duration::from_millis(4000));
+            let mut xml = self.after_dialogs(serial);
+            if !xml.contains("applyBtn") && !xml.contains("downloadBtn") {
+                // The store page sometimes reports a network error on first open.
+                std::thread::sleep(Duration::from_millis(1500));
+                let _ = self.open_store_item(serial, module_id);
+                std::thread::sleep(Duration::from_millis(4000));
+                xml = self.after_dialogs(serial);
+            }
+            if !xml.contains("applyBtn") && !xml.contains("downloadBtn") {
+                outcome.message = "The store page did not open on the phone".into();
+                out.push(outcome);
+                continue;
+            }
+            if xml.contains("downloadBtn") {
+                let id = "com.android.thememanager:id/downloadBtn";
+                if self.tap_id(serial, id) {
+                    std::thread::sleep(Duration::from_millis(6000));
+                    let _ = self.after_dialogs(serial);
+                }
+            }
+            let apply = "com.android.thememanager:id/applyBtn";
+            if !self.tap_id(serial, apply) {
+                std::thread::sleep(Duration::from_millis(2000));
+                if !self.tap_id(serial, apply) {
+                    outcome.message = "No Apply button on the store page".into();
+                    out.push(outcome);
+                    continue;
+                }
+            }
+            match product_id {
+                Some(pid) => {
+                    if self.wait_for_rights(serial, pid, Duration::from_secs(40), &cancel) {
+                        outcome.ok = true;
+                        outcome.message = "Licence stored".into();
+                    } else {
+                        outcome.message = "No licence appeared; the item may be paid or unavailable".into();
+                    }
+                }
+                None => {
+                    std::thread::sleep(Duration::from_secs(4));
+                    outcome.ok = true;
+                    outcome.message = "Applied (no product id to verify)".into();
+                }
+            }
+            out.push(outcome);
+        }
+        out
+    }
+
     /// Installs `package` into Theme Manager's library and applies it.
     pub fn try_on(
         &self,
@@ -364,7 +627,8 @@ impl Adb {
 
         let _ = std::fs::remove_dir_all(stage);
         std::fs::create_dir_all(stage).map_err(|e| AppError::io("Could not prepare the staging folder", e))?;
-        let (local_id, parts) = stage_library(package, title, "Mi Theme Studio", stage, license_free_only)?;
+        let (local_id, staged) = stage_library(package, title, "Mi Theme Studio", stage, license_free_only)?;
+        let parts: Vec<String> = staged.iter().map(|p| p.code.clone()).collect();
         steps.push(format!("Prepared {} parts: {}", parts.len(), parts.join(", ")));
         if !apply {
             // Kept themes are not try-ons: later tries must not remove them.
@@ -384,6 +648,10 @@ impl Adb {
         steps.push(format!("Copied the theme into Theme Manager's library ({} bytes)", package.len()));
         if cancelled() {
             return Err(AppError::new("cancelled", "The operation was cancelled."));
+        }
+        let missing = self.reuse_device_licences(serial, &staged, &mut steps);
+        if apply && !missing.is_empty() {
+            steps.push("Theme Manager will ask Xiaomi for these and refuse (413) unless they are unmodified store parts".into());
         }
 
         // Theme Manager reads its library on start; restart it so it sees the new theme.
@@ -520,9 +788,14 @@ mod tests {
             w.write_all(data).unwrap();
         }
         let package = w.finish().unwrap().into_inner();
-        let stage = std::env::temp_dir().join(format!("mts-stage-{}", new_id()));
-        let (id, codes) = stage_library(&package, "Test", "Me", &stage, false).unwrap();
-        assert_eq!(codes, vec!["icons", "launcher"]);
+        // The process temp dir is not writable for test binaries in every
+        // environment; the crate's target dir always is.
+        let stage = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/tmp").join(format!("mts-stage-{}", new_id()));
+        let (id, parts) = stage_library(&package, "Test", "Me", &stage, false).unwrap();
+        assert_eq!(parts.iter().map(|p| p.code.as_str()).collect::<Vec<_>>(), vec!["icons", "launcher"]);
+        assert_eq!(parts[0].sha1, sha1_hex(b"PK\x03\x04icons"));
+        assert!(parts.iter().all(|p| !p.is_license_free()));
+        assert!(StagedPart { code: "wallpaper".into(), sha1: String::new() }.is_license_free());
         let theme: Value = serde_json::from_slice(&std::fs::read(stage.join(format!("meta/theme/{id}.mrm"))).unwrap()).unwrap();
         assert_eq!(theme["titles"]["fallback"], "Test");
         assert_eq!(theme[MARKER], true);
@@ -566,5 +839,42 @@ mod live {
             println!("  {step}");
         }
         assert!(result.applied);
+    }
+
+    #[test]
+    #[ignore]
+    fn reports_licences_for_a_package() {
+        let (Ok(path), Ok(serial), Ok(mtz)) = (std::env::var("MTS_ADB"), std::env::var("MTS_SERIAL"), std::env::var("MTS_TRYON")) else { return };
+        let adb = Adb { path: path.into(), log: Arc::new(|_| {}) };
+        let package = std::fs::read(&mtz).unwrap();
+        let report = adb.licence_report(&serial, &package).expect("report");
+        println!("licensed={} free={} missing={}", report.licensed, report.free, report.missing);
+        for part in &report.parts {
+            println!("  {:<18} {:<10} {}", part.code, part.status, part.sha1);
+        }
+        assert_eq!(report.missing, 0);
+    }
+
+    /// `MTS_LICENSE_ITEMS="moduleId|productId|Name;…"` — applies each item on the
+    /// phone so its licence lands, then prints the outcome.
+    #[test]
+    #[ignore]
+    fn licenses_downloaded_items() {
+        let (Ok(path), Ok(serial), Ok(list)) = (std::env::var("MTS_ADB"), std::env::var("MTS_SERIAL"), std::env::var("MTS_LICENSE_ITEMS")) else { return };
+        let adb = Adb { path: path.into(), log: Arc::new(|_| {}) };
+        let items: Vec<(String, String, Option<String>)> = list
+            .split(';')
+            .filter(|s| !s.trim().is_empty())
+            .map(|entry| {
+                let mut f = entry.split('|');
+                let module = f.next().unwrap_or_default().to_string();
+                let product = f.next().unwrap_or_default().to_string();
+                let name = f.next().unwrap_or_default().to_string();
+                (module, name, (!product.is_empty()).then_some(product))
+            })
+            .collect();
+        for outcome in adb.license_store_items(&serial, &items, None) {
+            println!("{}: {} — {}", if outcome.ok { "ok" } else { "failed" }, outcome.name, outcome.message);
+        }
     }
 }

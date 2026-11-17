@@ -633,6 +633,9 @@ button.catalog-card:hover, button.icon-link:hover { border-color: var(--line-str
 .fact .value { font-weight: 600; display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
 .detail-actions { display: flex; flex-direction: column; gap: 9px; position: sticky; top: 0; }
 .detail-actions .btn { justify-content: center; }
+.detail-actions .detail-status { justify-content: center; }
+.detail-actions .detail-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.detail-actions .detail-split .btn { min-width: 0; }
 
 .lightbox { position: fixed; inset: 0; z-index: 90; background: rgba(4, 5, 7, 0.88); display: grid; place-items: center; }
 .lightbox img { max-width: 86vw; max-height: 90vh; border-radius: 16px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6); }

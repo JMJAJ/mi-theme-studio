@@ -2135,7 +2135,7 @@ dependencies = [
 
 [[package]]
 name = "mi-theme-studio"
-version = "0.3.10"
+version = "0.3.14"
 dependencies = [
  "imagesize",
  "percent-encoding",

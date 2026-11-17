@@ -996,7 +996,7 @@ export async function addToThemeManager() {
   try {
     const result = await api.adbAddToThemeManager(device.serial, opId);
     for (const step of result.steps) log('info', `Add to Theme Manager: ${step}`);
-    toast('success', `“${project.title}” is in Theme Manager on the phone, with its page open. Edited themes still need a Xiaomi license to apply.`);
+    toast('success', `“${project.title}” is in Theme Manager on the phone, with its page open. Mixes of parts already licensed on the phone apply; edited parts still need a Xiaomi licence.`);
   } catch (error) {
     if (errorCode(error) === 'cancelled') log('info', 'Add to Theme Manager cancelled');
     else toast('error', `Add to Theme Manager: ${errorMessage(error)}`);
@@ -1069,15 +1069,100 @@ export async function tryOnPhone() {
     else if (errorCode(error) === 'license') {
       log('warning', `Try on: ${errorMessage(error)}`);
       await choiceDialog({
-        title: 'Theme Manager needs a Xiaomi license for this theme',
+        title: 'Theme Manager needs a Xiaomi licence for this theme',
         message:
-          'On global HyperOS, Theme Manager only applies icons, lock screens, system UI and other parts when Xiaomi’s server issues a license for them. Xiaomi only licenses unmodified store themes, so it refuses edited or new ones; that is the “downloadRight” error on the phone. Unchanged store themes still try on fine, and the phone panel mockup and live mirror keep working for your own theme. Chinese Theme Manager builds (with the editor entry point) or rooted phones can apply custom themes. Mi Theme Studio does not fake licenses.',
+          'On global HyperOS, Theme Manager applies a part only when a Xiaomi-signed licence covering its exact bytes is on the phone. Try on phone reuses those licences, so a mix of unmodified store parts — icons from one theme, status bar from another, your own wallpapers and sounds — applies. Parts you edited or added have no licence, and Xiaomi only issues them for store packages; that is the “downloadRight|413” error on the phone. Download and apply a theme in Theme Manager once to licence its parts, or keep your own artwork to wallpapers and sounds. The phone panel mockup and live mirror keep working for any project. Mi Theme Studio does not fake licences.',
         choices: [{ id: 'ok', label: 'OK', primary: true }],
       });
     } else toast('error', `Try on phone: ${errorMessage(error)}`);
   } finally {
     operations.delete(opId);
     setState({ busy: null, exportProgress: null });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// licences
+
+/** Per-part verdict: what Theme Manager will accept on this phone right now. */
+export async function checkLicences() {
+  const device = readyDevice();
+  const project = getState().project;
+  if (!device || !project) {
+    toast('warning', 'Open a theme and connect an authorized phone first.');
+    return;
+  }
+  if (getState().busy) return;
+  if (!(await applyAllDrafts())) return;
+  setState({ busy: 'Checking licences on the phone…' });
+  try {
+    const report = await api.adbLicenceReport(device.serial);
+    const mark = (s: string) => (s === 'missing' ? '✗' : s === 'free' ? '–' : '✓');
+    const detail = report.parts.map((p) => `${mark(p.status)} ${p.code} — ${p.status === 'missing' ? 'no licence on this phone (will get 413)' : p.status === 'free' ? 'free (wallpaper or sound)' : 'licensed'}`);
+    const message =
+      report.missing === 0
+        ? `Every part is covered: ${report.licensed} licensed, ${report.free} free. Try on phone will apply this theme.`
+        : `${report.missing} part${report.missing === 1 ? '' : 's'} have no licence on this phone and will be refused with 413. Apply the store theme or font they come from on the phone once (Device → License downloads on phone), or replace them with licensed parts.`;
+    await confirmDialog({ title: `Licences for “${project.title}”`, message, detail, confirmLabel: 'OK' });
+  } catch (error) {
+    toast('error', `Licence check: ${errorMessage(error)}`);
+  } finally {
+    setState({ busy: null });
+  }
+}
+
+/** Applies each downloaded store theme/font once so its parts become reusable. */
+export async function licenseDownloadsOnPhone() {
+  const device = readyDevice();
+  if (!device) {
+    toast('warning', 'Connect and authorize a phone first.');
+    return;
+  }
+  if (getState().busy) return;
+  let items: Awaited<ReturnType<typeof api.storeDownloads>>;
+  try {
+    items = await api.storeDownloads();
+  } catch (error) {
+    toast('error', `Downloads: ${errorMessage(error)}`);
+    return;
+  }
+  items = items.filter((d) => d.kind === 'theme' || d.kind === 'font');
+  if (!items.length) {
+    toast('warning', 'Download some themes or fonts in the Store first.');
+    return;
+  }
+  const details = getState().deviceDetails[device.serial];
+  const name = details?.marketName ?? details?.model ?? device.model ?? device.serial;
+  const ok = await confirmDialog({
+    title: `License ${items.length} downloaded item${items.length === 1 ? '' : 's'} on ${name}?`,
+    message: 'Each item is opened in Theme Manager and applied once, so Theme Manager stores a Xiaomi licence for its parts. Afterwards those parts can be mixed into any theme. Your active theme changes while this runs.',
+    detail: [
+      ...items.slice(0, 8).map((d) => `${d.kind === 'font' ? 'Font' : 'Theme'}: ${d.name}`),
+      ...(items.length > 8 ? [`…and ${items.length - 8} more`] : []),
+      'Keep the phone unlocked and on the home screen.',
+    ],
+    confirmLabel: 'License them',
+  });
+  if (!ok) return;
+  const opId = newOpId('license');
+  operations.set(opId, 'Licensing downloads');
+  setState({ busy: 'Licensing downloaded items on the phone…' });
+  try {
+    const results = await api.adbLicenseDownloads(device.serial, opId);
+    for (const r of results) log(r.ok ? 'info' : 'warning', `Licence: ${r.name} — ${r.message}`);
+    const done = results.filter((r) => r.ok).length;
+    await confirmDialog({
+      title: 'Licensing finished',
+      message: `${done} of ${results.length} item${results.length === 1 ? '' : 's'} are licensed on the phone.${done < results.length ? ' The rest can be applied manually in Theme Manager, then re-checked.' : ''}`,
+      detail: results.map((r) => `${r.ok ? '✓' : '✗'} ${r.name}: ${r.message}`),
+      confirmLabel: 'OK',
+    });
+  } catch (error) {
+    if (errorCode(error) === 'cancelled') log('info', 'Licensing cancelled');
+    else toast('error', `Licensing: ${errorMessage(error)}`);
+  } finally {
+    operations.delete(opId);
+    setState({ busy: null });
   }
 }
 

@@ -1,6 +1,6 @@
 import { TryOnButton } from '../common/TryOnButton';
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Camera, CircleCheck, FolderSearch, Info, Lock, Palette, RefreshCw, RotateCcw, Send, Smartphone, Unplug } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, Camera, CircleCheck, FolderSearch, Info, Lock, Palette, RefreshCw, RotateCcw, Send, ShieldCheck, Smartphone, Unplug } from 'lucide-react';
 import { api } from '../../lib/api';
 import { MirrorButton } from '../common/MirrorButton';
 import { useStore } from '../../state/store';
@@ -57,6 +57,14 @@ function ThemeManagerActions({ serial, hasProject, busy }: { serial: string; has
   return (
     <>
       {hasProject && <TryOnButton className="btn" />}
+      {hasProject && (
+        <button className="btn" style={{ justifyContent: 'flex-start' }} disabled={busy} onClick={() => void A.checkLicences()}>
+          <ShieldCheck /> Check licences
+        </button>
+      )}
+      <button className="btn" style={{ justifyContent: 'flex-start' }} disabled={busy} onClick={() => void A.licenseDownloadsOnPhone()}>
+        <BadgeCheck /> License downloads on phone
+      </button>
       {support.canOpenStore && (
         <button className="btn" style={{ justifyContent: 'flex-start' }} disabled={busy} onClick={() => void A.openThemeSettingsOnDevice()}>
           <Palette /> Open Theme Manager on phone
@@ -64,7 +72,7 @@ function ThemeManagerActions({ serial, hasProject, busy }: { serial: string; has
       )}
       <div className="banner" style={{ marginTop: 4 }}>
         <Info />
-        <span>Try on phone adds the theme to Theme Manager {support.version ?? ''} on the phone and presses Apply there. No root is needed; each try replaces the previous one.</span>
+        <span>Try on phone applies the theme through Theme Manager and reuses the licences already on the phone, so mixes of unmodified store parts work. Wallpapers and sounds need no licence; edited parts get 413 until their source theme or font has been applied on the phone once.</span>
       </div>
     </>
   );

@@ -490,6 +490,26 @@ export interface TryOnResult {
   steps: string[];
 }
 
+export interface LicencePart {
+  code: string;
+  sha1: string;
+  status: 'free' | 'licensed' | 'missing';
+}
+
+export interface LicenceReport {
+  parts: LicencePart[];
+  licensed: number;
+  free: number;
+  missing: number;
+}
+
+export interface LicenseOutcome {
+  moduleId: string;
+  name: string;
+  ok: boolean;
+  message: string;
+}
+
 export interface ApplyResult {
   remotePath: string;
   bytes: number;

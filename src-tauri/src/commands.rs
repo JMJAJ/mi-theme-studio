@@ -1239,9 +1239,46 @@ pub async fn adb_add_to_theme_manager(
     .await
 }
 
+/// Per-part licence verdict for the open project, checked against the rights
+/// files already on the phone.
 #[tauri::command]
-pub async fn adb_try_on(
+pub async fn adb_licence_report(app: AppHandle, serial: String) -> AppResult<adb::theme_install::LicenceReport> {
+    blocking(app, move |state, app| {
+        let adb = adb_for(state, app)?;
+        let built = build_package(state, Some(app))?;
+        adb.licence_report(&serial, &built.data)
+    })
+    .await
+}
+
+/// Applies every downloaded store theme/font on the phone once so Theme
+/// Manager stores its licence; afterwards its parts can be mixed freely.
+#[tauri::command]
+pub async fn adb_license_downloads(
     app: AppHandle,
+    serial: String,
+    op_id: Option<String>,
+) -> AppResult<Vec<adb::theme_install::LicenseOutcome>> {
+    blocking(app, move |state, app| {
+        let adb = adb_for(state, app)?;
+        let items: Vec<(String, String, Option<String>)> = store::list_downloads(&downloads_dir(state))
+            .into_iter()
+            .filter(|d| matches!(d.kind, store::ProductKind::Theme | store::ProductKind::Font))
+            .map(|d| (d.module_id, d.name, d.product_id))
+            .collect();
+        if items.is_empty() {
+            return Err(AppError::invalid("No downloaded themes or fonts to license. Download some in the Store first."));
+        }
+        let cancel = register_op(state, &op_id);
+        let out = adb.license_store_items(&serial, &items, cancel);
+        finish_op(state, &op_id);
+        Ok(out)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn adb_try_on(app: AppHandle,
     serial: String,
     op_id: Option<String>,
 ) -> AppResult<adb::theme_install::TryOnResult> {

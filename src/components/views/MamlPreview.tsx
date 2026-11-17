@@ -7,7 +7,7 @@ import { create } from 'zustand';
 import { AlertTriangle, Info, Loader2, Pause, Play } from 'lucide-react';
 import { api, errorMessage, resourceUrl } from '../../lib/api';
 import { evalNumber, evalString, evaluate, formatDate, systemVars, type Vars } from '../../lib/maml';
-import { setAttributes } from '../../lib/mamlEdit';
+import { lenientXml, setAttributes } from '../../lib/mamlEdit';
 import type { FileInfo, Slot } from '../../lib/types';
 import * as A from '../../state/actions';
 import { useStore } from '../../state/store';
@@ -15,10 +15,10 @@ import { themeFontFile, usePackageFont } from '../common/themeFont';
 import { findWallpaper } from './PreviewView';
 import { MamlInspector } from './MamlInspector';
 
-const SKIP = new Set(['Var', 'VariableBinders', 'ExternalCommands', 'Trigger', 'Triggers', 'MusicControl', 'Pressed', 'PressedState', 'ReachedState', 'EndPoint', 'Path', 'FolmeState', 'FolmeConfig', 'Function', 'Array', 'Slider', 'Permanence', 'Sound', 'Item', 'AniFrame', 'Position', 'Alpha', 'Rotation', 'Size', 'Source', 'Mask']);
+const SKIP = new Set(['Var', 'VariableBinders', 'ExternalCommands', 'Trigger', 'Triggers', 'MusicControl', 'Pressed', 'PressedState', 'ReachedState', 'EndPoint', 'Path', 'FolmeState', 'FolmeConfig', 'Function', 'Array', 'Slider', 'Permanence', 'Sound', 'Item', 'AniFrame', 'Position', 'Alpha', 'Rotation', 'Size', 'Source', 'Mask', 'VarArray', 'Vars', 'Items']);
 const CONTAINERS = new Set(['Group', 'Button', 'Unlocker', 'StartPoint', 'Normal', 'NormalState', 'Layer', 'FramerateController', 'AutoScaleGroup', 'ScreenElementsGroup']);
 /** Elements a person can click and edit; groups are reached from a child. */
-export const DRAWABLE = new Set(['Video', 'Image', 'Text', 'DateTime', 'Time', 'ImageNumber', 'Rectangle', 'Circle', 'Ellipse', 'Line', 'Wallpaper']);
+export const DRAWABLE = new Set(['Video', 'Image', 'Text', 'DateTime', 'Time', 'ImageNumber', 'Rectangle', 'Circle', 'Ellipse', 'Arc', 'Line', 'Wallpaper']);
 
 export function argb(value: string | null, fallback = '#ffffff') {
   const v = (value ?? '').trim();
@@ -233,8 +233,36 @@ function renderNodes(parent: Element, ctx: Ctx): ReactNode[] {
       out.push(<div key={key} data-mk={mk} data-mt={tag} style={style} />);
       continue;
     }
+    if (tag === 'Arc') {
+      // Part of the ellipse in x/y/w/h: from startAngle (0 = 3 o'clock, clockwise) through sweep degrees.
+      const style = place(el, ctx, anim);
+      const w = Number(style.width) || 0;
+      const h = Number(style.height) || 0;
+      const weight = el.hasAttribute('strokeColor') ? evalNumber(el.getAttribute('weight'), ctx.vars, 1) : 0;
+      const inset = el.getAttribute('strokeAlign') === 'inner' ? weight / 2 : el.getAttribute('strokeAlign') === 'outer' ? -weight / 2 : 0;
+      const rx = Math.max(0, w / 2 - inset);
+      const ry = Math.max(0, h / 2 - inset);
+      const start = evalNumber(el.getAttribute('startAngle'), ctx.vars);
+      const sweep = Math.max(-360, Math.min(360, evalNumber(el.getAttribute('sweep'), ctx.vars)));
+      const pie = el.getAttribute('close') === 'true';
+      const pt = (deg: number) => `${w / 2 + rx * Math.cos((deg * Math.PI) / 180)} ${h / 2 + ry * Math.sin((deg * Math.PI) / 180)}`;
+      let d = '';
+      if (Math.abs(sweep) >= 360) d = `M ${pt(start)} A ${rx} ${ry} 0 1 1 ${pt(start + 180)} A ${rx} ${ry} 0 1 1 ${pt(start)}${pie ? ' Z' : ''}`;
+      else if (sweep !== 0) d = `${pie ? `M ${w / 2} ${h / 2} L ${pt(start)}` : `M ${pt(start)}`} A ${rx} ${ry} 0 ${Math.abs(sweep) > 180 ? 1 : 0} ${sweep > 0 ? 1 : 0} ${pt(start + sweep)}${pie ? ' Z' : ''}`;
+      const cap = el.getAttribute('cap');
+      out.push(
+        <div key={key} data-mk={mk} data-mt={tag} style={style}>
+          {d && (
+            <svg width={w} height={h} style={{ overflow: 'visible', display: 'block' }}>
+              <path d={d} fill={argb(el.getAttribute('fillColor'), 'transparent')} stroke={weight ? argb(el.getAttribute('strokeColor')) : 'none'} strokeWidth={weight} strokeLinecap={cap === 'round' ? 'round' : cap === 'square' ? 'square' : 'butt'} />
+            </svg>
+          )}
+        </div>,
+      );
+      continue;
+    }
     if (tag === 'Line') {
-      const x = evalNumber(el.getAttribute('x'), ctx.vars) + anim.dx;
+      const x =evalNumber(el.getAttribute('x'), ctx.vars) + anim.dx;
       const y = evalNumber(el.getAttribute('y'), ctx.vars) + anim.dy;
       const x1 = evalNumber(el.getAttribute('x1'), ctx.vars, x);
       const y1 = evalNumber(el.getAttribute('y1'), ctx.vars, y);
@@ -292,10 +320,24 @@ function renderNodes(parent: Element, ctx: Ctx): ReactNode[] {
 /** Declared variables, in document order; two passes so later ones can feed earlier ones. */
 function collectVars(root: Element, ctx: Ctx) {
   const vars = Array.from(root.getElementsByTagName('Var'));
+  const arrays = Array.from(root.getElementsByTagName('VarArray'));
   for (let pass = 0; pass < 2; pass++) {
+    // VarArray: each <Var index="…"> picks one of the <Items> (week day names and the like).
+    for (const arr of arrays) {
+      const asString = arr.getAttribute('type') === 'string';
+      const items = Array.from(arr.getElementsByTagName('Item'));
+      for (const v of Array.from(arr.getElementsByTagName('Var'))) {
+        const name = v.getAttribute('name');
+        if (!name) continue;
+        const item = items[Math.trunc(evalNumber(v.getAttribute('index'), ctx.vars))];
+        if (!item) continue;
+        const raw = item.hasAttribute('expression') ? evaluate(item.getAttribute('expression'), ctx.vars, asString ? '' : 0) : (item.getAttribute('value') ?? '');
+        ctx.vars.set(name, asString ? String(raw) : Number(raw) || 0);
+      }
+    }
     for (const v of vars) {
       const name = v.getAttribute('name');
-      if (!name) continue;
+      if (!name || v.parentElement?.tagName === 'Vars') continue;
       const animEl = Array.from(v.children).find((c) => c.tagName === 'VariableAnimation');
       if (animEl) {
         const anim = framesOf(animEl);
@@ -390,7 +432,9 @@ export function useMamlScene(componentId: string, opts: { path?: string | null; 
   const text = draft ?? saved;
   const parsed = useMemo(() => {
     if (text === null) return null;
-    const doc = new DOMParser().parseFromString(text, 'text/xml');
+    let doc = new DOMParser().parseFromString(text, 'text/xml');
+    // Draw what the phone draws: retry with the slips its parser forgives (a repeated attribute, a bare &).
+    if (doc.querySelector('parsererror')) doc = new DOMParser().parseFromString(lenientXml(text), 'text/xml');
     if (doc.querySelector('parsererror')) return { doc: null, elements: [] as Element[] };
     const elements = Array.from(doc.getElementsByTagName('*'));
     return { doc, elements, ord: new Map(elements.map((e, i) => [e, i])) };
@@ -449,7 +493,7 @@ export type CanvasEdit =
   | { kind: 'rotate'; delta: number; pivot: { x: number; y: number } };
 
 /** Pieces whose size can be dragged (digit clocks and groups take their size from their pictures). */
-const RESIZABLE = new Set(['Image', 'Rectangle', 'Ellipse', 'Circle', 'Video', 'Text', 'DateTime']);
+const RESIZABLE = new Set(['Image', 'Rectangle', 'Ellipse', 'Arc', 'Circle', 'Video', 'Text', 'DateTime']);
 const UNIFORM = new Set(['Text', 'DateTime', 'Circle']);
 
 // Transparency of pictures, so a mostly-empty full-screen PNG is picked and

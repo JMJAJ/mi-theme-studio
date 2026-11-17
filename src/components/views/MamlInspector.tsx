@@ -24,6 +24,7 @@ const NAMES: Record<string, string> = {
   Rectangle: 'Rectangle',
   Circle: 'Circle',
   Ellipse: 'Ellipse',
+  Arc: 'Arc (ring / gauge)',
   Line: 'Line',
   Group: 'Group',
   Button: 'Button',
@@ -384,6 +385,17 @@ export function MamlInspector({
         <Section title="Fill">
           <ColorField el={el} ord={selected} name="fillColor" onCommit={onCommit} />
           {tag === 'Rectangle' && <Field el={el} ord={selected} names={['cornerRadius']} label="Corner radius" onCommit={onCommit} vars={vars} numeric placeholder="0" />}
+        </Section>
+      )}
+
+      {tag === 'Arc' && (
+        <Section title="Arc">
+          <ColorField el={el} ord={selected} name="strokeColor" onCommit={onCommit} />
+          <div className="mi-grid">
+            <Field el={el} ord={selected} names={['weight']} label="Line width" onCommit={onCommit} vars={vars} numeric placeholder="1" />
+            <Field el={el} ord={selected} names={['startAngle']} label="Start °" onCommit={onCommit} vars={vars} numeric placeholder="0" />
+            <Field el={el} ord={selected} names={['sweep']} label="Sweep °" onCommit={onCommit} vars={vars} numeric placeholder="0" />
+          </div>
         </Section>
       )}
 

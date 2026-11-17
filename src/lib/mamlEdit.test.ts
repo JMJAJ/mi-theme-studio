@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findStartTag, setAttributes } from './mamlEdit';
+import { findStartTag, lenientXml, setAttributes } from './mamlEdit';
 
 const doc = `<?xml version="1.0"?>
 <!-- <Fake x="1"/> -->
@@ -26,5 +26,13 @@ describe('mamlEdit', () => {
     const out = setAttributes(doc, 1, { visibility: 'a & "b"' });
     expect(out).toContain(`<Group x="10" visibility="a &amp; &quot;b&quot;">`);
     expect(setAttributes(doc, 3, { w: '5' })).toContain('<Image src="bg.png" w="5" />');
+  });
+});
+
+describe('lenientXml', () => {
+  it('keeps the first of a repeated attribute and escapes a bare &', () => {
+    const src = '<Lockscreen><Rectangle alpha="240" w="8" alpha="120" visibility="#a&#b"/><Text text="a &amp; b"/></Lockscreen>';
+    const out = lenientXml(src);
+    expect(out).toBe('<Lockscreen><Rectangle alpha="240" w="8" visibility="#a&amp;#b"/><Text text="a &amp; b"/></Lockscreen>');
   });
 });

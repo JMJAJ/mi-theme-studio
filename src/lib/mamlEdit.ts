@@ -21,7 +21,28 @@ export function lineOf(text: string, offset: number) {
   return { line: before.length, column: before[before.length - 1].length + 1 };
 }
 
-const escapeAttr = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+/**
+ * The phone's parser shrugs off mistakes a strict XML parser refuses: an attribute
+ * written twice (the first one counts) and a bare `&` or `<` inside a value.
+ * Repairs only those, inside start tags, so element order (and every ordinal) is unchanged.
+ */
+export function lenientXml(text: string): string {
+  TOKEN.lastIndex = 0;
+  return text.replace(TOKEN, (whole, name: string | undefined, attrs: string | undefined) => {
+    if (name === undefined || !attrs) return whole;
+    const seen = new Set<string>();
+    const fixed = attrs.replace(/(\s*)([^\s=/>]+)\s*=\s*("[^"]*"|'[^']*')/g, (_m, space: string, key: string, value: string) => {
+      if (seen.has(key)) return '';
+      seen.add(key);
+      const q = value[0];
+      const inner = value.slice(1, -1).replace(/&(?!(?:[a-zA-Z]+|#\d+|#x[0-9a-fA-F]+);)/g, '&amp;').replace(/</g, '&lt;');
+      return `${space}${key}=${q}${inner}${q}`;
+    });
+    return `<${name}${fixed}>`;
+  });
+}
+
+const escapeAttr =(v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Set (string) or remove (null) attributes on one element's start tag. */

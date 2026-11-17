@@ -139,6 +139,7 @@ export const api = {
   adbCachedThemeReference: (serial: string, localId: string) =>
     call<ProjectSnapshot>('adb_cached_theme_reference', { serial, localId }),
   adbListApps: (serial: string) => call<DeviceApp[]>('adb_list_apps', { serial }),
+  adbAddToThemeManager: (serial: string, opId: string) => call<TryOnResult>('adb_add_to_theme_manager', { serial, opId }),
   adbTryOn: (serial: string, opId: string) => call<TryOnResult>('adb_try_on', { serial, opId }),
   adbCachedThemeOpen: (serial: string, localId: string) =>
     call<ProjectSnapshot>('adb_cached_theme_open', { serial, localId }),

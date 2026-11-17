@@ -137,6 +137,7 @@ export const COMMANDS: Command[] = [
   { id: 'device.refresh', group: 'Device', label: 'Refresh devices', icon: RefreshCw, run: () => A.refreshAdb(false, true) },
   { id: 'device.screenshot', group: 'Device', label: 'Capture device screenshot', shortcut: 'Ctrl+Alt+S', icon: Camera, enabled: deviceReady, run: async () => { const shot = await A.captureScreenshot(); if (shot) A.openSingleton('preview'); } },
   { id: 'device.tryOn', group: 'Device', label: 'Try on phone', shortcut: 'Ctrl+Shift+T', icon: Play, enabled: (s) => hasProject(s) && deviceReady(s) && !s.busy, run: A.tryOnPhone, global: true },
+  { id: 'device.addToThemeManager', group: 'Device', label: 'Add to Theme Manager on phone (don’t apply)', icon: Send, enabled: (s) => hasProject(s) && deviceReady(s) && !s.busy, run: A.addToThemeManager },
   { id: 'device.send', group: 'Device', label: 'Copy package to device…', icon: Send, enabled: (s) => hasProject(s) && deviceReady(s), run: A.sendToDevice },
   { id: 'device.mirror', group: 'Device', label: 'Mirror screen (live)', icon: Smartphone, enabled: deviceReady, run: () => (useMirrorStream.getState().status === 'live' ? void stopStream() : startInAppMirror()) },
   { id: 'device.mirrorWindow', group: 'Device', label: 'Mirror screen in a separate window', icon: Smartphone, enabled: deviceReady, run: () => (A.mirrorRunning() ? A.stopMirror() : A.startMirror()) },

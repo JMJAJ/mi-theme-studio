@@ -366,7 +366,7 @@ export function PhonePanel() {
                     <ExternalLink />
                   </button>
                   {project && (
-                    <button className="btn btn-sm btn-ghost btn-icon" disabled={!!busy} onClick={() => void A.sendToDevice()} title="Copy the .mtz to the phone's Download folder without applying it" aria-label="Copy theme file to phone">
+                    <button className="btn btn-sm btn-ghost btn-icon" disabled={!!busy} onClick={() => void A.addToThemeManager()} title="Add to Theme Manager on the phone without applying" aria-label="Add to Theme Manager">
                       <Send />
                     </button>
                   )}

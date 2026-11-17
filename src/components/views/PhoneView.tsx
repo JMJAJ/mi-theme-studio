@@ -72,8 +72,8 @@ export function PhoneView() {
                 <button className="btn" disabled={!!busy} onClick={() => void A.captureScreenshot()}>
                   <Camera /> Screenshot
                 </button>
-                <button className="btn" disabled={!project || !!busy} onClick={() => void A.sendToDevice()} title={project ? "Copy the .mtz to the phone's Download folder without applying it" : 'Open a theme first'}>
-                  <Send /> Copy file to phone
+                <button className="btn" disabled={!project || !!busy} onClick={() => void A.addToThemeManager()} title={project ? 'Put the theme into Theme Manager on the phone (My themes) without applying it' : 'Open a theme first'}>
+                  <Send /> Add to Theme Manager
                 </button>
                 {support?.canOpenStore && (
                   <button className="btn btn-ghost" disabled={!!busy} onClick={() => void A.openThemeSettingsOnDevice()}>

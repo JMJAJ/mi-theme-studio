@@ -980,6 +980,32 @@ export async function sendToDevice() {
   }
 }
 
+/** Put the theme into Theme Manager's library on the phone (My themes) without applying it. */
+export async function addToThemeManager() {
+  const device = readyDevice();
+  const project = getState().project;
+  if (!device || !project) {
+    toast('warning', 'Open a theme and connect an authorized phone first.');
+    return;
+  }
+  if (getState().busy) return;
+  if (!(await applyAllDrafts())) return;
+  const opId = newOpId('addtm');
+  operations.set(opId, 'Adding to Theme Manager');
+  setState({ busy: 'Adding the theme to Theme Manager…' });
+  try {
+    const result = await api.adbAddToThemeManager(device.serial, opId);
+    for (const step of result.steps) log('info', `Add to Theme Manager: ${step}`);
+    toast('success', `“${project.title}” is in Theme Manager on the phone, with its page open. Edited themes still need a Xiaomi license to apply.`);
+  } catch (error) {
+    if (errorCode(error) === 'cancelled') log('info', 'Add to Theme Manager cancelled');
+    else toast('error', `Add to Theme Manager: ${errorMessage(error)}`);
+  } finally {
+    operations.delete(opId);
+    setState({ busy: null, exportProgress: null });
+  }
+}
+
 const TRY_ON_OK_KEY = 'mts.tryOnConfirmed';
 export const TRY_ON_BUSY = 'Applying the theme on the phone…';
 

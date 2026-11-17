@@ -1214,6 +1214,31 @@ pub async fn adb_list_apps(app: AppHandle, serial: String) -> AppResult<Vec<adb:
     .await
 }
 
+/// Add the project to Theme Manager's library on the phone without applying
+/// it; it stays under My themes and its page opens on the phone.
+#[tauri::command]
+pub async fn adb_add_to_theme_manager(
+    app: AppHandle,
+    serial: String,
+    op_id: Option<String>,
+) -> AppResult<adb::theme_install::TryOnResult> {
+    blocking(app, move |state, app| {
+        let adb = adb_for(state, app)?;
+        let title = lock(&state.main)
+            .as_ref()
+            .map(|p| p.title())
+            .ok_or_else(|| AppError::invalid("Open a theme first."))?;
+        let built = build_package(state, Some(app))?;
+        let stage = state.paths.staging_dir().join("add-to-tm");
+        let cancel = register_op(state, &op_id);
+        let result = adb.try_on(&serial, &built.data, &title, &stage, false, false, cancel);
+        finish_op(state, &op_id);
+        let _ = std::fs::remove_dir_all(&stage);
+        result
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn adb_try_on(
     app: AppHandle,
@@ -1234,7 +1259,7 @@ pub async fn adb_try_on(
         let support = adb.theme_manager_support(&serial).ok().filter(|s| s.can_apply);
         let result = match support {
             Some(support) => adb.try_on_with_editor_entry(&serial, &built.data, &stage, &support, cancel),
-            None => adb.try_on(&serial, &built.data, &title, &stage, false, cancel),
+            None => adb.try_on(&serial, &built.data, &title, &stage, false, true, cancel),
         };
         finish_op(state, &op_id);
         let _ = std::fs::remove_dir_all(&stage);

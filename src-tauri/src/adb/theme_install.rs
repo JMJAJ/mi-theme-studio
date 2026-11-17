@@ -352,6 +352,7 @@ impl Adb {
         title: &str,
         stage: &Path,
         license_free_only: bool,
+        apply: bool,
         cancel: Option<Arc<AtomicBool>>,
     ) -> AppResult<TryOnResult> {
         valid_serial(serial)?;
@@ -365,10 +366,16 @@ impl Adb {
         std::fs::create_dir_all(stage).map_err(|e| AppError::io("Could not prepare the staging folder", e))?;
         let (local_id, parts) = stage_library(package, title, "Mi Theme Studio", stage, license_free_only)?;
         steps.push(format!("Prepared {} parts: {}", parts.len(), parts.join(", ")));
-
-        let removed = self.remove_previous_try_ons(serial);
-        if removed > 0 {
-            steps.push(format!("Removed {removed} earlier try-on from Theme Manager"));
+        if !apply {
+            // Kept themes are not try-ons: later tries must not remove them.
+            let meta = stage.join("meta/theme").join(format!("{local_id}.mrm"));
+            let text = std::fs::read_to_string(&meta).map_err(|e| AppError::io("Could not stage the theme", e))?;
+            std::fs::write(&meta, text.replace(&format!("\"{MARKER}\": true"), "\"mtsAdded\": true")).map_err(|e| AppError::io("Could not stage the theme", e))?;
+        } else {
+            let removed = self.remove_previous_try_ons(serial);
+            if removed > 0 {
+                steps.push(format!("Removed {removed} earlier try-on from Theme Manager"));
+            }
         }
         let local = format!("{}{}.", stage.display(), std::path::MAIN_SEPARATOR);
         let out = self.exec(&["-s", serial, "push", &local, &format!("{LIBRARY_ROOT}/")], Duration::from_secs(300), cancel.clone(), false)?;
@@ -388,6 +395,10 @@ impl Adb {
             return Err(AppError::new("device", format!("Theme Manager could not open the theme: {error}")));
         }
         steps.push("Opened the theme in Theme Manager".into());
+        if !apply {
+            steps.push("Kept in Theme Manager without applying".into());
+            return Ok(TryOnResult { local_id, parts, bytes: package.len() as u64, applied: false, steps });
+        }
 
         // The active theme lives in /data/system/theme; its timestamp changes when
         // Theme Manager finishes applying. That is the success signal.
@@ -550,7 +561,7 @@ mod live {
         let adb = Adb { path: path.into(), log: Arc::new(|_| {}) };
         let package = std::fs::read(&mtz).unwrap();
         let stage = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/tmp/try-on");
-        let result = adb.try_on(&serial, &package, "MTS Try-on Test", &stage, std::env::var("MTS_FREE_ONLY").is_ok(), None).expect("try on");
+        let result = adb.try_on(&serial, &package, "MTS Try-on Test", &stage, std::env::var("MTS_FREE_ONLY").is_ok(), true, None).expect("try on");
         for step in &result.steps {
             println!("  {step}");
         }

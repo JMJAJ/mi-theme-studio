@@ -1319,6 +1319,16 @@ pub struct ThemeCompatibility {
     pub detail: String,
 }
 
+/// The phone's theme format (140 = 14.0) from theme_compatibility.xml, or none if it does not say.
+#[tauri::command]
+pub async fn adb_theme_format(app: AppHandle, serial: String) -> AppResult<Option<u32>> {
+    blocking(app, move |state, app| {
+        let adb = adb_for(state, app)?;
+        Ok(adb.theme_format(&serial))
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn theme_compatibility(app: AppHandle, serial: String) -> AppResult<ThemeCompatibility> {
     blocking(app, move |state, app| {

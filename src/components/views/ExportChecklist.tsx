@@ -6,6 +6,7 @@ import { api } from '../../lib/api';
 import { formatBytes, plural } from '../../lib/format';
 import type { MetadataView } from '../../lib/types';
 import * as A from '../../state/actions';
+import { formatVersion, useThemeCompatibility } from '../../state/compat';
 import { useStore } from '../../state/store';
 
 interface Check {
@@ -26,6 +27,7 @@ export function ExportChecklist() {
     api.metadataGet().then(setMeta).catch(() => setMeta(null));
   }, [descRev]);
 
+  const compat = useThemeCompatibility();
   const has = (part: string) => project.files.some((f) => f.component === part);
   const parts = new Set(project.files.map((f) => f.component).filter((c) => !['other', 'previews'].includes(c)));
   const checks: Check[] = [];
@@ -63,6 +65,14 @@ export function ExportChecklist() {
       title: validation.warnings ? `No errors, ${plural(validation.warnings, 'warning')}` : 'No broken files found',
       why: validation.warnings ? 'Warnings usually still apply, but are worth a look under Problems below.' : `${plural(validation.checkedFiles, 'file')} checked, including XML and image headers.`,
     });
+  }
+
+  if (compat) {
+    checks.push(
+      compat.supported
+        ? { state: 'ok', title: 'Fits the connected phone', why: compat.deviceFormat !== null ? `The phone supports theme format ${formatVersion(compat.deviceFormat)}${compat.themeUiVersion !== null ? `; this theme is ${compat.themeUiVersion}` : ''}.` : 'The phone did not report a theme format, so nothing to compare.' }
+        : { state: 'warn', title: 'Made for a newer system than the connected phone', why: `Theme format ${compat.themeUiVersion ?? '?'}, the phone supports up to ${formatVersion(compat.deviceFormat)}. Parts built for the newer format may be refused or look wrong there. Phones on newer systems are fine.`, fix: { label: 'Theme details', run: () => A.goTo('design', 'info') } },
+    );
   }
 
   const big = project.totalBytes > 150 * 1024 * 1024;

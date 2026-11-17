@@ -621,3 +621,14 @@ button.mock-clock.pp-click { color: #fff; text-align: center; }
 .connect-help summary { cursor: pointer; font-weight: 600; }
 .connect-help ul { margin: 10px 0 2px; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; color: var(--text-2); line-height: 1.5; }
 @media (max-width: 1000px) { .connect-steps, .connect-perks { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Theme format vs phone */
+.btn.is-risky { background: color-mix(in srgb, var(--warn, #f5b54a) 16%, var(--bg-2)); border-color: color-mix(in srgb, var(--warn, #f5b54a) 55%, transparent); color: var(--warn, #f5b54a); }
+.btn.is-risky:hover:not(:disabled) { background: color-mix(in srgb, var(--warn, #f5b54a) 24%, var(--bg-2)); }
+.compat { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg-1); font-size: var(--fs-sm); line-height: 1.45; margin: 4px 0; }
+.compat > svg { width: 18px; height: 18px; flex: none; }
+.compat > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.compat > div > span { color: var(--text-2); }
+.compat.is-ok > svg { color: var(--ok, #34d399); }
+.compat.is-newer { border-color: color-mix(in srgb, var(--warn, #f5b54a) 45%, transparent); background: color-mix(in srgb, var(--warn, #f5b54a) 8%, var(--bg-1)); }
+.compat.is-newer > svg { color: var(--warn, #f5b54a); }

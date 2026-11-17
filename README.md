@@ -26,6 +26,9 @@ Mi Theme Studio is a desktop editor for `.mtz` theme packages. Open a theme, cha
 
 Everything runs locally. Packages are edited in memory, saves are atomic and backed up, and files the editor does not understand are written back untouched.
 
+> [!IMPORTANT]
+> **Phone support.** Full customization (applying every part of a theme: icons, system UI, fonts, lock screen and the rest) currently works only on **rooted** phones. Support for normal (non-rooted) phones is a **work in progress**: some things already work, such as wallpapers, lock screens and sounds through Theme Manager, while other parts are refused by Theme Manager without a Xiaomi licence. Designing, editing and exporting themes on your PC works the same either way.
+
 > [!NOTE]
 > Mi Theme Studio is an independent, unofficial tool. It is not affiliated with, endorsed by or sponsored by Xiaomi. MIUI, HyperOS and Xiaomi are trademarks of their respective owners.
 
@@ -69,7 +72,9 @@ Everything runs locally. Packages are edited in memory, saves are atomic and bac
 ### Phone
 
 - Detects devices over ADB, including unauthorized, offline and multiple-device states, and shows model, HyperOS / MIUI and Android version, resolution and density.
-- **Try on phone** places the theme in Theme Manager's local library and applies it, without root. Theme Manager applies wallpapers, lock screen and sounds from locally imported themes; other parts need a license that is only issued for store themes.
+- **Rooted phones: full customization.** Every part of the theme is applied, including icons, system UI, fonts and lock screen, with a backup you can restore.
+- **Normal phones (work in progress).** **Try on phone** places the theme in Theme Manager's local library and applies it, without root. Theme Manager applies wallpapers, lock screen and sounds from locally imported themes; other parts need a licence that Xiaomi only issues for unmodified store themes, so they may be refused.
+- Compares the theme's format with the phone's (`theme_compatibility.xml`) and warns before applying a theme made for a newer system, in the store, on the Phone page and on Try on phone.
 - Browse themes already cached on the phone and open them as read-only references.
 - Copy a package to the phone after confirmation, verified by file size.
 

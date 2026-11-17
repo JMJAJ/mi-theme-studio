@@ -100,6 +100,7 @@ pub fn run() {
             commands::adb_root_backups,
             commands::adb_root_restore,
             commands::theme_compatibility,
+            commands::adb_theme_format,
             commands::adb_add_to_theme_manager,
             commands::adb_list_apps,
             commands::adb_screenshot,

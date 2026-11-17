@@ -3,13 +3,14 @@
 // attention.
 import { TryOnButton } from '../common/TryOnButton';
 import { useEffect, useState } from 'react';
-import { Bug, Camera, Check, ChevronDown, ChevronRight, Copy, Info, Loader2, MonitorPlay, Palette, RotateCcw, Send, Settings2, ShieldCheck, Smartphone, Sparkles, Usb } from 'lucide-react';
+import { AlertTriangle, Bug, Camera, Check, ChevronDown, ChevronRight, Copy, Info, Loader2, MonitorPlay, Palette, RotateCcw, Send, Settings2, ShieldCheck, Smartphone, Sparkles, Usb } from 'lucide-react';
 import { api, screenshotUrl } from '../../lib/api';
 import type { ThemeManagerSupport } from '../../lib/types';
 import * as A from '../../state/actions';
 import { useStore } from '../../state/store';
 import { MirrorButton } from '../common/MirrorButton';
 import { useDeviceSummary } from '../shell/deviceSummary';
+import { formatVersion, useThemeCompatibility } from '../../state/compat';
 import { DeviceThemes } from './DeviceThemes';
 import { DeviceView } from './DeviceView';
 
@@ -148,6 +149,7 @@ export function PhoneView() {
   const busy = useStore((s) => s.busy);
   const shot = useStore((s) => s.screenshots[s.screenshots.length - 1]);
   const support = useThemeSupport(serial, device.ready);
+  const compat = useThemeCompatibility();
   const [advanced, setAdvanced] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -173,7 +175,27 @@ export function PhoneView() {
                   </span>
                 )}
                 {support?.version && <span>Theme Manager {support.version}</span>}
+                {compat?.deviceFormat != null && <span>Theme format {formatVersion(compat.deviceFormat)}</span>}
               </div>
+              {project && compat && (
+                <div className={`compat ${compat.supported ? 'is-ok' : 'is-newer'}`}>
+                  {compat.supported ? <ShieldCheck /> : <AlertTriangle />}
+                  <div>
+                    <strong>{compat.supported ? `“${project.title}” fits this phone` : `“${project.title}” is made for a newer system than this phone`}</strong>
+                    <span>
+                      {compat.themeUiVersion !== null && compat.deviceFormat !== null
+                        ? `Theme format ${compat.themeUiVersion} · phone supports up to ${formatVersion(compat.deviceFormat)}. `
+                        : ''}
+                      {compat.supported
+                        ? 'Try on phone should apply every part.'
+                        : 'Parts built for the newer format may be refused or look wrong. Try on phone still works, at your own risk.'}
+                    </span>
+                  </div>
+                  <button className="btn btn-sm btn-ghost" onClick={() => A.goTo('design', 'info')}>
+                    Theme details
+                  </button>
+                </div>
+              )}
               <div className="hero-actions">
                 <TryOnButton className="btn btn-primary" />
                 <MirrorButton className="btn" />

@@ -28,6 +28,7 @@ import {
   Monitor,
   PackageOpen,
   Play,
+  ShieldCheck,
   RefreshCw,
   Repeat,
   Search,
@@ -57,6 +58,7 @@ import { DeviceThemes } from './DeviceThemes';
 import { openSwap } from './SwapPart';
 import { toggleSaved, useSaved } from '../../state/savedStore';
 import { useStoreTabRequest, type StoreTab } from '../../state/storeTab';
+import { formatVersion, usePhoneThemeFormat } from '../../state/compat';
 
 const CONSENT_KEY = 'mts.catalog.consent.v1';
 
@@ -808,6 +810,7 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; refreshKey: number; navigate: (route: Route) => void }) {
+  const phone = usePhoneThemeFormat();
   const region = useThemeStore((s) => s.region);
   const downloaded = useThemeStore((s) => s.downloads.find((d) => d.moduleId === moduleId));
   const progress = useThemeStore((s) => s.progress[moduleId]);
@@ -851,6 +854,9 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
     const record = await downloadTheme(detail.moduleId, detail.name);
     if (record && hasProject && isPackage(record.kind)) putToUse(record);
   };
+
+  // Fits the connected phone? Themes declare a uiVersion; the phone reports the newest format it renders.
+  const fit = phone.format !== null && detail.uiVersion && detail.kind === 'theme' ? { ok: phone.format >= detail.uiVersion * 10 } : null;
 
   // The animated preview (seen on its store card) leads the screenshots.
   const gif = knownGifs.get(detail.moduleId) ?? null;
@@ -941,7 +947,7 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
             </Fact>
             {detail.sizeBytes ? <Fact label="Size">{formatBytes(detail.sizeBytes)}</Fact> : null}
             {detail.version ? <Fact label="Version">{detail.version}</Fact> : null}
-            {detail.uiVersion ? <Fact label="UI version">{detail.uiVersion}</Fact> : null}
+            {detail.uiVersion ? <Fact label="Theme format">{detail.uiVersion}{phone.format !== null ? ` (your phone: up to ${formatVersion(phone.format)})` : ''}</Fact> : null}
             {detail.downloads ? <Fact label="Downloads">{detail.downloads.toLocaleString()}</Fact> : null}
             {detail.score ? (
               <Fact label="Rating">
@@ -952,6 +958,18 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
         </div>
 
         <aside className="detail-actions surface surface-pad">
+          {fit && (
+            <div className={`compat ${fit.ok ? 'is-ok' : 'is-newer'}`}>
+              {fit.ok ? <ShieldCheck /> : <AlertTriangle />}
+              <div>
+                <strong>{fit.ok ? `Works on your ${phone.label ?? 'phone'}` : `Made for a newer system than your ${phone.label ?? 'phone'}`}</strong>
+                <span>
+                  Theme format {detail.uiVersion} · phone supports up to {formatVersion(phone.format)}.
+                  {fit.ok ? '' : ' Some parts may be refused or look wrong there. You can still take parts from it.'}
+                </span>
+              </div>
+            </div>
+          )}
           {!canDownload ? (
             <>
               <div className="banner banner-warn">

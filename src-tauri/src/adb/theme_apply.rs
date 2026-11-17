@@ -76,9 +76,23 @@ impl Adb {
             .shell(serial, &["cat", "/system/media/theme/theme_compatibility.xml"], Duration::from_secs(15), None)
             .ok()?;
         let text = out.stdout_text();
-        let at = text.find("<version>")? + "<version>".len();
-        let end = at + text[at..].find("</version>")?;
-        text[at..end].trim().parse().ok()
+        let file = (|| {
+            let at = text.find("<version>")? + "<version>".len();
+            let end = at + text[at..].find("</version>")?;
+            text[at..end].trim().parse::<u32>().ok()
+        })();
+        // Xiaomi stopped bumping that file at MIUI 14: every HyperOS build still says 140.
+        // HyperOS N renders theme format 14 + N (HyperOS 1 = 15, HyperOS 3 = 17).
+        let hyperos = self
+            .shell(serial, &["getprop", "ro.mi.os.version.code"], Duration::from_secs(10), None)
+            .ok()
+            .and_then(|o| o.stdout_text().trim().parse::<u32>().ok())
+            .filter(|&code| code > 0)
+            .map(|code| 140 + code * 10);
+        match (file, hyperos) {
+            (Some(f), Some(h)) => Some(f.max(h)),
+            (f, h) => f.or(h),
+        }
     }
 
     pub fn theme_manager_support(&self, serial: &str) -> AppResult<ThemeManagerSupport> {

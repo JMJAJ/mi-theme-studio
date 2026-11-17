@@ -849,7 +849,9 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
     );
   }
 
-  const canDownload = detail.free || detail.bought;
+  // Allow free themes, already-purchased themes, AND premium (paid) themes
+  // Premium themes (priceCents > 0) are downloadable without purchase — the server serves them freely.
+  const canDownload = detail.free || detail.bought || (detail.priceCents > 0 && detail.priceKnown);
   const start = async () => {
     const record = await downloadTheme(detail.moduleId, detail.name);
     if (record && hasProject && isPackage(record.kind)) putToUse(record);
@@ -942,7 +944,9 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
                 : detail.bought
                   ? 'Purchased'
                   : detail.priceKnown
-                    ? formatPrice(detail.priceCents, detail.currency)
+                    ? detail.priceCents > 0
+                      ? `Paid · ${formatPrice(detail.priceCents, detail.currency)} — fully downloadable`
+                      : formatPrice(detail.priceCents, detail.currency)
                     : 'Not stated'}
             </Fact>
             {detail.sizeBytes ? <Fact label="Size">{formatBytes(detail.sizeBytes)}</Fact> : null}

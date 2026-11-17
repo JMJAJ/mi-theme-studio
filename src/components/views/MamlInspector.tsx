@@ -3,7 +3,7 @@
 // size, rotation, opacity, hide). Each change is written into manifest.xml in
 // place and can be undone. Number labels can be dragged left/right to scrub.
 import { useRef, useState } from 'react';
-import { ArrowLeft, Code2, Eye, EyeOff, Image as ImageIcon, Layers, Repeat, RotateCw, Type } from 'lucide-react';
+import { ArrowLeft, Code2, Eye, EyeOff, Image as ImageIcon, Layers, Repeat, RotateCw, Type, X } from 'lucide-react';
 import { resourceUrl } from '../../lib/api';
 import { evalNumber, evalString, type Vars } from '../../lib/maml';
 import { findStartTag, lineOf } from '../../lib/mamlEdit';
@@ -183,16 +183,20 @@ export function MamlInspector({
   text,
   elements,
   selected,
+  extra = [],
   scene,
   onSelect,
+  onSelectMany,
   onCommit,
 }: {
   manifest: FileInfo;
   text: string | null;
   elements: Element[];
   selected: number | null;
+  extra?: number[];
   scene: Scene | null;
   onSelect: (ord: number | null) => void;
+  onSelectMany?: (ords: number[]) => void;
   onCommit: Commit;
 }) {
   const files = useStore((s) => s.fileIndex);
@@ -209,6 +213,46 @@ export function MamlInspector({
     const { line, column } = lineOf(text, tag.start);
     A.revealInFile(manifest.path, line, column, tag.end - tag.start);
   };
+
+  const chosen = selected === null ? extra : [selected, ...extra.filter((o) => o !== selected)];
+  if (chosen.length > 1) {
+    return (
+      <aside className="mi">
+        <div className="mi-head">
+          <button className="tb-icon" aria-label="Clear selection" title="Clear selection (Esc)" onClick={() => onSelect(null)}>
+            <ArrowLeft />
+          </button>
+          <strong>{chosen.length} pieces selected</strong>
+        </div>
+        <p className="muted mi-hint">Drag any of them to move them together, or nudge with the arrow keys (Shift: 10 px). Shift+click a piece to add or remove it. Click one below to edit it on its own.</p>
+        <div className="mi-list">
+          {chosen.map((o) => {
+            const e = elements[o];
+            if (!e) return null;
+            return (
+              <div key={o} className="mi-row mi-row-multi">
+                <button className="mi-row-main" onClick={() => onSelect(o)}>
+                  {e.tagName === 'Image' || e.tagName === 'Time' || e.tagName === 'ImageNumber' ? <ImageIcon /> : <Type />}
+                  <span className="ellipsis grow">{describe(e)}</span>
+                  <span className="faint">{NAMES[e.tagName] ?? e.tagName}</span>
+                </button>
+                {onSelectMany && (
+                  <button className="tb-icon" aria-label="Remove from selection" title="Remove from selection" onClick={() => onSelectMany(chosen.filter((x) => x !== o))}>
+                    <X />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div className="mi-foot">
+          <button className="btn btn-sm btn-ghost" onClick={() => onSelect(null)}>
+            Clear selection
+          </button>
+        </div>
+      </aside>
+    );
+  }
 
   if (!el || selected === null) {
     const pieces = elements.map((e, i) => ({ e, i })).filter(({ e }) => DRAWABLE.has(e.tagName));

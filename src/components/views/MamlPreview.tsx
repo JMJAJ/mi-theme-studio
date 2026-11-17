@@ -327,7 +327,7 @@ function partManifests(files: FileInfo[], componentId: string) {
 }
 
 /** The piece selected on the Lock screen page (shared with the side phone, which can pick one). */
-export const useMamlSelection = create<{ path: string | null; ord: number | null }>(() => ({ path: null, ord: null }));
+export const useMamlSelection = create<{ path: string | null; ord: number | null; extra: number[] }>(() => ({ path: null, ord: null, extra: [] }));
 
 /**
  * Parses a part's layout and builds the scene. Re-runs whenever the manifest
@@ -444,7 +444,7 @@ export interface Box {
 
 /** What a drag on the canvas did, in manifest pixels. */
 export type CanvasEdit =
-  | { kind: 'move'; dx: number; dy: number }
+  | { kind: 'move'; dx: number; dy: number; ords?: number[] }
   | { kind: 'resize'; sx: number; sy: number; fixed: { x: number; y: number }; box: Box }
   | { kind: 'rotate'; delta: number; pivot: { x: number; y: number } };
 
@@ -562,7 +562,7 @@ function visibleBox(node: HTMLElement, canvas: HTMLElement, scale: number, trim 
  * pictures where they are not transparent) before full-screen layers,
  * invisible boxes (groups, unlock areas) and the wallpaper.
  */
-function piecesAt(canvas: HTMLElement, x: number, y: number) {
+function piecesRanked(canvas: HTMLElement, x: number, y: number) {
   const box = canvas.getBoundingClientRect();
   const full = box.width * box.height;
   const hits: { n: HTMLElement; see: boolean }[] = [];
@@ -580,8 +580,36 @@ function piecesAt(canvas: HTMLElement, x: number, y: number) {
     const r = n.getBoundingClientRect();
     return r.width * r.height > full * 0.6 && !srcOf(n) ? 2 : 0;
   };
-  return hits.map((h, i) => ({ h, i, r: rank(h) })).sort((a, b) => a.r - b.r || a.i - b.i).map((x) => x.h.n);
+  return hits.map((h, i) => ({ h, i, r: rank(h) })).sort((a, b) => a.r - b.r || a.i - b.i).map((x) => ({ n: x.h.n, r: x.r }));
 }
+const piecesAt = (canvas: HTMLElement, x: number, y: number) => piecesRanked(canvas, x, y).map((p) => p.n);
+
+/** Pieces a drag-box selects: touched by it, or fully inside it for screen-sized layers. */
+function piecesIn(canvas: HTMLElement, scale: number, w: number, h: number, m: Box) {
+  const out: number[] = [];
+  const full = w * h;
+  for (const el of Array.from(canvas.querySelectorAll<HTMLElement>('[data-mk]'))) {
+    const tag = el.dataset.mt ?? '';
+    if (!DRAWABLE.has(tag) || tag === 'Wallpaper' || getComputedStyle(el).opacity === '0') continue;
+    const b = visibleBox(el, canvas, scale);
+    if (!b || b.w * b.h < 1) continue;
+    const inside = b.l >= m.l && b.t >= m.t && b.l + b.w <= m.l + m.w && b.t + b.h <= m.t + m.h;
+    const touches = b.l < m.l + m.w && b.l + b.w > m.l && b.t < m.t + m.h && b.t + b.h > m.t;
+    if (b.w * b.h > full * 0.6 ? inside : touches) out.push(Number(el.dataset.mk));
+  }
+  return out;
+}
+
+function unionBox(list: (Box | null)[]): Box | null {
+  let u: { l: number; t: number; r: number; b: number } | null = null;
+  for (const b of list) {
+    if (!b) continue;
+    u = u ? { l: Math.min(u.l, b.l), t: Math.min(u.t, b.t), r: Math.max(u.r, b.l + b.w), b: Math.max(u.b, b.t + b.h) } : { l: b.l, t: b.t, r: b.l + b.w, b: b.t + b.h };
+  }
+  return u ? { l: u.l, t: u.t, w: u.r - u.l, h: u.b - u.t } : null;
+}
+
+const NO_EXTRA: number[] = [];
 
 type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
@@ -591,12 +619,13 @@ interface Snaps {
   xs: number[];
   ys: number[];
 }
-function snapTargets(canvas: HTMLElement, node: HTMLElement, scale: number, w: number, h: number): Snaps {
+function snapTargets(canvas: HTMLElement, node: HTMLElement | HTMLElement[], scale: number, w: number, h: number): Snaps {
+  const moving = Array.isArray(node) ? node : [node];
   const xs = [0, w / 2, w];
   const ys = [0, h / 2, h];
   const full = w * h;
   for (const el of Array.from(canvas.querySelectorAll<HTMLElement>('[data-mk]'))) {
-    if (el === node || el.contains(node) || node.contains(el)) continue;
+    if (moving.some((n) => el === n || el.contains(n) || n.contains(el))) continue;
     const tag = el.dataset.mt ?? '';
     if (tag === 'Wallpaper' || CONTAINERS.has(tag)) continue;
     const r = el.getBoundingClientRect();
@@ -629,7 +658,8 @@ function guidesFor(b: Box, s: Snaps) {
 }
 
 type DragState =
-  | { kind: 'move'; ord: number; node: HTMLElement; x: number; y: number; moved: boolean; box: Box | null; snaps: Snaps; dx: number; dy: number }
+  | { kind: 'move'; ord: number; ords: number[]; nodes: HTMLElement[]; x: number; y: number; moved: boolean; box: Box | null; snaps: Snaps; dx: number; dy: number; click?: () => void }
+  | { kind: 'marquee'; x: number; y: number; additive: boolean; base: number[]; moved: boolean; hits: number[]; click: () => void }
   | { kind: 'resize'; ord: number; node: HTMLElement; handle: Handle; x: number; y: number; box: Box; origin: { x: number; y: number }; uniform: boolean; sx: number; sy: number; fixed: { x: number; y: number }; oldOrigin: string; snaps: Snaps }
   | { kind: 'rotate'; ord: number; node: HTMLElement; cx: number; cy: number; start: number; delta: number; origin: { x: number; y: number }; oldOrigin: string };
 
@@ -642,14 +672,20 @@ export function MamlCanvas({
   scale,
   font,
   selected = null,
+  extra = NO_EXTRA,
   onSelect,
+  onSelectMany,
   onEdit,
 }: {
   scene: Scene;
   scale: number;
   font?: string;
   selected?: number | null;
+  /** More selected pieces besides `selected` (drag-box or Shift+click). */
+  extra?: number[];
   onSelect?: (ord: number | null) => void;
+  /** Select several pieces at once; the first one is shown in the inspector. */
+  onSelectMany?: (ords: number[]) => void;
   onEdit?: (ord: number, edit: CanvasEdit) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -657,7 +693,10 @@ export function MamlCanvas({
   // Clicking the same spot again goes one piece deeper (what is underneath).
   const lastClick = useRef<{ x: number; y: number; ords: number[] } | null>(null);
   const [hover, setHover] = useState<number | null>(null);
-  const [boxes, setBoxes] = useState<{ sel: Box | null; hover: Box | null; tag: string }>({ sel: null, hover: null, tag: '' });
+  const [boxes, setBoxes] = useState<{ sel: Box | null; hover: Box | null; tag: string; items: Box[] }>({ sel: null, hover: null, tag: '', items: [] });
+  const [marquee, setMarquee] = useState<{ box: Box; hits: Box[] } | null>(null);
+  const all = selected === null ? extra : [selected, ...extra.filter((o) => o !== selected)];
+  const multi = all.length > 1;
   const [, setMaskTick] = useState(0);
   const [live, setLive] = useState<Box | null>(null);
   const [guides, setGuides] = useState<{ x: number[]; y: number[] } | null>(null);
@@ -675,16 +714,43 @@ export function MamlCanvas({
     const canvas = ref.current;
     if (!editable || !canvas) return;
     const find = (ord: number | null) => (ord === null ? null : canvas.querySelector<HTMLElement>(`[data-mk="${ord}"]`));
+    const box = (ord: number) => {
+      const n = find(ord);
+      return n ? visibleBox(n, canvas, scale) : null;
+    };
     const selNode = find(selected);
-    const sel = selNode ? visibleBox(selNode, canvas, scale) : null;
-    const hov = hover !== null && hover !== selected ? find(hover) : null;
+    const items = multi ? all.map(box).filter((b): b is Box => !!b) : [];
+    const sel = multi ? unionBox(items) : selNode ? visibleBox(selNode, canvas, scale) : null;
+    const hov = hover !== null && !all.includes(hover) ? find(hover) : null;
     const hb = hov ? visibleBox(hov, canvas, scale) : null;
-    const tag = selNode?.dataset.mt ?? '';
+    const tag = multi ? '' : (selNode?.dataset.mt ?? '');
     const same = (a: Box | null, b: Box | null) => (!a && !b) || (!!a && !!b && Math.abs(a.l - b.l) + Math.abs(a.t - b.t) + Math.abs(a.w - b.w) + Math.abs(a.h - b.h) < 0.5);
-    if (!same(sel, boxes.sel) || !same(hb, boxes.hover) || tag !== boxes.tag) setBoxes({ sel, hover: hb, tag });
+    const sameItems = items.length === boxes.items.length && items.every((b, i) => same(b, boxes.items[i]));
+    if (!same(sel, boxes.sel) || !same(hb, boxes.hover) || tag !== boxes.tag || !sameItems) setBoxes({ sel, hover: hb, tag, items });
   });
 
   const nodeOf = (ord: number) => ref.current?.querySelector<HTMLElement>(`[data-mk="${ord}"]`) ?? null;
+
+  // Esc clears the selection; arrow keys nudge every selected piece (Shift: 10 px).
+  useEffect(() => {
+    if (!onEdit || !onSelectMany) return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!all.length || !ref.current?.isConnected || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (t && t !== document.body && (!t.closest('.maml') || t.closest('input, textarea, select, [contenteditable="true"], .cm-editor'))) return;
+      const step = e.shiftKey ? 10 : 1;
+      const dir: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onSelect?.(null);
+      } else if (dir[e.key]) {
+        e.preventDefault();
+        onEdit(all[0], { kind: 'move', dx: dir[e.key][0], dy: dir[e.key][1], ords: all });
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
   const startResize = (handle: Handle, e: React.PointerEvent) => {
     e.stopPropagation();
@@ -723,23 +789,75 @@ export function MamlCanvas({
       onPointerDown={
         editable
           ? (e) => {
-              const pieces = piecesAt(e.currentTarget as HTMLElement, e.clientX, e.clientY);
+              if (e.button !== 0) return;
+              const canvas = e.currentTarget as HTMLElement;
+              const ranked = piecesRanked(canvas, e.clientX, e.clientY);
+              const pieces = ranked.map((p) => p.n);
               const ords = pieces.map((n) => Number(n.dataset.mk));
-              const last = lastClick.current;
-              let index = 0;
-              if (last && Math.abs(last.x - e.clientX) < 4 && Math.abs(last.y - e.clientY) < 4 && selected !== null && ords.includes(selected) && last.ords.join() === ords.join()) {
-                index = (ords.indexOf(selected) + 1) % ords.length;
-              }
-              lastClick.current = { x: e.clientX, y: e.clientY, ords };
-              const node = pieces[index] ?? null;
-              const ord = node ? ords[index] : null;
-              onSelect!(ord);
-              if (node && ord !== null && onEdit) {
-                const canvas = e.currentTarget as HTMLElement;
+              const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+              // Nothing visible under the pointer: groups, transparent pixels, the wallpaper.
+              const empty = !ranked.length || ranked[0].r >= 2;
+              const chosen = new Set(all);
+              const startMove = (moveOrds: number[], click?: () => void) => {
+                const nodes = moveOrds.map(nodeOf).filter((n): n is HTMLElement => !!n);
+                if (!nodes.length || !onEdit) return click?.();
                 // Measure now: boxes.sel may still be the previous selection.
-                drag.current = { kind: 'move', ord, node, x: e.clientX, y: e.clientY, moved: false, box: visibleBox(node, canvas, scale), snaps: snapTargets(canvas, node, scale, scene.w, scene.h), dx: 0, dy: 0 };
+                drag.current = { kind: 'move', ord: moveOrds[0], ords: moveOrds, nodes, x: e.clientX, y: e.clientY, moved: false, box: unionBox(nodes.map((n) => visibleBox(n, canvas, scale))), snaps: snapTargets(canvas, nodes, scale, scene.w, scene.h), dx: 0, dy: 0, click };
                 canvas.setPointerCapture(e.pointerId);
+              };
+              // A plain click: pick the top piece, or the next one down when clicking the same spot again.
+              const pick = () => {
+                const last = lastClick.current;
+                let index = 0;
+                if (last && Math.abs(last.x - e.clientX) < 4 && Math.abs(last.y - e.clientY) < 4 && selected !== null && ords.includes(selected) && last.ords.join() === ords.join()) {
+                  index = (ords.indexOf(selected) + 1) % ords.length;
+                }
+                lastClick.current = { x: e.clientX, y: e.clientY, ords };
+                return pieces[index] ? ords[index] : null;
+              };
+
+              if (onSelectMany && additive && !empty) {
+                // Shift/Ctrl+click adds the piece to the selection, or takes it out.
+                const o = ords[0];
+                onSelectMany(chosen.has(o) ? all.filter((x) => x !== o) : [...all, o]);
+                return;
               }
+              const grabbed = ords.find((o) => chosen.has(o));
+              const full = scene.w * scene.h;
+              const grabbable = (o: number) => {
+                const n = nodeOf(o);
+                const b = n ? visibleBox(n, canvas, scale) : null;
+                return !!n && n.dataset.mt !== 'Wallpaper' && !!b && b.w * b.h <= full * 0.6;
+              };
+              if (multi && grabbed !== undefined && (!empty ? chosen.has(ords[0]) : grabbable(grabbed))) {
+                // Drag the whole selection; a click without moving keeps just that piece.
+                startMove(all, () => onSelect!(empty ? grabbed : ords[0]));
+                return;
+              }
+              if (onSelectMany && empty && !(grabbed !== undefined && grabbable(grabbed))) {
+                // Drag a box to select several pieces; a click without moving picks as before.
+                const c = canvas.getBoundingClientRect();
+                drag.current = {
+                  kind: 'marquee',
+                  x: (e.clientX - c.left) / scale,
+                  y: (e.clientY - c.top) / scale,
+                  additive,
+                  base: all,
+                  moved: false,
+                  hits: [],
+                  click: () => (additive ? undefined : onSelect!(pick())),
+                };
+                canvas.setPointerCapture(e.pointerId);
+                return;
+              }
+              if (empty && grabbed !== undefined) {
+                // Pressing inside the selected piece's empty area still drags it.
+                startMove([grabbed], () => onSelect!(pick()));
+                return;
+              }
+              const ord = pick();
+              onSelect!(ord);
+              if (ord !== null) startMove([ord]);
             }
           : undefined
       }
@@ -758,6 +876,25 @@ export function MamlCanvas({
           });
           return;
         }
+        if (d.kind === 'marquee') {
+          const c = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          const x = (e.clientX - c.left) / scale;
+          const y = (e.clientY - c.top) / scale;
+          if (!d.moved && Math.abs(x - d.x) + Math.abs(y - d.y) < 4 / scale) return;
+          d.moved = true;
+          const box = { l: Math.min(x, d.x), t: Math.min(y, d.y), w: Math.abs(x - d.x), h: Math.abs(y - d.y) };
+          const canvas = e.currentTarget as HTMLElement;
+          d.hits = piecesIn(canvas, scale, scene.w, scene.h, box);
+          setHover(null);
+          setMarquee({
+            box,
+            hits: d.hits.map((o) => {
+              const n = nodeOf(o);
+              return n ? visibleBox(n, canvas, scale) : null;
+            }).filter((b): b is Box => !!b),
+          });
+          return;
+        }
         // Snap within 6 screen pixels; hold Alt to place freely.
         const thr = e.altKey ? 0 : 6 / scale;
         if (d.kind === 'move') {
@@ -772,7 +909,7 @@ export function MamlCanvas({
             }
             d.dx = dx;
             d.dy = dy;
-            d.node.style.translate = `${dx}px ${dy}px`;
+            for (const n of d.nodes) n.style.translate = `${dx}px ${dy}px`;
             if (b) {
               const nb = { ...b, l: b.l + dx, t: b.t + dy };
               setLive(nb);
@@ -821,10 +958,15 @@ export function MamlCanvas({
         drag.current = null;
         setLive(null);
         setGuides(null);
+        setMarquee(null);
         if (!d) return;
-        if (d.kind === 'move') {
-          d.node.style.translate = '';
-          if (d.moved && (Math.round(d.dx) || Math.round(d.dy))) onEdit!(d.ord, { kind: 'move', dx: Math.round(d.dx), dy: Math.round(d.dy) });
+        if (d.kind === 'marquee') {
+          if (!d.moved) d.click();
+          else onSelectMany!(d.additive ? [...d.base, ...d.hits.filter((o) => !d.base.includes(o))] : d.hits);
+        } else if (d.kind === 'move') {
+          for (const n of d.nodes) n.style.translate = '';
+          if (!d.moved) d.click?.();
+          else if (Math.round(d.dx) || Math.round(d.dy)) onEdit!(d.ord, { kind: 'move', dx: Math.round(d.dx), dy: Math.round(d.dy), ords: d.ords });
         } else if (d.kind === 'resize') {
           d.node.style.scale = '';
           d.node.style.transformOrigin = d.oldOrigin;
@@ -847,9 +989,13 @@ export function MamlCanvas({
       {editable && boxes.hover && !drag.current && <div className="maml-hover" style={{ left: boxes.hover.l, top: boxes.hover.t, width: boxes.hover.w, height: boxes.hover.h, borderWidth: 1.5 * inv }} />}
       {guides?.x.map((x) => <div key={`x${x}`} className={`maml-guide is-v ${Math.abs(x - scene.w / 2) < 0.5 ? 'is-mid' : ''}`} style={{ left: x, borderLeftWidth: inv }} />)}
       {guides?.y.map((y) => <div key={`y${y}`} className={`maml-guide is-h ${Math.abs(y - scene.h / 2) < 0.5 ? 'is-mid' : ''}`} style={{ top: y, borderTopWidth: inv }} />)}
+      {editable && multi && boxes.items.map((b, i) => <div key={i} className="maml-sel-item" style={{ left: b.l, top: b.t, width: b.w, height: b.h, borderWidth: 1.5 * inv }} />)}
+      {marquee?.hits.map((b, i) => <div key={`m${i}`} className="maml-sel-item" style={{ left: b.l, top: b.t, width: b.w, height: b.h, borderWidth: 1.5 * inv }} />)}
+      {marquee && <div className="maml-marquee" style={{ left: marquee.box.l, top: marquee.box.t, width: marquee.box.w, height: marquee.box.h, borderWidth: inv }} />}
       {editable && (live ?? sel) && (
-        <div className="maml-sel" style={{ left: (live ?? sel)!.l, top: (live ?? sel)!.t, width: (live ?? sel)!.w, height: (live ?? sel)!.h, borderWidth: 2 * inv, ['--inv' as string]: inv }}>
-          {onEdit && !live && (
+        <div className={`maml-sel ${multi ? 'is-group' : ''}`} style={{ left: (live ?? sel)!.l, top: (live ?? sel)!.t, width: (live ?? sel)!.w, height: (live ?? sel)!.h, borderWidth: (multi ? 1 : 2) * inv, ['--inv' as string]: inv }}>
+          {multi && !live && <span className="maml-count">{all.length}</span>}
+          {onEdit && !live && !multi && (
             <>
               {canResize && HANDLES.filter((h) => !UNIFORM.has(boxes.tag) || h.length === 2).map((h) => <span key={h} className={`maml-h h-${h}`} onPointerDown={(e) => startResize(h, e)} />)}
               <span className="maml-rot" title="Rotate (Shift: 15° steps)" onPointerDown={startRotate} />
@@ -932,6 +1078,7 @@ export function MamlPreview({ componentId }: { componentId: string }) {
   const { manifests, manifest, scene, error, elements, text } = live;
   const sel = useMamlSelection();
   const selected = manifest && sel.path === manifest.path ? sel.ord : null;
+  const extra = manifest && sel.path === manifest.path ? sel.extra : NO_EXTRA;
   const box = useRef<HTMLDivElement>(null);
   const [fit, setFit] = useState({ w: 0, h: 0 });
   const font = usePackageFont(useMemo(() => themeFontFile(project.files), [project])).family ?? undefined;
@@ -959,13 +1106,27 @@ export function MamlPreview({ componentId }: { componentId: string }) {
     );
   }
   const scale = scene && fit.w && fit.h ? Math.min((fit.w - 32) / scene.w, (fit.h - 32) / scene.h) : 0;
-  const select = (ord: number | null) => useMamlSelection.setState({ path: manifest.path, ord });
+  const select = (ord: number | null) => useMamlSelection.setState({ path: manifest.path, ord, extra: [] });
+  const selectMany = (ords: number[]) => useMamlSelection.setState({ path: manifest.path, ord: ords[0] ?? null, extra: ords.slice(1) });
   const commit = (ord: number, attrs: Record<string, string | null>) => (text === null ? Promise.resolve(false) : live.apply(setAttributes(text, ord, attrs)));
   const edit = (ord: number, change: CanvasEdit) => {
     const el = elements[ord];
     if (!el) return;
     if (change.kind === 'move') {
-      void commit(ord, { ...(change.dx ? { x: nudge(el.getAttribute('x'), change.dx) } : {}), ...(change.dy ? { y: nudge(el.getAttribute('y'), change.dy) } : {}) });
+      if (text === null) return;
+      // Move every selected piece in one undoable write; a piece inside another selected one moves with it.
+      const ords = change.ords ?? [ord];
+      const inside = (o: number) => {
+        for (let p = elements[o]?.parentElement; p; p = p.parentElement) if (ords.includes(elements.indexOf(p))) return true;
+        return false;
+      };
+      let next = text;
+      for (const o of ords) {
+        const e = elements[o];
+        if (!e || inside(o)) continue;
+        next = setAttributes(next, o, { ...(change.dx ? { x: nudge(e.getAttribute('x'), change.dx) } : {}), ...(change.dy ? { y: nudge(e.getAttribute('y'), change.dy) } : {}) });
+      }
+      if (next !== text) void live.apply(next);
       return;
     }
     const vars = scene?.vars ?? new Map();
@@ -1021,7 +1182,7 @@ export function MamlPreview({ componentId }: { componentId: string }) {
         <button className="btn btn-sm" onClick={() => setPlaying((p) => !p)} title={playing ? 'Stop animations to edit in the resting pose' : 'Play the layout’s animations'}>
           {playing ? <Pause /> : <Play />} {playing ? 'Stop animations' : 'Play animations'}
         </button>
-        <span className="muted">Click any piece to edit it, drag it to move it (snaps to centres and edges; hold Alt to place freely).{scene ? ` ${scene.w} × ${scene.h}` : ''}</span>
+        <span className="muted">Click a piece to edit it, drag to move it (hold Alt to skip snapping). Drag on an empty spot or Shift+click to select several.{scene ? ` ${scene.w} × ${scene.h}` : ''}</span>
         {scene && scene.unknown.length > 0 && (
           <span className="badge badge-warn" title={`Drawn on the phone but not here: ${scene.unknown.join(', ')}`}>
             <AlertTriangle /> {scene.unknown.join(', ')} not drawn here
@@ -1036,11 +1197,11 @@ export function MamlPreview({ componentId }: { componentId: string }) {
             <Loader2 className="spin" />
           ) : (
             <div className={`maml-frame ${scene.lock ? 'is-phone' : ''}`} style={{ width: scene.w * scale, height: scene.h * scale }}>
-              <MamlCanvas scene={scene} scale={scale} font={font} selected={selected} onSelect={select} onEdit={edit} />
+              <MamlCanvas scene={scene} scale={scale} font={font} selected={selected} extra={extra} onSelect={select} onSelectMany={selectMany} onEdit={edit} />
             </div>
           )}
         </div>
-        <MamlInspector manifest={manifest} text={text} elements={elements} selected={selected} scene={scene} onSelect={select} onCommit={commit} />
+        <MamlInspector manifest={manifest} text={text} elements={elements} selected={selected} extra={extra} scene={scene} onSelect={select} onSelectMany={selectMany} onCommit={commit} />
       </div>
     </div>
   );

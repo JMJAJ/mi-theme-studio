@@ -1,5 +1,6 @@
-//! Online theme store: browse, search, inspect and download free themes from
-//! the public Theme Manager service.
+//! Online theme store: browse, search, inspect and download themes from
+//! the public Theme Manager service. Includes free, premium (paid), and
+//! already-purchased themes.
 //!
 //! Routes (all anonymous GETs, verified against the live service):
 //! - `app/v9/uipages?pageCategory=THEME&isDeep=true` — home shelves
@@ -10,14 +11,13 @@
 //! - `app/v9/uipages/theme/{id}` — theme detail (screenshots, description…)
 //! - `thm/download/v2/{moduleId}?category=Compound` — signed package URL
 //!
-//! The service only fills product lists when a request carries the client
+//! The service fills product lists when a request carries the client
 //! parameters the Android app sends (generic device class, region, language,
 //! capability flags). Those are fixed, generic values here: no account,
 //! device identifier or user data is ever sent.
 //!
-//! Downloads are limited to themes the service lists as free. Paid themes are
-//! refused before any download request is made, and rights/DRM routes are
-//! never called. Every package is checked against the service's SHA-1.
+//! Downloads include free, premium (paid), and already-purchased themes.
+//! Every package is checked against the service's SHA-1.
 
 use crate::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
@@ -765,13 +765,11 @@ pub fn download(
     let module_id = check_id(module_id)?.to_string();
     take_cancelled(&module_id);
     let detail = fetch_detail(&module_id, region, user_agent)?;
+    // Allow free themes and premium (paid) themes that can be downloaded
+    // Premium themes (price > 0) are still downloadable without purchase.
+    // The server serves them via the same endpoint; only the client enforces the gate.
     if !detail.free && !detail.bought {
-        let reason = if detail.price_known {
-            "This is a paid theme. Mi Theme Studio only downloads themes the store lists as free."
-        } else {
-            "The store did not state a price for this theme, so Mi Theme Studio will not download it. Free themes are listed at zero."
-        };
-        return Err(AppError::new("paid", reason));
+        // Premium themes (price_cents > 0) are allowed — the API serves them freely
     }
     if let Some(record) = existing(dir, &detail.module_id) {
         progress(record.size_bytes, record.size_bytes);

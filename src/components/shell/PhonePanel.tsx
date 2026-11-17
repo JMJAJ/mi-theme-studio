@@ -78,7 +78,7 @@ function ThemeScreen({ screen, box, ratio, previewIndex }: { screen: Screen; box
     A.select(path, 'single');
   };
   const openLockPiece = (path: string, ord: number | null) => {
-    useMamlSelection.setState({ path, ord });
+    useMamlSelection.setState({ path, ord, extra: [] });
     A.goTo('design', 'lockscreen');
   };
   return (

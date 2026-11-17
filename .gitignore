@@ -9,8 +9,10 @@ Thumbs.db
 *.apks
 *.mtz
 /source/
+/poc/
 /src-tauri/target/
 /src-tauri/gen/
 /src-tauri/resources/scrcpy/
 XIAOMI_THEME_RE_PROGRESS.md
 XIAOMI_THEME_RE_TECHNICAL.md
+SECURITY_DISCLOSURE_XIAOMI_THEME.md

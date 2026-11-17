@@ -1,15 +1,18 @@
 // The panel next to the lock screen preview: every piece in the layout, and
-// plain controls for the one you clicked (position, size, colour, text, picture,
-// hide). Each change is written into manifest.xml in place and can be undone.
-import { useState } from 'react';
-import { ArrowLeft, Code2, Eye, EyeOff, Image as ImageIcon, Layers, Repeat, Type } from 'lucide-react';
+// plain controls for the one you clicked (picture, text, colour, position,
+// size, rotation, opacity, hide). Each change is written into manifest.xml in
+// place and can be undone. Number labels can be dragged left/right to scrub.
+import { useRef, useState } from 'react';
+import { ArrowLeft, Code2, Eye, EyeOff, Image as ImageIcon, Layers, Repeat, RotateCw, Type } from 'lucide-react';
 import { resourceUrl } from '../../lib/api';
+import { evalNumber, evalString, type Vars } from '../../lib/maml';
 import { findStartTag, lineOf } from '../../lib/mamlEdit';
+import { fileName } from '../../lib/paths';
 import type { FileInfo } from '../../lib/types';
 import * as A from '../../state/actions';
 import { useStore } from '../../state/store';
 import { openSwap } from './SwapPart';
-import { argb, DRAWABLE, type Scene } from './MamlPreview';
+import { DRAWABLE, type Scene } from './MamlPreview';
 
 const NAMES: Record<string, string> = {
   Text: 'Text',
@@ -17,6 +20,7 @@ const NAMES: Record<string, string> = {
   Time: 'Clock (digit pictures)',
   ImageNumber: 'Number (digit pictures)',
   Image: 'Picture',
+  Video: 'Video',
   Rectangle: 'Rectangle',
   Circle: 'Circle',
   Ellipse: 'Ellipse',
@@ -24,9 +28,21 @@ const NAMES: Record<string, string> = {
   Group: 'Group',
   Button: 'Button',
   Unlocker: 'Unlock slider',
+  StartPoint: 'Unlock start area',
+  EndPoint: 'Unlock end area',
   Wallpaper: 'Wallpaper',
 };
-const FORMATS = ['HH:mm', 'hh:mm', 'HH', 'mm', 'EEEE', 'EEE, d MMM', 'd MMMM', 'MM/dd'];
+const FORMATS: [string, string][] = [
+  ['HH:mm', '24h time'],
+  ['hh:mm', '12h time'],
+  ['HH', 'Hour'],
+  ['mm', 'Minutes'],
+  ['EEEE', 'Weekday'],
+  ['EEE, d MMM', 'Short date'],
+  ['d MMMM', 'Long date'],
+  ['MM/dd', 'Numeric date'],
+];
+const isNumber = (v: string) => /^-?\d+(\.\d+)?$/.test(v.trim());
 
 function describe(el: Element) {
   const name = el.getAttribute('name');
@@ -34,39 +50,131 @@ function describe(el: Element) {
   return [name, text].filter(Boolean).join(' · ') || (NAMES[el.tagName] ?? el.tagName);
 }
 
+/** One plain sentence about what this piece is, for the ones that are not obvious. */
+function purpose(el: Element, vars: Vars) {
+  const alpha = el.getAttribute('alpha');
+  const fill = el.getAttribute('fillColor') ?? '';
+  const invisible = (alpha !== null && evalNumber(alpha, vars, 255) <= 0) || /^#00[0-9a-f]{6}$/i.test(fill.trim());
+  if (invisible) return 'Invisible. Usually a tap area, or a layer that fades in (dimming, unlock).';
+  if (el.tagName === 'Image' && el.hasAttribute('srcExp')) return 'Shows a different picture depending on the time or state.';
+  if (el.tagName === 'Time' || el.tagName === 'ImageNumber') return 'Built from digit pictures (…_0.png to …_9.png). Replace those to restyle it.';
+  if (el.tagName === 'StartPoint' || el.tagName === 'Unlocker') return 'Where the unlock swipe starts. Invisible on the phone.';
+  return null;
+}
+
 type Commit = (ord: number, attrs: Record<string, string | null>) => Promise<boolean>;
 
-function Field({ el, ord, name, label, onCommit, wide }: { el: Element; ord: number; name: string; label: string; onCommit: Commit; wide?: boolean }) {
+/** A text field for one attribute; with `numeric`, its label scrubs the value when dragged. */
+function Field({
+  el,
+  ord,
+  names,
+  label,
+  onCommit,
+  vars,
+  wide,
+  numeric,
+  placeholder,
+}: {
+  el: Element;
+  ord: number;
+  names: string[];
+  label: string;
+  onCommit: Commit;
+  vars?: Vars;
+  wide?: boolean;
+  numeric?: boolean;
+  placeholder?: string;
+}) {
+  const name = names.find((n) => el.hasAttribute(n)) ?? names[0];
   const value = el.getAttribute(name) ?? '';
+  const input = useRef<HTMLInputElement>(null);
   const save = (next: string) => {
-    if (next === value) return;
-    void onCommit(ord, { [name]: next === '' ? null : next });
+    if (next.trim() === value.trim()) return;
+    void onCommit(ord, { [name]: next.trim() === '' ? null : next.trim() });
+  };
+  const computed = numeric && vars && value && !isNumber(value) ? evalNumber(value, vars, NaN) : NaN;
+  const scrub = (e: React.PointerEvent) => {
+    if (!numeric || (value && !isNumber(value))) return;
+    const start = e.clientX;
+    const base = value ? Number(value) : Number(placeholder) || 0;
+    let current = base;
+    const target = e.currentTarget as HTMLElement;
+    target.setPointerCapture(e.pointerId);
+    const move = (ev: PointerEvent) => {
+      current = Math.round(base + (ev.clientX - start) * (ev.shiftKey ? 10 : 1));
+      if (input.current) input.current.value = String(current);
+    };
+    const up = () => {
+      target.removeEventListener('pointermove', move);
+      target.removeEventListener('pointerup', up);
+      if (current !== base) save(String(current));
+    };
+    target.addEventListener('pointermove', move);
+    target.addEventListener('pointerup', up);
   };
   return (
     <label className={`mi-field ${wide ? 'is-wide' : ''}`}>
-      <span>{label}</span>
+      <span className={numeric && (!value || isNumber(value)) ? 'mi-scrub' : undefined} onPointerDown={scrub} title={numeric ? 'Drag left or right to change (Shift: ×10)' : undefined}>
+        {label}
+        {!Number.isNaN(computed) && <em> = {Math.round(computed)}</em>}
+      </span>
       <input
+        ref={input}
         key={`${ord}:${name}:${value}`}
         className="input"
         defaultValue={value}
+        placeholder={placeholder}
         spellCheck={false}
         onBlur={(e) => save(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          if (numeric && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && (!value || isNumber(value))) {
+            e.preventDefault();
+            const step = (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 10 : 1);
+            const t = e.target as HTMLInputElement;
+            t.value = String((Number(t.value || placeholder) || 0) + step);
+            save(t.value);
+          }
+        }}
       />
     </label>
   );
 }
 
+/** Colour with its own transparency (MAML colours are #AARRGGBB). */
 function ColorField({ el, ord, name, onCommit }: { el: Element; ord: number; name: string; onCommit: Commit }) {
-  const raw = el.getAttribute(name);
-  const css = argb(raw, '#ffffff');
-  const hex = css.length === 9 ? css.slice(0, 7) : css.length === 4 ? `#${[...css.slice(1)].map((c) => c + c).join('')}` : css;
-  const alpha = raw && /^#[0-9a-f]{8}$/i.test(raw.trim()) ? raw.trim().slice(1, 3) : null;
+  const raw = (el.getAttribute(name) ?? '').trim();
+  const m8 = /^#([0-9a-f]{2})([0-9a-f]{6})$/i.exec(raw);
+  const m6 = /^#([0-9a-f]{6})$/i.exec(raw);
+  const m3 = /^#([0-9a-f]{3})$/i.exec(raw);
+  const rgb = m8 ? m8[2] : m6 ? m6[1] : m3 ? [...m3[1]].map((c) => c + c).join('') : 'ffffff';
+  const alpha = m8 ? parseInt(m8[1], 16) : 255;
+  const literal = !raw || !!(m8 || m6 || m3);
+  const write = (hex: string, a: number) => void onCommit(ord, { [name]: a >= 255 ? `#${hex}` : `#${Math.round(a).toString(16).padStart(2, '0')}${hex}` });
+  if (!literal) return <Field el={el} ord={ord} names={[name]} label="Colour formula" onCommit={onCommit} wide />;
   return (
-    <div className="mi-color">
-      <input type="color" aria-label="Colour" value={hex} onChange={(e) => void onCommit(ord, { [name]: alpha ? `#${alpha}${e.target.value.slice(1)}` : e.target.value })} />
-      <Field el={el} ord={ord} name={name} label="Colour" onCommit={onCommit} />
+    <div className="mi-colorbox">
+      <label className="mi-swatch" style={{ ['--c' as string]: `#${rgb}`, ['--a' as string]: alpha / 255 }}>
+        <input type="color" aria-label="Colour" value={`#${rgb}`} onChange={(e) => write(e.target.value.slice(1), alpha)} />
+      </label>
+      <div className="mi-colorfields">
+        <Field el={el} ord={ord} names={[name]} label="Colour" onCommit={onCommit} />
+        <label className="mi-field">
+          <span>Colour opacity · {Math.round((alpha / 255) * 100)}%</span>
+          <input key={`${ord}:${raw}`} type="range" min={0} max={255} defaultValue={alpha} onPointerUp={(e) => write(rgb, Number((e.target as HTMLInputElement).value))} onKeyUp={(e) => write(rgb, Number((e.target as HTMLInputElement).value))} />
+        </label>
+      </div>
     </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="mi-section">
+      <div className="mi-label">{title}</div>
+      {children}
+    </section>
   );
 }
 
@@ -88,9 +196,11 @@ export function MamlInspector({
   onCommit: Commit;
 }) {
   const files = useStore((s) => s.fileIndex);
+  const project = useStore((s) => s.project);
   const [newAttr, setNewAttr] = useState('');
   const el = selected !== null ? elements[selected] : undefined;
   const dir = manifest.path.replace(/manifest\.xml$/i, '');
+  const vars: Vars = scene?.vars ?? new Map();
 
   const showCode = (ord: number) => {
     if (text === null) return;
@@ -109,7 +219,7 @@ export function MamlInspector({
           <strong>Pieces</strong>
           <span className="faint">{pieces.length}</span>
         </div>
-        <p className="muted mi-hint">Click a piece on the screen or in this list to change it. Drag it on the screen to move it.</p>
+        <p className="muted mi-hint">Click a piece on the screen or in this list. Drag to move it, use the corner handles to resize and the round handle to rotate.</p>
         <div className="mi-list">
           {pieces.slice(0, 300).map(({ e, i }) => (
             <button key={i} className="mi-row" onClick={() => onSelect(i)}>
@@ -137,11 +247,22 @@ export function MamlInspector({
   const vis = el.getAttribute('visibility');
   const visExpr = vis !== null && vis !== 'true' && vis !== 'false';
   const alphaRaw = el.getAttribute('alpha');
-  const alphaLiteral = alphaRaw === null || /^\d+$/.test(alphaRaw.trim());
-  const src = tag === 'Image' ? el.getAttribute('src') : null;
-  const srcFile = src ? (files.get(`${dir}${src.replace(/^\/+/, '')}`) ?? null) : null;
+  const alphaLiteral = alphaRaw === null || isNumber(alphaRaw);
+  const alphaNow = alphaRaw === null ? 255 : Math.max(0, Math.min(255, Number(alphaRaw)));
   const textual = tag === 'Text' || tag === 'DateTime';
   const shape = tag === 'Rectangle' || tag === 'Circle' || tag === 'Ellipse';
+  const note = purpose(el, vars);
+
+  // The picture shown right now (srcExp is worked out with the current time), and its siblings (week_0 … week_6).
+  const shownSrc = tag === 'Image' ? (el.hasAttribute('srcExp') ? evalString(el.getAttribute('srcExp'), vars) : el.getAttribute('src')) : null;
+  const shown = shownSrc ? (files.get(`${dir}${shownSrc.replace(/^\/+/, '')}`) ?? null) : null;
+  const variants =
+    shown && el.hasAttribute('srcExp')
+      ? (() => {
+          const re = new RegExp(`^${shown.path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\d+(?=\\\.[a-z0-9]+$)/i, '\\d+')}$`, 'i');
+          return (project?.files ?? []).filter((f) => re.test(f.path)).sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
+        })()
+      : [];
 
   return (
     <aside className="mi">
@@ -152,106 +273,144 @@ export function MamlInspector({
         <strong className="ellipsis">{NAMES[tag] ?? tag}</strong>
         {el.getAttribute('name') && <span className="faint ellipsis">{el.getAttribute('name')}</span>}
       </div>
+      {note && <p className="mi-note">{note}</p>}
 
       {tag === 'Image' && (
-        <div className="mi-section">
-          <div className="mi-pic">
-            {srcFile ? <img src={resourceUrl('main', srcFile.path, srcFile.rev)} alt="" /> : <ImageIcon className="faint" />}
-          </div>
-          {srcFile && (
-            <button className="btn btn-sm btn-primary" onClick={() => void A.replaceFile(srcFile.path)}>
-              <ImageIcon /> Replace picture…
-            </button>
+        <Section title={variants.length > 1 ? `Picture · ${variants.length} versions` : 'Picture'}>
+          <div className="mi-pic">{shown ? <img src={resourceUrl('main', shown.path, shown.rev)} alt="" /> : <ImageIcon className="faint" />}</div>
+          {shown && (
+            <div className="mi-picbar">
+              <span className="faint ellipsis" title={shown.path}>
+                {fileName(shown.path)}
+                {shown.width ? ` · ${shown.width}×${shown.height}` : ''}
+              </span>
+              <button className="btn btn-sm btn-primary" onClick={() => void A.replaceFile(shown.path)}>
+                <ImageIcon /> Replace…
+              </button>
+            </div>
           )}
-          {!srcFile && el.hasAttribute('srcExp') && <p className="faint mi-hint">This picture changes with a formula (srcExp), so it is replaced in the code.</p>}
-        </div>
+          {variants.length > 1 && (
+            <>
+              <div className="mi-variants">
+                {variants.map((f) => (
+                  <button key={f.path} className={`mi-variant ${f.path === shown?.path ? 'is-on' : ''}`} title={`Replace ${fileName(f.path)}`} onClick={() => void A.replaceFile(f.path)}>
+                    <img src={resourceUrl('main', f.path, f.rev)} alt="" loading="lazy" />
+                    <span>{fileName(f.path).replace(/\.[a-z0-9]+$/i, '')}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="faint mi-hint-sm">The one outlined is showing now. Click any version to replace it.</p>
+            </>
+          )}
+        </Section>
       )}
 
       {textual && (
-        <div className="mi-section">
+        <Section title="Text">
           {tag === 'DateTime' ? (
             <>
-              <Field el={el} ord={selected} name="format" label="Format" onCommit={onCommit} wide />
+              <Field el={el} ord={selected} names={['format']} label="Format" onCommit={onCommit} wide />
               <div className="mi-chips">
-                {FORMATS.map((f) => (
-                  <button key={f} className="chip" aria-pressed={el.getAttribute('format') === f} onClick={() => void onCommit(selected, { format: f })}>
-                    {f}
+                {FORMATS.map(([f, name]) => (
+                  <button key={f} className="chip" aria-pressed={el.getAttribute('format') === f} title={f} onClick={() => void onCommit(selected, { format: f })}>
+                    {name}
                   </button>
                 ))}
               </div>
             </>
           ) : el.hasAttribute('textExp') ? (
-            <Field el={el} ord={selected} name="textExp" label="Text formula" onCommit={onCommit} wide />
-          ) : el.hasAttribute('format') ? (
-            <Field el={el} ord={selected} name="format" label="Text" onCommit={onCommit} wide />
+            <Field el={el} ord={selected} names={['textExp']} label="Text formula" onCommit={onCommit} wide />
           ) : (
-            <Field el={el} ord={selected} name="text" label="Text" onCommit={onCommit} wide />
+            <Field el={el} ord={selected} names={el.hasAttribute('format') ? ['format'] : ['text']} label="Text" onCommit={onCommit} wide />
           )}
           <div className="mi-grid">
-            <Field el={el} ord={selected} name="size" label="Size" onCommit={onCommit} />
+            <Field el={el} ord={selected} names={['size']} label="Size" onCommit={onCommit} vars={vars} numeric placeholder="18" />
             <label className="mi-field">
-              <span>Bold</span>
-              <input type="checkbox" checked={el.getAttribute('bold') === 'true'} onChange={(e) => void onCommit(selected, { bold: e.target.checked ? 'true' : null })} />
+              <span>Style</span>
+              <button className="chip mi-bold" aria-pressed={el.getAttribute('bold') === 'true'} onClick={() => void onCommit(selected, { bold: el.getAttribute('bold') === 'true' ? null : 'true' })}>
+                <strong>B</strong> Bold
+              </button>
             </label>
           </div>
           <ColorField el={el} ord={selected} name="color" onCommit={onCommit} />
-        </div>
+        </Section>
       )}
 
       {shape && (
-        <div className="mi-section">
+        <Section title="Fill">
           <ColorField el={el} ord={selected} name="fillColor" onCommit={onCommit} />
-          {tag === 'Rectangle' && <Field el={el} ord={selected} name="cornerRadius" label="Corner radius" onCommit={onCommit} />}
-        </div>
+          {tag === 'Rectangle' && <Field el={el} ord={selected} names={['cornerRadius']} label="Corner radius" onCommit={onCommit} vars={vars} numeric placeholder="0" />}
+        </Section>
       )}
 
-      <div className="mi-section">
-        <div className="mi-label">Position{scene ? <span className="faint"> · screen {scene.w} × {scene.h}</span> : null}</div>
+      <Section title="Position & size">
         <div className="mi-grid">
-          <Field el={el} ord={selected} name="x" label="X" onCommit={onCommit} />
-          <Field el={el} ord={selected} name="y" label="Y" onCommit={onCommit} />
-          {!textual && <Field el={el} ord={selected} name="w" label="Width" onCommit={onCommit} />}
-          {!textual && <Field el={el} ord={selected} name="h" label="Height" onCommit={onCommit} />}
-        </div>
-        <div className="mi-chips">
-          {(['left', 'center', 'right'] as const).map((a) => (
-            <button key={a} className="chip" aria-pressed={(el.getAttribute('align') ?? 'left') === a} onClick={() => void onCommit(selected, { align: a === 'left' ? null : a })}>
-              Anchor {a}
+          <Field el={el} ord={selected} names={['x']} label="X" onCommit={onCommit} vars={vars} numeric placeholder="0" />
+          <Field el={el} ord={selected} names={['y']} label="Y" onCommit={onCommit} vars={vars} numeric placeholder="0" />
+          {!textual && tag !== 'Circle' && (
+            <>
+              <Field el={el} ord={selected} names={['w', 'width']} label="Width" onCommit={onCommit} vars={vars} numeric placeholder={shown?.width ? String(shown.width) : 'auto'} />
+              <Field el={el} ord={selected} names={['h', 'height']} label="Height" onCommit={onCommit} vars={vars} numeric placeholder={shown?.height ? String(shown.height) : 'auto'} />
+            </>
+          )}
+          {tag === 'Circle' && <Field el={el} ord={selected} names={['r']} label="Radius" onCommit={onCommit} vars={vars} numeric />}
+          <Field el={el} ord={selected} names={['rotation', 'angle']} label="Rotation °" onCommit={onCommit} vars={vars} numeric placeholder="0" />
+          <label className="mi-field">
+            <span>&nbsp;</span>
+            <button className="btn btn-sm" disabled={!el.getAttribute('rotation') && !el.getAttribute('angle')} onClick={() => void onCommit(selected, { rotation: null, angle: null })}>
+              <RotateCw /> Straighten
             </button>
-          ))}
+          </label>
         </div>
-      </div>
+        <div className="mi-anchor">
+          <span className="faint">X/Y is the</span>
+          <div className="segmented">
+            {(['left', 'center', 'right'] as const).map((a) => (
+              <button key={a} aria-pressed={(el.getAttribute('align') ?? 'left') === a} onClick={() => void onCommit(selected, { align: a === 'left' ? null : a })}>
+                {a === 'center' ? 'centre' : a}
+              </button>
+            ))}
+          </div>
+          <div className="segmented">
+            {(['top', 'center', 'bottom'] as const).map((a) => (
+              <button key={a} aria-pressed={(el.getAttribute('alignV') ?? 'top') === a} onClick={() => void onCommit(selected, { alignV: a === 'top' ? null : a })}>
+                {a === 'center' ? 'middle' : a}
+              </button>
+            ))}
+          </div>
+        </div>
+      </Section>
 
-      <div className="mi-section">
+      <Section title="Visibility">
         {alphaLiteral ? (
           <label className="mi-field is-wide">
-            <span>Opacity · {Math.round(((alphaRaw ? Number(alphaRaw) : 255) / 255) * 100)}%</span>
+            <span>Opacity · {Math.round((alphaNow / 255) * 100)}%</span>
             <input
               key={`${selected}:${alphaRaw}`}
               type="range"
               min={0}
               max={255}
-              defaultValue={alphaRaw ? Number(alphaRaw) : 255}
+              defaultValue={alphaNow}
               onPointerUp={(e) => void onCommit(selected, { alpha: (e.target as HTMLInputElement).value === '255' ? null : (e.target as HTMLInputElement).value })}
               onKeyUp={(e) => void onCommit(selected, { alpha: (e.target as HTMLInputElement).value === '255' ? null : (e.target as HTMLInputElement).value })}
             />
           </label>
         ) : (
-          <Field el={el} ord={selected} name="alpha" label="Opacity formula" onCommit={onCommit} wide />
+          <Field el={el} ord={selected} names={['alpha']} label="Opacity formula (0–255)" onCommit={onCommit} vars={vars} numeric wide />
         )}
         {visExpr ? (
-          <Field el={el} ord={selected} name="visibility" label="Shown when" onCommit={onCommit} wide />
+          <Field el={el} ord={selected} names={['visibility']} label="Shown when" onCommit={onCommit} wide />
         ) : (
           <button className="btn btn-sm" onClick={() => void onCommit(selected, { visibility: vis === 'false' ? null : 'false' })}>
             {vis === 'false' ? <Eye /> : <EyeOff />} {vis === 'false' ? 'Show it again' : 'Hide it'}
           </button>
         )}
-      </div>
+      </Section>
 
       <details className="mi-section mi-all">
         <summary>All settings ({el.attributes.length})</summary>
         {Array.from(el.attributes).map((a) => (
-          <Field key={a.name} el={el} ord={selected} name={a.name} label={a.name} onCommit={onCommit} wide />
+          <Field key={a.name} el={el} ord={selected} names={[a.name]} label={a.name} onCommit={onCommit} vars={vars} wide />
         ))}
         <form
           className="mi-add"

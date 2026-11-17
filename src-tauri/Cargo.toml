@@ -1,6 +1,6 @@
 [package]
 name = "mi-theme-studio"
-version = "0.3.6"
+version = "0.3.7"
 description = "Desktop studio for MIUI/HyperOS theme packages"
 authors = ["JMJAJ"]
 license = "MIT"

@@ -525,6 +525,12 @@ export interface RootApplyResult {
   applied: boolean;
   backup: string | null;
   parts: string[];
+  /** Parts that did not land on the phone. */
+  failed: string[];
+  /** Previous theme parts removed because this theme does not have them. */
+  removed: string[];
+  /** Icons, fonts or app styles changed: they show after a restart. */
+  needsReboot: boolean;
   steps: string[];
 }
 

@@ -97,6 +97,7 @@ pub fn run() {
             commands::adb_licence_report,
             commands::adb_license_downloads,
             commands::adb_root_apply,
+            commands::adb_reboot,
             commands::adb_root_backups,
             commands::adb_root_restore,
             commands::theme_compatibility,

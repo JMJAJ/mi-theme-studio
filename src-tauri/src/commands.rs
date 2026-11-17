@@ -1291,6 +1291,12 @@ pub async fn adb_root_restore(app: AppHandle, serial: String, backup: String) ->
     blocking(app, move |state, app| adb_for(state, app)?.root_restore(&serial, &backup)).await
 }
 
+/// Restart the phone (a root-applied font only loads at boot).
+#[tauri::command]
+pub async fn adb_reboot(app: AppHandle, serial: String) -> AppResult<()> {
+    blocking(app, move |state, app| adb_for(state, app)?.reboot(&serial)).await
+}
+
 /// Applies the open theme with root by writing its parts into
 /// `/data/system/theme` and restarting SystemUI. Needs `su` on the phone.
 #[tauri::command]

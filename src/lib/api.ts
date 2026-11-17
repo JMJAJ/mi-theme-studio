@@ -153,6 +153,7 @@ export const api = {
   themeCompatibility: (serial: string) => call<ThemeCompatibility>('theme_compatibility', { serial }),
   adbThemeFormat: (serial: string) => call<number | null>('adb_theme_format', { serial }),
   adbRootApply: (serial: string, opId: string) => call<RootApplyResult>('adb_root_apply', { serial, opId }),
+  adbReboot: (serial: string) => call<void>('adb_reboot', { serial }),
   adbRootBackups: (serial: string) => call<ThemeBackup[]>('adb_root_backups', { serial }),
   adbRootRestore: (serial: string, backup: string) => call<string[]>('adb_root_restore', { serial, backup }),
   adbCachedThemeOpen: (serial: string, localId: string) =>

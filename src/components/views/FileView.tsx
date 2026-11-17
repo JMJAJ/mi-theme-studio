@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { xml } from '@codemirror/lang-xml';
-import { EditorView, keymap } from '@codemirror/view';
+import { Decoration, EditorView, keymap, type DecorationSet } from '@codemirror/view';
+import { StateEffect, StateField } from '@codemirror/state';
+import { openSearchPanel } from '@codemirror/search';
+import { findExtension, showReplace } from './findPanel';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
-import { AlertTriangle, Check, Download, FileQuestion, Maximize, Minus, Plus, RefreshCw, RotateCcw, Scan } from 'lucide-react';
+import { AlertTriangle, Check, Download, FileQuestion, Maximize, Minus, Plus, RefreshCw, RotateCcw, Scan, Search } from 'lucide-react';
 import { api, errorMessage, resourceUrl } from '../../lib/api';
 import { NinePatchEditor } from './NinePatchEditor';
 import { dimensions, formatBytes } from '../../lib/format';
@@ -172,6 +175,21 @@ const highlight = syntaxHighlighting(
   ]),
 );
 
+// The line a search hit or a problem pointed at stays highlighted until you edit.
+const setRevealLine = StateEffect.define<number | null>();
+const revealLineField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(deco, tr) {
+    if (tr.docChanged) deco = Decoration.none;
+    for (const e of tr.effects) if (e.is(setRevealLine)) deco = e.value === null ? Decoration.none : Decoration.set([Decoration.line({ class: 'cm-revealLine' }).range(e.value)]);
+    return deco;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
+// A stable object: a new one on every render makes the editor reconfigure, which closes the find bar.
+const BASIC_SETUP = { foldGutter: true, highlightActiveLine: true, autocompletion: false } as const;
+
 function xmlError(text: string): string | null {
   const doc = new DOMParser().parseFromString(text.replace(/^﻿/, ''), 'application/xml');
   const error = doc.querySelector('parsererror');
@@ -218,7 +236,7 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
     const prefix = [...line.text].slice(0, reveal.column - 1).join('');
     const hit = [...line.text.slice(prefix.length)].slice(0, reveal.length).join('');
     const from = line.from + prefix.length;
-    v.dispatch({ selection: { anchor: from, head: Math.min(from + hit.length, doc.length) }, effects: EditorView.scrollIntoView(from, { y: 'center' }) });
+    v.dispatch({ selection: { anchor: from, head: Math.min(from + hit.length, doc.length) }, effects: [EditorView.scrollIntoView(from, { y: 'center' }), setRevealLine.of(line.from)] });
     v.focus();
   }, [reveal?.nonce, loaded]);
 
@@ -235,7 +253,17 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
       editorTheme,
       highlight,
       EditorView.lineWrapping,
+      findExtension,
+      revealLineField,
       keymap.of([
+        {
+          key: 'Mod-h',
+          run: (v) => {
+            openSearchPanel(v);
+            showReplace(v);
+            return true;
+          },
+        },
         {
           key: 'Mod-Enter',
           run: () => {
@@ -283,6 +311,9 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
         {loaded.bom && <span className="badge badge-outline">UTF-8 BOM</span>}
         {readOnly && <span className="badge badge-info">Read-only reference</span>}
         <span className="grow" />
+        <button className="btn btn-sm btn-ghost" title="Find (Ctrl+F) · Replace (Ctrl+H)" onClick={() => view.current && openSearchPanel(view.current)}>
+          <Search /> Find
+        </button>
         {dirty && <span className="muted">Unapplied edits</span>}
         {!readOnly && (
           <>
@@ -317,7 +348,7 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
           onCreateEditor={(v) => {
             view.current = v;
           }}
-          basicSetup={{ foldGutter: true, highlightActiveLine: true, autocompletion: false }}
+          basicSetup={BASIC_SETUP}
           onChange={(value) => {
             setText(value);
             if (!readOnly) A.setDraft(file.path, value, draft?.baseRev ?? loaded.rev, draft?.original ?? loaded.text);

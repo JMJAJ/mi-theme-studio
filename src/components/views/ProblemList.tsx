@@ -2,6 +2,8 @@ import { AlertTriangle, CircleX, Info, Wrench } from 'lucide-react';
 import type { Issue } from '../../lib/types';
 import { useStore } from '../../state/store';
 import * as A from '../../state/actions';
+import { api } from '../../lib/api';
+import { lineOf } from '../../lib/mamlEdit';
 
 export function issueIcon(issue: Issue) {
   if (issue.severity === 'error') return <CircleX className="err" />;
@@ -13,11 +15,37 @@ function openIssue(issue: Issue) {
   const state = useStore.getState();
   if (!issue.path) return;
   if (state.fileIndex.has(issue.path)) {
-    A.openFile(issue.path);
-    A.revealInExplorer(issue.path);
+    const path = issue.path;
+    A.openFile(path);
+    A.revealInExplorer(path);
+    void revealIssueLine(path, issue.message);
   } else {
     A.toggleExpanded(issue.path, 'main', true);
     A.select(issue.path, 'single');
+  }
+}
+
+/**
+ * Problems carry a file, not a line. Find the line from what the message names
+ * (`bg12.png`, or "line 12" for syntax errors), then jump there and highlight it.
+ */
+async function revealIssueLine(path: string, message: string) {
+  const info = useStore.getState().fileIndex.get(path);
+  if (!info || (info.kind !== 'xml' && info.kind !== 'text')) return;
+  const lineNo = /\bline (\d+)/i.exec(message);
+  const token = /`([^`]+)`/.exec(message)?.[1] ?? /“([^”]+)”/.exec(message)?.[1];
+  try {
+    if (lineNo) return A.revealInFile(path, Number(lineNo[1]), 1, 0);
+    if (!token) return;
+    const { text } = await api.fileText(path);
+    // Prefer the name inside quotes (an attribute value), then anywhere.
+    let at = text.search(new RegExp(`["'/]${token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`));
+    at = at >= 0 ? at + 1 : text.indexOf(token);
+    if (at < 0) return;
+    const { line, column } = lineOf(text, at);
+    A.revealInFile(path, line, column, token.length);
+  } catch {
+    // The file opens either way; only the jump is skipped.
   }
 }
 

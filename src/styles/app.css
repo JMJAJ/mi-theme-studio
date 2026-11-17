@@ -774,3 +774,30 @@ button.catalog-card:hover, button.icon-link:hover { border-color: var(--line-str
 .cover-anim svg { width: 10px; height: 10px; }
 .product-card:hover .cover-anim:not(.is-loading), .feature-card:hover .cover-anim:not(.is-loading) { opacity: 0; transition: opacity 0.2s 0.3s; }
 .shot { position: relative; }
+
+/* Editor: find & replace bar and the highlighted line */
+.cm-panels.cm-panels-top { border-bottom: 1px solid var(--line-strong) !important; background: var(--bg-2) !important; }
+.cm-find { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; font-family: var(--font); font-size: var(--fs-sm); }
+.cm-find-row { display: flex; align-items: center; gap: 6px; }
+.cm-find-row[hidden] { display: none; }
+.cm-find-field { flex: 0 1 380px; min-width: 160px; display: flex; align-items: center; gap: 2px; height: 30px; padding: 0 4px 0 10px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--bg-1); }
+.cm-find-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.cm-find-input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; }
+.cm-find-input::placeholder { color: var(--faint, var(--muted)); }
+.cm-find-opt { height: 22px; min-width: 24px; padding: 0 5px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--muted); font: 600 11.5px var(--mono); cursor: pointer; }
+.cm-find-opt:hover { color: var(--text); background: var(--bg-3); }
+.cm-find-opt[aria-pressed='true'] { color: var(--accent-strong); background: var(--accent-soft); border-color: var(--accent-line, var(--accent)); }
+.cm-find-count { min-width: 74px; color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
+.cm-find-count.is-none { color: var(--err, #f87171); }
+.cm-find-btn { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--text-2); cursor: pointer; flex: none; }
+.cm-find-btn:hover { background: var(--bg-3); color: var(--text); }
+.cm-find-btn[hidden] { display: none; }
+.cm-find-expand { transition: transform 0.12s; }
+.cm-find-expand[aria-pressed='true'] { transform: rotate(90deg); }
+.cm-find-spacer { width: 28px; flex: none; }
+.cm-find-text { height: 28px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--bg-3); color: var(--text); font: inherit; cursor: pointer; white-space: nowrap; }
+.cm-find-text:hover { border-color: rgba(255, 255, 255, 0.2); }
+.cm-searchMatch { background-color: rgba(214, 160, 61, 0.28) !important; border-radius: 2px; }
+.cm-searchMatch-selected { background-color: rgba(255, 106, 20, 0.55) !important; outline: 1px solid var(--accent); }
+.cm-revealLine { background-color: rgba(255, 106, 20, 0.14) !important; box-shadow: inset 3px 0 0 var(--accent); animation: cm-reveal 1.4s ease-out; }
+@keyframes cm-reveal { from { background-color: rgba(255, 106, 20, 0.45); } }

@@ -1222,6 +1222,20 @@ export const TRY_ON_BUSY = 'Applying the theme on the phone…';
  * Try on phone: export the theme, add it to Theme Manager's library on the
  * phone and press Apply there, so the phone switches to it right away.
  */
+// Whether each phone grants root (asked once per connection; su can take a moment).
+const rootedPhones = new Map<string, boolean>();
+export async function phoneIsRooted(serial: string) {
+  if (rootedPhones.has(serial)) return rootedPhones.get(serial)!;
+  try {
+    const support = await api.adbThemeSupport(serial);
+    rootedPhones.set(serial, !!support.rooted);
+    return !!support.rooted;
+  } catch {
+    return false;
+  }
+}
+const ROOT_APPLY_OK_KEY = 'mts.rootApply.ok.v1';
+
 export async function tryOnPhone() {
   const device = readyDevice();
   const project = getState().project;
@@ -1244,6 +1258,15 @@ export async function tryOnPhone() {
       danger: true,
     });
     if (!go) return;
+  }
+  if (await phoneIsRooted(device.serial)) {
+    let ok = false;
+    try {
+      ok = localStorage.getItem(ROOT_APPLY_OK_KEY) === '1';
+    } catch {
+      /* ignore */
+    }
+    return applyWithRoot(ok, true);
   }
   let confirmed = false;
   try {
@@ -1291,12 +1314,21 @@ export async function tryOnPhone() {
     if (errorCode(error) === 'cancelled') log('info', 'Try on cancelled');
     else if (errorCode(error) === 'license') {
       log('warning', `Try on: ${errorMessage(error)}`);
-      await choiceDialog({
+      // A rooted phone can take the same theme through /data/system/theme,
+      // where Theme Manager's licence check does not exist.
+      const support = await api.adbThemeSupport(device.serial).catch(() => null);
+      const choice = await choiceDialog({
         title: 'Theme Manager needs a Xiaomi licence for this theme',
         message:
-          'On global HyperOS, Theme Manager applies a part only when a Xiaomi-signed licence covering its exact bytes is on the phone. Try on phone reuses those licences, so a mix of unmodified store parts — icons from one theme, status bar from another, your own wallpapers and sounds — applies. Parts you edited or added have no licence, and Xiaomi only issues them for store packages; that is the “downloadRight|413” error on the phone. Download and apply a theme in Theme Manager once to licence its parts, or keep your own artwork to wallpapers and sounds. The phone panel mockup and live mirror keep working for any project. Mi Theme Studio does not fake licences.',
-        choices: [{ id: 'ok', label: 'OK', primary: true }],
+          'Theme Manager applies a part only when a Xiaomi-signed licence covering its exact bytes is on the phone. Try on phone reuses those licences, so a mix of unmodified store parts applies; parts you edited or added have none, and Xiaomi only signs store packages — that is the “downloadRight|413” error. Apply the source theme or font in Theme Manager once to licence its parts, keep your own artwork to wallpapers and sounds — or, on a rooted phone, write the theme straight into /data/system/theme.',
+        choices: support?.rooted
+          ? [
+              { id: 'root', label: 'Apply with root instead', primary: true },
+              { id: 'ok', label: 'OK' },
+            ]
+          : [{ id: 'ok', label: 'OK', primary: true }],
       });
+      if (choice === 'root') await applyWithRoot(true);
     } else toast('error', `Try on phone: ${errorMessage(error)}`);
   } finally {
     operations.delete(opId);
@@ -1401,7 +1433,7 @@ export async function licenseDownloadsOnPhone() {
 }
 
 /** Applies the open theme with root: writes its parts into /data/system/theme. */
-export async function applyWithRoot() {
+export async function applyWithRoot(confirmed = false, fromTryOn = false) {
   const device = readyDevice();
   const project = getState().project;
   if (!device || !project) {
@@ -1409,32 +1441,58 @@ export async function applyWithRoot() {
     return;
   }
   if (getState().busy) return;
-  if (!(await applyAllDrafts())) return;
+  if (!fromTryOn && !(await applyAllDrafts())) return;
   const compat = await themeCompatibility();
+  if (!confirmed) {
   const ok = await confirmDialog({
-    title: `Write “${project.title}” into the phone’s theme folder?`,
+    title: fromTryOn ? `Try “${project.title}” on your rooted phone?` : `Write “${project.title}” into the phone’s theme folder?`,
     message:
       'Root apply copies the theme parts straight into /data/system/theme and restarts SystemUI. Theme Manager’s licence check is not involved, so custom icons, fonts and system UI work — but a part the phone cannot render can leave the interface broken until you restore the backup.',
     detail: [
       compat ? compat.detail : 'The phone did not report a theme format.',
-      'The current /data/system/theme is backed up to /sdcard/MiThemeStudio first.',
-      'Root (su) is used; nothing is uploaded anywhere.',
-      'If the phone looks wrong afterwards, restore the backup or the stock theme.',
+      'Every part is written, including icons, fonts, system UI, the lock screen and both wallpapers. Parts of the previous theme that this one does not have are removed, like a normal theme apply.',
+      'The current theme folder and home wallpaper are backed up to /sdcard/MiThemeStudio first; without a backup nothing is changed.',
+      'Ringtones are not changed by root apply. Icons, fonts and app styles show after a restart, which you are offered at the end.',
+      'Root (su) is used; nothing is uploaded anywhere. If the phone looks wrong afterwards, use Restore theme backup.',
+      ...(fromTryOn ? ['This phone is rooted, so Try on phone uses root from now on and skips Theme Manager’s licence check (which fails for edited themes). You will not be asked again; a backup is still made every time.'] : []),
     ],
     confirmLabel: 'Apply with root',
     danger: true,
   });
   if (!ok) return;
+  if (fromTryOn) {
+    try {
+      localStorage.setItem(ROOT_APPLY_OK_KEY, '1');
+    } catch {
+      /* ignore */
+    }
+  }
+  }
   const opId = newOpId('root');
   operations.set(opId, 'Applying with root');
-  setState({ busy: 'Writing the theme into /data/system/theme…' });
+  setState({ busy: fromTryOn ? TRY_ON_BUSY : 'Writing the theme into /data/system/theme…' });
   try {
     const result = await api.adbRootApply(device.serial, opId);
-    for (const step of result.steps) log('info', `Root apply: ${step}`);
-    if (result.applied) {
-      toast('success', `“${project.title}” is in /data/system/theme${result.backup ? ` (backup: ${result.backup})` : ''}.`);
-    } else {
-      toast('warning', 'Root apply did not finish; check the log.');
+    for (const step of result.steps) log(result.failed.length ? 'warning' : 'info', `Root apply: ${step}`);
+    setState({ busy: null });
+    const reboot = result.needsReboot
+      ? await confirmDialog({
+          title: result.applied ? `“${project.title}” is applied` : `“${project.title}” is partly applied`,
+          message: `${result.parts.length} part${result.parts.length === 1 ? '' : 's'} written${result.failed.length ? `; ${result.failed.join(', ')} did not land` : ''}. The lock screen, status bar and wallpapers already show; icons, fonts and app styles appear after the phone restarts.`,
+          detail: [...result.steps, ...(result.backup ? [`Backup: ${result.backup}`] : [])],
+          confirmLabel: 'Restart phone now',
+        })
+      : false;
+    if (reboot) {
+      try {
+        await api.adbReboot(device.serial);
+        toast('info', 'The phone is restarting. It reconnects here when it is back.');
+      } catch (error) {
+        toast('error', `Restart: ${errorMessage(error)}`);
+      }
+    } else if (!result.needsReboot) {
+      if (result.applied) toast('success', `“${project.title}” is applied: ${result.parts.length} part${result.parts.length === 1 ? '' : 's'} written. Backup: ${result.backup}`);
+      else toast('warning', `Applied, except ${result.failed.join(', ')}. The backup is ${result.backup}; the log has the details.`);
     }
   } catch (error) {
     if (errorCode(error) === 'cancelled') log('info', 'Root apply cancelled');

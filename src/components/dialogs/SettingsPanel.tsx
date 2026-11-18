@@ -179,7 +179,7 @@ function Store() {
   return (
     <>
       <Group title="Catalog">
-        <Row title="Store region" description="Changes which themes and prices the store shows. US hides paid themes; IN has the largest catalog.">
+        <Row title="Store region" description="Changes which themes and prices the store shows. US shows the full catalog in USD; IN has the most themes.">
           <select className="select" value={region} onChange={(e) => setRegion(e.target.value)}>
             {REGIONS.map((r) => (
               <option key={r} value={r}>

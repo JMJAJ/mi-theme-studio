@@ -6,9 +6,23 @@ import { api, errorCode, errorMessage } from '../lib/api';
 import type { DownloadedTheme, DownloadProgress } from '../lib/types';
 import { log, toast } from './store';
 
-export const REGIONS = ['US', 'GB', 'DE', 'FR', 'ES', 'IT', 'RU', 'IN', 'ID', 'MY', 'PH', 'TH', 'VN', 'TR', 'BR', 'MX'] as const;
+// Keep in sync with REGIONS in src-tauri/src/store/mod.rs.
+export const REGIONS = [
+  'US', 'GB', 'DE', 'FR', 'ES', 'IT', 'RU', 'IN', 'ID', 'MY', 'PH', 'TH', 'VN', 'TR',
+  'BR', 'MX', 'CA', 'AU', 'NZ', 'JP', 'KR', 'SG', 'TW', 'HK', 'NL', 'BE', 'AT', 'CH',
+  'PT', 'GR', 'IE', 'SE', 'PL', 'RO', 'HU', 'SA', 'QA', 'KW', 'OM', 'EG', 'MA', 'DZ',
+  'IQ', 'NG', 'KE', 'ZA', 'AR', 'CL', 'CO', 'PE', 'EC', 'PA', 'SV', 'PR',
+  // Free-only regions: the store hides paid themes here.
+  'AE', 'PK', 'BD', 'UA', 'IL', 'KZ', 'BY', 'CZ', 'NP', 'LK', 'MM', 'KH', 'LA', 'CN',
+] as const;
+const FREE_ONLY_REGIONS = new Set(['AE', 'PK', 'BD', 'UA', 'IL', 'KZ', 'BY', 'CZ', 'NP', 'LK', 'MM', 'KH', 'LA', 'CN']);
 /** Regions whose catalog differs in a way worth naming in the picker. */
-export const REGION_NOTES: Partial<Record<string, string>> = { IN: 'largest catalog', US: 'free only', RU: 'mostly paid' };
+export const REGION_NOTES: Partial<Record<string, string>> = {
+  IN: 'largest catalog',
+  US: 'full catalog, USD',
+  RU: 'mostly paid',
+  ...Object.fromEntries([...FREE_ONLY_REGIONS].map((r) => [r, 'free only'])),
+};
 export const DEFAULT_REGION = 'IN';
 const REGION_KEY = 'mts.store.region.v1';
 const FREE_ONLY_KEY = 'mts.store.freeOnly.v1';

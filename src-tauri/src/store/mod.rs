@@ -35,9 +35,25 @@ const PAGE_SIZE: u32 = 20;
 const MAX_BODY: u64 = 16 * 1024 * 1024;
 pub const MAX_DOWNLOAD: u64 = 1024 * 1024 * 1024;
 
+/// Store regions, checked against the live service. The last row returns
+/// only free themes.
 pub const REGIONS: &[&str] = &[
     "US", "GB", "DE", "FR", "ES", "IT", "RU", "IN", "ID", "MY", "PH", "TH", "VN", "TR", "BR", "MX",
+    "CA", "AU", "NZ", "JP", "KR", "SG", "TW", "HK", "NL", "BE", "AT", "CH", "PT", "GR", "IE", "SE",
+    "PL", "RO", "HU", "SA", "QA", "KW", "OM", "EG", "MA", "DZ", "IQ", "NG", "KE", "ZA", "AR", "CL",
+    "CO", "PE", "EC", "PA", "SV", "PR",
+    "AE", "PK", "BD", "UA", "IL", "KZ", "BY", "CZ", "NP", "LK", "MM", "KH", "LA", "CN",
 ];
+
+/// The region sent to the service. The `US` store hides every paid theme, so
+/// US requests use Puerto Rico: a US territory with the full catalog in USD.
+fn wire_region(region: &str) -> &str {
+    if region == "US" {
+        "PR"
+    } else {
+        region
+    }
+}
 
 static CANCELLED: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
@@ -147,7 +163,7 @@ fn encode(value: &str) -> String {
 fn client_params(region: &str) -> String {
     let params = [
         ("device", "generic"),
-        ("region", region),
+        ("region", wire_region(region)),
         ("isGlobal", "true"),
         ("system", "miui"),
         ("alpha", "false"),

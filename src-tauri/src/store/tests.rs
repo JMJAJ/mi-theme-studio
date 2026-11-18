@@ -153,7 +153,7 @@ fn urls_validate_input() {
     assert!(rings.contains("category=RingtoneUnion"));
     let q: StoreQuery = serde_json::from_str(r#"{"kind":"home"}"#).unwrap();
     assert_eq!(q, StoreQuery::Home { product: ProductKind::Theme }, "product defaults to themes");
-    assert!(home.contains("cardStart=20") && home.contains("region=US") && home.contains("miuiUIVersion=V160"));
+    assert!(home.contains("cardStart=20") && home.contains("region=PR") && home.contains("miuiUIVersion=V160"));
 }
 
 #[test]

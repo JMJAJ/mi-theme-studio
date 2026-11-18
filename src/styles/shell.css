@@ -495,6 +495,10 @@
 .mi-foot { display: flex; gap: 6px; flex-wrap: wrap; padding: 12px; margin-top: auto; }
 .maml-fit { width: 100%; height: 100%; display: grid; place-items: center; padding: 10px; box-sizing: border-box; }
 .maml-frame.is-small { border-radius: 14px; outline-width: 2px; }
+.maml-pages { display: flex; align-items: center; gap: 20px; }
+.maml-page-thumbs { display: flex; flex-direction: column; gap: 10px; }
+.maml-page-thumb { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: var(--text-2, #aaa); font-size: 12px; cursor: pointer; }
+.maml-page-thumb:hover .maml-frame { outline-color: var(--accent, #ff6a00); }
 .pp-pickable [data-mk], .pp-hit { cursor: pointer; }
 .pp-hit { position: absolute; border: 2px solid transparent; border-radius: 10px; background: transparent; padding: 0; }
 .pp-hit:hover { border-color: color-mix(in srgb, var(--accent) 70%, transparent); border-style: dashed; }

@@ -1588,7 +1588,7 @@ export function CatalogView() {
             <ArrowLeft /> Back
           </button>
         )}
-        <div className="segmented store-sections" role="group" aria-label="Store section">
+        <div className="segmented store-tabs" role="group" aria-label="Store section">
           <button aria-pressed={tab === 'discover' && !stack.length} onClick={() => switchTab('discover')}>
             <Sparkles /> <span className="lbl">Discover</span>
           </button>

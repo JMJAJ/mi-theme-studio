@@ -617,6 +617,83 @@ function runWakeCommands(root: Element, ctx: Ctx) {
   return true;
 }
 
+// ---------- pages a swipe or tap switches between ----------
+
+/** A lock screen with several pages: the variable that picks one, and its values. */
+export interface LockPages {
+  name: string;
+  values: number[];
+}
+
+/**
+ * Finds the pages of a lock screen that has more than one: a variable that a
+ * touch changes (a Button's VariableCommand) and that switches big groups on
+ * and off with visibility="eq(#var,N)". The busiest such variable wins.
+ */
+export function findPages(doc: Document | null): LockPages | null {
+  const root = doc?.documentElement;
+  if (!root || root.tagName !== 'Lockscreen') return null;
+  const touched = new Set<string>();
+  for (const button of Array.from(root.getElementsByTagName('Button')))
+    for (const cmd of Array.from(button.getElementsByTagName('VariableCommand'))) {
+      const name = cmd.getAttribute('name');
+      if (name) touched.add(name);
+    }
+  const weight = new Map<string, Map<number, number>>();
+  for (const group of Array.from(root.getElementsByTagName('Group'))) {
+    const vis = group.getAttribute('visibility');
+    if (!vis) continue;
+    const size = group.getElementsByTagName('*').length + 1;
+    for (const m of vis.matchAll(/eq\(\s*#([\w.]+)\s*,\s*(\d+)\s*\)|#([\w.]+)\s*==\s*(\d+)/g)) {
+      const name = m[1] ?? m[3];
+      const value = Number(m[2] ?? m[4]);
+      if (!touched.has(name)) continue;
+      const byValue = weight.get(name) ?? new Map<number, number>();
+      byValue.set(value, (byValue.get(value) ?? 0) + size);
+      weight.set(name, byValue);
+    }
+  }
+  let best: LockPages | null = null;
+  let bestWeight = 0;
+  for (const [name, byValue] of weight) {
+    // Each page has to be a real screenful, not a small toggle.
+    const values = [...byValue.entries()].filter(([, n]) => n >= 8).map(([v]) => v);
+    if (!values.includes(0)) values.push(0);
+    if (values.length < 2) continue;
+    const total = [...byValue.values()].reduce((a, b) => a + b, 0);
+    if (total > bestWeight) {
+      best = { name, values: values.sort((a, b) => a - b) };
+      bestWeight = total;
+    }
+  }
+  return best;
+}
+
+/** The pages of the theme's lock screen (null for a single-page one), without drawing it. */
+export function useLockPages() {
+  const manifest = useStore((s) => (s.project ? partManifests(s.project.files, 'lockscreen')[0] : undefined));
+  const draft = useStore((s) => (manifest ? s.drafts[manifest.path]?.text : undefined));
+  const [saved, setSaved] = useState<string | null>(null);
+  useEffect(() => {
+    if (!manifest) return setSaved(null);
+    let cancelled = false;
+    api
+      .fileText(manifest.path, 'main')
+      .then((r) => !cancelled && setSaved(r.text))
+      .catch(() => !cancelled && setSaved(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [manifest?.path, manifest?.rev]);
+  const text = draft ?? saved;
+  return useMemo(() => {
+    if (!text) return null;
+    let doc = new DOMParser().parseFromString(text.replace(/^\uFEFF/, ''), 'text/xml');
+    if (doc.querySelector('parsererror')) doc = new DOMParser().parseFromString(lenientXml(text.replace(/^\uFEFF/, '')), 'text/xml');
+    return doc.querySelector('parsererror') ? null : findPages(doc);
+  }, [text]);
+}
+
 // ---------- the hook ----------
 
 /** Manifests of a part, the main one first (the lock screen's advance/manifest.xml). */
@@ -634,7 +711,7 @@ export const useMamlSelection = create<{ path: string | null; ord: number | null
  * (saved or still being typed), any file it draws, the wallpaper or the clock
  * changes, so every edit shows straight away. `animate` plays the animations.
  */
-export function useMamlScene(componentId: string, opts: { path?: string | null; slot?: Slot; animate?: boolean; ratio?: number; aspect?: number } = {}) {
+export function useMamlScene(componentId: string, opts: { path?: string | null; slot?: Slot; animate?: boolean; ratio?: number; aspect?: number; overrides?: Record<string, number> | null } = {}) {
   const slot = opts.slot ?? 'main';
   const snapshot = useStore((s) => (slot === 'ref' ? s.reference : s.project));
   const screen = useStore((s) => (s.selectedSerial ? (s.deviceDetails[s.selectedSerial]?.screenOverride ?? s.deviceDetails[s.selectedSerial]?.screen) : null));
@@ -719,6 +796,9 @@ export function useMamlScene(componentId: string, opts: { path?: string | null; 
   const good = parsed?.doc ? parsed : lastGood.current;
 
   const files = useMemo(() => new Map(projectFiles.map((f) => [f.path, f])), [projectFiles]);
+  const overrideKey = opts.overrides ? JSON.stringify(opts.overrides) : '';
+  const overrides = useMemo(() => (overrideKey ? (JSON.parse(overrideKey) as Record<string, number>) : null), [overrideKey]);
+  const pages = useMemo(() => findPages(good?.doc ?? null), [good]);
   const scene = useMemo(() => {
     if (!good?.doc || !manifest || !('ord' in good) || !good.ord) return null;
     const root = good.doc.documentElement;
@@ -737,10 +817,15 @@ export function useMamlScene(componentId: string, opts: { path?: string | null; 
     collectVars(root, ctx);
     // Variables the wake-up commands set, then everything that depends on them.
     if (runWakeCommands(root, ctx)) collectVars(root, ctx);
+    // A page or state picked in the editor (what a swipe or tap switches to on the phone).
+    if (overrides) {
+      for (const [name, value] of Object.entries(overrides)) ctx.vars.set(name, value);
+      collectVars(root, ctx);
+    }
     const nodes = renderNodes(root, ctx);
     const hasWallpaper = lock && root.getElementsByTagName('Wallpaper').length > 0;
     return { w, h, lock, nodes, unknown: [...ctx.unknown], hasWallpaper, wallpaper: ctx.wallpaper, slot, vars: ctx.vars };
-  }, [good, manifest, files, now, t, screen, projectFiles, opts.animate, opts.ratio, opts.aspect, slot, config]);
+  }, [good, manifest, files, now, t, screen, projectFiles, opts.animate, opts.ratio, opts.aspect, slot, config, overrideKey]);
 
   /** Write a new manifest text: shown at once, then saved (undoable). */
   const apply = async (next: string) => {
@@ -749,7 +834,7 @@ export function useMamlScene(componentId: string, opts: { path?: string | null; 
     return A.writeText(manifest.path, next);
   };
 
-  return { manifests, manifest, scene, error: parsed && !parsed.doc && !lastGood.current ? 'The manifest is not valid XML, so it cannot be drawn.' : error, text, elements: good?.elements ?? [], apply };
+  return { manifests, manifest, scene, pages, error: parsed && !parsed.doc && !lastGood.current ? 'The manifest is not valid XML, so it cannot be drawn.' : error, text, elements: good?.elements ?? [], apply };
 }
 
 export type Scene = NonNullable<ReturnType<typeof useMamlScene>['scene']>;
@@ -1361,9 +1446,9 @@ export function MamlCanvas({
  * The theme's real lock screen for the phone mock-ups, filling a screen of
  * `width` × `height`, animations playing. `onPick` makes its pieces clickable.
  */
-export function PhoneLockScreen({ width, height, font, onPick }: { width: number; height: number; font?: string; onPick?: (path: string, ord: number | null) => void }) {
+export function PhoneLockScreen({ width, height, font, onPick, page }: { width: number; height: number; font?: string; onPick?: (path: string, ord: number | null) => void; page?: { name: string; value: number } | null }) {
   // Lay the layout out for this screen's shape, as the phone does (screen_height follows the aspect ratio).
-  const { scene, manifest } = useMamlScene('lockscreen', { animate: true, ratio: width ? Math.round((height / width) * 1e4) / 1e4 : undefined });
+  const { scene, manifest } = useMamlScene('lockscreen', { animate: true, ratio: width ? Math.round((height / width) * 1e4) / 1e4 : undefined, overrides: page ? { [page.name]: page.value } : null });
   if (!scene || !scene.lock || !width) return null;
   const scale = Math.max(width / scene.w, height / scene.h);
   return (
@@ -1372,6 +1457,20 @@ export function PhoneLockScreen({ width, height, font, onPick }: { width: number
         <MamlCanvas scene={scene} scale={scale} font={font} onSelect={onPick && manifest ? (ord) => onPick(manifest.path, ord) : undefined} />
       </div>
     </div>
+  );
+}
+
+/** Another page of the lock screen, small and read-only; clicking it edits that page. */
+function LockPageThumb({ path, page, label, scale, font, onOpen }: { path: string; page: { name: string; value: number }; label: string; scale: number; font?: string; onOpen: () => void }) {
+  const { scene } = useMamlScene('lockscreen', { path, overrides: { [page.name]: page.value } });
+  if (!scene || !scale) return null;
+  return (
+    <button type="button" className="maml-page-thumb" onClick={onOpen} title={`Edit ${label}`}>
+      <div className="maml-frame is-phone is-small" style={{ width: scene.w * scale, height: scene.h * scale, pointerEvents: 'none' }}>
+        <MamlCanvas scene={scene} scale={scale} font={font} />
+      </div>
+      <span>{label}</span>
+    </button>
   );
 }
 
@@ -1508,8 +1607,11 @@ export function MamlPreview({ componentId }: { componentId: string }) {
   const project = useStore((s) => s.project)!;
   const [path, setPath] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
-  const live = useMamlScene(componentId, { path, animate: playing });
-  const { manifests, manifest, scene, error, elements, text } = live;
+  // The page being edited, for lock screens a swipe or tap switches between.
+  const [page, setPage] = useState<{ name: string; value: number } | null>(null);
+  const live = useMamlScene(componentId, { path, animate: playing, overrides: page ? { [page.name]: page.value } : null });
+  const { manifests, manifest, scene, error, elements, text, pages } = live;
+  const pageValue = pages ? (page && page.name === pages.name && pages.values.includes(page.value) ? page.value : pages.values[0]) : null;
   const sel = useMamlSelection();
   const selected = manifest && sel.path === manifest.path ? sel.ord : null;
   const extra = manifest && sel.path === manifest.path ? sel.extra : NO_EXTRA;
@@ -1539,7 +1641,10 @@ export function MamlPreview({ componentId }: { componentId: string }) {
       </div>
     );
   }
-  const scale = scene && fit.w && fit.h ? Math.min((fit.w - 32) / scene.w, (fit.h - 32) / scene.h) : 0;
+  // The other pages sit beside the one being edited, smaller.
+  const others = pages && scene?.lock ? pages.values.filter((v) => v !== pageValue) : [];
+  const thumbK = others.length ? Math.min(0.42, 0.94 / others.length) : 0;
+  const scale = scene && fit.w && fit.h ? Math.min((fit.w - 32 - (others.length ? 20 : 0)) / (scene.w * (1 + thumbK)), (fit.h - 32) / scene.h) : 0;
   const select = (ord: number | null) => useMamlSelection.setState({ path: manifest.path, ord, extra: [] });
   const selectMany = (ords: number[]) => useMamlSelection.setState({ path: manifest.path, ord: ords[0] ?? null, extra: ords.slice(1) });
   const commit = (ord: number, attrs: Record<string, string | null>) => (text === null ? Promise.resolve(false) : live.apply(setAttributes(text, ord, attrs)));
@@ -1610,6 +1715,15 @@ export function MamlPreview({ componentId }: { componentId: string }) {
             ))}
           </select>
         )}
+        {pages && scene?.lock && (
+          <div className="segmented" role="group" aria-label="Lock screen page" title="This lock screen has several pages (a swipe or tap switches between them on the phone). Pick the one to edit.">
+            {pages.values.map((v, i) => (
+              <button key={v} aria-pressed={pageValue === v} onClick={() => (setPage({ name: pages.name, value: v }), select(null))}>
+                Page {i + 1}
+              </button>
+            ))}
+          </div>
+        )}
         <button className="btn btn-sm" onClick={() => setPlaying((p) => !p)} title={playing ? 'Stop animations to edit in the resting pose' : 'Play the layout’s animations'}>
           {playing ? <Pause /> : <Play />} {playing ? 'Stop animations' : 'Play animations'}
         </button>
@@ -1627,8 +1741,25 @@ export function MamlPreview({ componentId }: { componentId: string }) {
           ) : !scene || !scale ? (
             <Loader2 className="spin" />
           ) : (
-            <div className={`maml-frame ${scene.lock ? 'is-phone' : ''}`} style={{ width: scene.w * scale, height: scene.h * scale }}>
-              <MamlCanvas scene={scene} scale={scale} font={font} selected={selected} extra={extra} onSelect={select} onSelectMany={selectMany} onEdit={edit} />
+            <div className="maml-pages">
+              <div className={`maml-frame ${scene.lock ? 'is-phone' : ''}`} style={{ width: scene.w * scale, height: scene.h * scale }}>
+                <MamlCanvas scene={scene} scale={scale} font={font} selected={selected} extra={extra} onSelect={select} onSelectMany={selectMany} onEdit={edit} />
+              </div>
+              {pages && others.length > 0 && (
+                <div className="maml-page-thumbs">
+                  {others.map((v) => (
+                    <LockPageThumb
+                      key={v}
+                      path={manifest.path}
+                      page={{ name: pages.name, value: v }}
+                      label={`Page ${pages.values.indexOf(v) + 1}`}
+                      scale={scale * thumbK}
+                      font={font}
+                      onOpen={() => (setPage({ name: pages.name, value: v }), select(null))}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

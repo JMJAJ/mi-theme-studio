@@ -9,7 +9,7 @@ import * as A from '../../state/actions';
 import { useDeviceSummary } from '../shell/deviceSummary';
 import { MirrorButton } from '../common/MirrorButton';
 import { themeFontFile, usePackageFont } from '../common/themeFont';
-import { PhoneLockScreen, useClockWidgetPath, useHasLockLayout } from './MamlPreview';
+import { PhoneLockScreen, useClockWidgetPath, useHasLockLayout, useLockPages } from './MamlPreview';
 import { HomeScreen, StatusBar, SystemLockClock, useHomeColors, usePageDots, useWallpaperTone, type HomePage } from './PhoneMock';
 
 /** The current time, refreshed every 15 seconds so mock-up clocks keep up. */
@@ -169,7 +169,9 @@ export function PreviewView() {
 
   const pad = frame ? 22 : 0;
   // The home screen shows both launcher pages side by side, like theme store pictures.
-  const pages = screen === 'home' ? 2 : 1;
+  const lockPages = useLockPages();
+  const hasLockLayout = useHasLockLayout();
+  const pages = screen === 'home' ? 2 : screen === 'lock' && hasLockLayout && lockPages ? lockPages.values.length : 1;
   const fit = Math.min((stageSize.h - 110) / (res.h + pad * 4), (stageSize.w - 80 - (pages - 1) * 32) / (pages * (res.w + pad * 4)));
   const scale = zoom === 'fit' ? Math.max(0.08, fit) : zoom;
   const screenW = res.w * scale;
@@ -178,7 +180,6 @@ export function PreviewView() {
 
   const wallpaper = (wallPath && files.find((f) => f.path === wallPath)) || findWallpaper(files, screen === 'lock');
   const icons = useMemo(() => pickIcons(files), [files]);
-  const hasLockLayout = useHasLockLayout();
   const homeColors = useHomeColors(files);
   const tone = useWallpaperTone(wallpaper, res.h / res.w);
   const clockWidget = useClockWidgetPath();
@@ -189,6 +190,7 @@ export function PreviewView() {
   let label: React.ReactNode;
   let content: React.ReactNode;
   let homePage: ((page: HomePage) => React.ReactNode) | null = null;
+  let lockPage: ((value: number) => React.ReactNode) | null = null;
   if (screen === 'screenshot') {
     if (shot) {
       content = <img className="fill" src={screenshotUrl(shot.id)} alt="Device screenshot" style={{ objectFit: 'contain' }} />;
@@ -240,6 +242,14 @@ export function PreviewView() {
         )}
       </>
     );
+    if (realLock && lockPages) {
+      lockPage = (value) => (
+        <>
+          <PhoneLockScreen width={screenW} height={screenH} font={themeFont} page={{ name: lockPages.name, value }} />
+          <StatusBar w={screenW} left="" font={themeFont} />
+        </>
+      );
+    }
     if (!lock) {
       homePage = (page) => (
         <>
@@ -255,7 +265,7 @@ export function PreviewView() {
     }
     label = realLock ? (
       <span className="badge badge-info" title="The theme's lock screen manifest.xml laid out for this screen size, with the status bar on top. Weather shows sample values; notifications, music and charging states only run on the phone.">
-        Lock screen · as on the phone
+        Lock screen · as on the phone{lockPages ? ` · ${lockPages.values.length} pages (swipe or tap switches them on the phone)` : ''}
       </span>
     ) : (
       <span className="badge badge-info" title="Theme wallpaper, icons, launcher label colours and font on the HyperOS launcher grid, measured from the phone. Only what the theme contains is drawn.">
@@ -314,7 +324,18 @@ export function PreviewView() {
         </div>
         <div ref={stage} className="preview-stage">
           <div style={{ position: 'relative' }}>
-            {homePage ? (
+            {lockPage && lockPages ? (
+              <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start' }}>
+                {lockPages.values.map((value) => (
+                  <div key={value} className={`phone ${frame ? '' : 'no-frame'}`} style={{ ['--s' as string]: s }}>
+                    {frame && <div className="phone-camera" />}
+                    <div className="phone-screen" style={{ width: screenW, height: screenH }}>
+                      {lockPage(value)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : homePage ? (
               <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start' }}>
                 {(['home', 'apps'] as const).map((page) => (
                   <div key={page} className={`phone ${frame ? '' : 'no-frame'}`} style={{ ['--s' as string]: s }}>

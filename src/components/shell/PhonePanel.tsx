@@ -6,7 +6,7 @@ import { Camera, ChevronLeft, ChevronRight, Circle, ExternalLink, LayoutGrid, Lo
 import { resourceUrl, screenshotUrl } from '../../lib/api';
 import { fileName } from '../../lib/paths';
 import { findWallpaper, pickIcons, useClock } from '../views/PreviewView';
-import { PhoneLockScreen, useClockWidgetPath, useHasLockLayout, useMamlSelection } from '../views/MamlPreview';
+import { PhoneLockScreen, useClockWidgetPath, useHasLockLayout, useLockPages, useMamlSelection } from '../views/MamlPreview';
 import { HomeScreen, StatusBar, SystemLockClock, useHomeColors, usePageDots, useWallpaperTone } from '../views/PhoneMock';
 import { TryOnButton } from '../common/TryOnButton';
 import { attachCanvas, startStream, stopStream, streamKey, streamScroll, streamTouch, useMirrorStream } from '../../state/mirrorStream';
@@ -46,7 +46,7 @@ function Frame({ ratio, box, children, camera = true }: { ratio: number; box: { 
   );
 }
 
-function ThemeScreen({ screen, box, ratio, previewIndex }: { screen: Screen; box: { w: number; h: number }; ratio: number; previewIndex: number }) {
+function ThemeScreen({ screen, box, ratio, previewIndex, lockPage }: { screen: Screen; box: { w: number; h: number }; ratio: number; previewIndex: number; lockPage: { name: string; value: number } | null }) {
   const project = useStore((s) => s.project);
   const files = useMemo(() => project?.files ?? [], [project]);
   const icons = useMemo(() => pickIcons(files), [files]);
@@ -89,7 +89,7 @@ function ThemeScreen({ screen, box, ratio, previewIndex }: { screen: Screen; box
   return (
     <Frame ratio={ratio} box={box}>
       {realLock ? (
-        <PhoneLockScreen width={w} height={h} font={themeFont} onPick={openLockPiece} />
+        <PhoneLockScreen width={w} height={h} font={themeFont} onPick={openLockPiece} page={lockPage} />
       ) : (
         <>
           {wallpaper ? (
@@ -182,6 +182,11 @@ export function PhonePanel() {
   const [mode, setMode] = useState<Mode>('theme');
   const [screen, setScreen] = useState<Screen>('lock');
   const [previewIndex, setPreviewIndex] = useState(0);
+  // Lock screens with several pages (a swipe or tap switches them on the phone).
+  const lockPages = useLockPages();
+  const [lockPageIndex, setLockPageIndex] = useState(0);
+  const lockPageCount = lockPages?.values.length ?? 0;
+  const lockPage = lockPages ? { name: lockPages.name, value: lockPages.values[lockPageIndex % lockPageCount] } : null;
   const [capturing, setCapturing] = useState(false);
   const [stageRef, box] = useBox();
   const section = useStore((s) => s.section);
@@ -258,7 +263,7 @@ export function PhonePanel() {
             </button>
           </div>
           <div className="pp-stage" ref={stageRef}>
-            <ThemeScreen screen={screen} box={box} ratio={ratio} previewIndex={previewIndex} />
+            <ThemeScreen screen={screen} box={box} ratio={ratio} previewIndex={previewIndex} lockPage={lockPage} />
           </div>
           <div className="pp-foot">
             {screen === 'previews' && previews.length > 0 ? (
@@ -273,6 +278,21 @@ export function PhonePanel() {
                   {(previewIndex % previews.length) + 1}/{previews.length}
                 </span>
                 <button className="tb-icon" aria-label="Next preview" onClick={() => setPreviewIndex((i) => (i + 1) % previews.length)}>
+                  <ChevronRight />
+                </button>
+              </div>
+            ) : screen === 'lock' && lockPageCount > 1 ? (
+              <div className="pp-pager">
+                <button className="tb-icon" aria-label="Previous lock screen page" onClick={() => setLockPageIndex((i) => (i - 1 + lockPageCount) % lockPageCount)}>
+                  <ChevronLeft />
+                </button>
+                <span className="ellipsis grow" title="This lock screen has several pages; on the phone a swipe or tap switches between them.">
+                  Lock screen page
+                </span>
+                <span className="faint">
+                  {(lockPageIndex % lockPageCount) + 1}/{lockPageCount}
+                </span>
+                <button className="tb-icon" aria-label="Next lock screen page" onClick={() => setLockPageIndex((i) => (i + 1) % lockPageCount)}>
                   <ChevronRight />
                 </button>
               </div>

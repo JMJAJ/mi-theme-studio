@@ -163,6 +163,8 @@ function place(el: Element, ctx: Ctx, anim: Anim): CSSProperties {
   else if (scaled) style.transformOrigin = '0 0';
   const alpha = (has('alpha') ? n('alpha') : 255) * (anim.alpha === undefined ? 1 : anim.alpha / 255);
   if (alpha < 255) style.opacity = Math.min(1, Math.max(0, alpha / 255));
+  const blur = has('blur') ? n('blur') : 0;
+  if (blur > 0) style.filter = `blur(${blurPx(blur)}px)`;
   return style;
 }
 
@@ -190,6 +192,138 @@ function imageSource(el: Element, ctx: Ctx, anim: Anim) {
   return src;
 }
 
+// ---------- layers and blending ----------
+
+/** Android PorterDuff.Mode by ordinal (MAML's xfermodeNum) → canvas composite operation. */
+const XFER_NUM: (GlobalCompositeOperation | null)[] = [null, 'copy', null, 'source-over', 'destination-over', 'source-in', 'destination-in', 'source-out', 'destination-out', 'source-atop', 'destination-atop', 'xor', 'darken', 'lighten', 'multiply', 'screen', 'lighter', 'overlay'];
+const XFER_NAME: Record<string, GlobalCompositeOperation> = { src: 'copy', src_over: 'source-over', dst_over: 'destination-over', src_in: 'source-in', dst_in: 'destination-in', src_out: 'source-out', dst_out: 'destination-out', src_atop: 'source-atop', dst_atop: 'destination-atop', xor: 'xor', darken: 'darken', lighten: 'lighten', multiply: 'multiply', screen: 'screen', add: 'lighter', overlay: 'overlay' };
+
+/** How a piece is blended into its layer, and its blur, as data attributes the layer reads. */
+function fx(el: Element, ctx: Ctx): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (el.hasAttribute('xfermodeNum')) out['data-xf'] = XFER_NUM[Math.trunc(evalNumber(el.getAttribute('xfermodeNum'), ctx.vars, 3))] ?? 'skip';
+  else if (el.hasAttribute('xfermode')) out['data-xf'] = XFER_NAME[(el.getAttribute('xfermode') ?? '').toLowerCase()] ?? 'source-over';
+  const blur = el.hasAttribute('blur') ? evalNumber(el.getAttribute('blur'), ctx.vars) : 0;
+  if (blur > 0) out['data-blur'] = String(blur);
+  return out;
+}
+/** MAML blur radius → CSS / canvas blur (standard deviation). */
+const blurPx = (radius: number) => radius / 2.5;
+/** MAML's built-in font names (mipro-demibold, miui-medium…) → a weight. */
+function fontWeightOf(el: Element, bold: boolean) {
+  const f = (el.getAttribute('fontFamily') ?? '').toLowerCase();
+  if (bold || /heavy|black/.test(f)) return 700;
+  if (/semi|demi/.test(f)) return 600;
+  if (/bold/.test(f)) return 700;
+  if (/medium/.test(f)) return 500;
+  if (/light|thin/.test(f)) return 300;
+  return 400;
+}
+
+/**
+ * A group drawn into its own layer (layered="true", or holding pieces with an
+ * xfermode), as the phone does: the pieces are composited in order onto a
+ * transparent canvas with their Porter-Duff mode, so a blurred <Wallpaper
+ * xfermodeNum="5"/> shows only inside the digits drawn before it. The pieces
+ * stay in the page, invisible, so they can still be clicked and outlined.
+ */
+function LayeredGroup({ style, mk, tag, children }: { style: CSSProperties; mk: number; tag: string; children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  const pieces = useRef<HTMLDivElement>(null);
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const [, setLoaded] = useState(0);
+  useLayoutEffect(() => {
+    const host = box.current;
+    const wrap = pieces.current;
+    const cv = canvas.current;
+    const root = host?.closest<HTMLElement>('.maml-canvas');
+    if (!host || !wrap || !cv || !root) return;
+    const W = root.offsetWidth;
+    const H = root.offsetHeight;
+    if (cv.width !== W) cv.width = W;
+    if (cv.height !== H) cv.height = H;
+    // The canvas covers the whole screen, from the screen's origin.
+    const rr = root.getBoundingClientRect();
+    const k = rr.width / W || 1;
+    const hr = host.getBoundingClientRect();
+    cv.style.left = `${-(hr.left - rr.left) / k}px`;
+    cv.style.top = `${-(hr.top - rr.top) / k}px`;
+    cv.style.width = `${W}px`;
+    cv.style.height = `${H}px`;
+    const g = cv.getContext('2d');
+    if (!g) return;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalCompositeOperation = 'source-over';
+    g.clearRect(0, 0, W, H);
+    const cr = cv.getBoundingClientRect();
+    const ck = cr.width / W || 1;
+    const waiting: HTMLImageElement[] = [];
+    const alphaOf = (n: HTMLElement) => {
+      let a = 1;
+      for (let e: HTMLElement | null = n; e && e !== wrap; e = e.parentElement) if (e.style.opacity !== '') a *= Number(e.style.opacity);
+      return a;
+    };
+    for (const n of Array.from(wrap.querySelectorAll<HTMLElement>('img, [data-mt="Text"], [data-mt="DateTime"], [data-mt="Rectangle"], [data-mt="Circle"], [data-mt="Ellipse"]'))) {
+      const piece = n.closest<HTMLElement>('[data-mk]') ?? n;
+      const op = (piece.dataset.xf ?? 'source-over') as GlobalCompositeOperation | 'skip';
+      if (op === 'skip') continue;
+      const r = n.getBoundingClientRect();
+      const x = (r.left - cr.left) / ck;
+      const y = (r.top - cr.top) / ck;
+      const w = r.width / ck;
+      const h = r.height / ck;
+      const blur = Number(piece.dataset.blur ?? 0);
+      const wall = piece.dataset.mt === 'Wallpaper';
+      g.save();
+      g.globalAlpha = alphaOf(n);
+      g.filter = blur > 0 ? `blur(${blurPx(blur)}px)` : 'none';
+      // Android blends only where a piece draws; keep canvas modes from clearing the rest.
+      if (!wall && op !== 'source-over') {
+        g.beginPath();
+        g.rect(x, y, w, h);
+        g.clip();
+      }
+      g.globalCompositeOperation = op;
+      if (n.tagName === 'IMG') {
+        const img = n as HTMLImageElement;
+        if (!img.complete || !img.naturalWidth) waiting.push(img);
+        else if (wall) {
+          // The wallpaper covers the screen, centred.
+          const s = Math.max(W / img.naturalWidth, H / img.naturalHeight);
+          g.drawImage(img, (W - img.naturalWidth * s) / 2, (H - img.naturalHeight * s) / 2, img.naturalWidth * s, img.naturalHeight * s);
+        } else g.drawImage(img, x, y, w, h);
+      } else if (n.dataset.mt === 'Text' || n.dataset.mt === 'DateTime') {
+        const cs = getComputedStyle(n);
+        g.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+        g.fillStyle = cs.color;
+        g.textBaseline = 'middle';
+        g.fillText(n.textContent ?? '', x, y + h / 2);
+      } else {
+        const cs = getComputedStyle(n);
+        g.fillStyle = cs.backgroundColor;
+        g.beginPath();
+        if (n.dataset.mt === 'Rectangle') g.roundRect(x, y, w, h, parseFloat(cs.borderTopLeftRadius) || 0);
+        else g.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+        g.fill();
+      }
+      g.restore();
+    }
+    if (waiting.length) {
+      const again = () => setLoaded((v) => v + 1);
+      waiting.forEach((img) => img.addEventListener('load', again, { once: true }));
+      return () => waiting.forEach((img) => img.removeEventListener('load', again));
+    }
+  });
+  return (
+    <div ref={box} data-mk={mk} data-mt={tag} style={style}>
+      <canvas ref={canvas} style={{ position: 'absolute', pointerEvents: 'none' }} />
+      <div ref={pieces} style={{ opacity: 0 }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 const digitFile = (base: string, ch: string) => base.replace(/(\.[a-z0-9]+)$/i, `_${/[0-9]/.test(ch) ? ch : ch === '-' ? 'minus' : 'dot'}$1`);
 
 function renderNodes(parent: Element, ctx: Ctx): ReactNode[] {
@@ -202,12 +336,24 @@ function renderNodes(parent: Element, ctx: Ctx): ReactNode[] {
     const key = mk;
     const anim = animate(el, ctx);
     if (tag === 'Wallpaper') {
-      if (ctx.wallpaper) out.push(<img key={key} data-mk={mk} data-mt={tag} src={resourceUrl(ctx.slot, ctx.wallpaper.path, ctx.wallpaper.rev)} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} draggable={false} />);
+      const b = el.hasAttribute('blur') ? evalNumber(el.getAttribute('blur'), ctx.vars) : 0;
+      const a = el.hasAttribute('alpha') ? Math.min(1, Math.max(0, evalNumber(el.getAttribute('alpha'), ctx.vars, 255) / 255)) : 1;
+      if (ctx.wallpaper) out.push(<img key={key} data-mk={mk} data-mt={tag} {...fx(el, ctx)} src={resourceUrl(ctx.slot, ctx.wallpaper.path, ctx.wallpaper.rev)} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: b > 0 ? `blur(${blurPx(b)}px)` : undefined, opacity: a < 1 ? a : undefined }} draggable={false} />);
       continue;
     }
     if (CONTAINERS.has(tag)) {
+      if (el.getAttribute('layered') === 'true' || Array.from(el.children).some((c) => c.hasAttribute('xfermodeNum') || c.hasAttribute('xfermode'))) {
+        out.push(
+          <LayeredGroup key={key} mk={mk} tag={tag} style={place(el, ctx, anim)}>
+            {renderNodes(el, ctx)}
+          </LayeredGroup>,
+        );
+        continue;
+      }
+      // A Button's x / y / w / h is only its touch area: what it draws is placed in the parent's coordinates.
+      const style = tag === 'Button' ? { ...place(el, ctx, anim), left: 0, top: 0, width: undefined, height: undefined, transform: undefined } : place(el, ctx, anim);
       out.push(
-        <div key={key} data-mk={mk} data-mt={tag} style={place(el, ctx, anim)}>
+        <div key={key} data-mk={mk} data-mt={tag} style={style}>
           {renderNodes(el, ctx)}
         </div>,
       );
@@ -216,7 +362,7 @@ function renderNodes(parent: Element, ctx: Ctx): ReactNode[] {
     if (tag === 'Image') {
       const src = imageSource(el, ctx, anim);
       const file = src ? fileFor(ctx, src) : undefined;
-      if (file) out.push(<img key={key} data-mk={mk} data-mt={tag} src={resourceUrl(ctx.slot, file.path, file.rev)} alt="" style={place(el, ctx, anim)} draggable={false} />);
+      if (file) out.push(<img key={key} data-mk={mk} data-mt={tag} {...fx(el, ctx)} src={resourceUrl(ctx.slot, file.path, file.rev)} alt="" style={place(el, ctx, anim)} draggable={false} />);
       continue;
     }
     if (tag === 'Video') {
@@ -233,10 +379,12 @@ function renderNodes(parent: Element, ctx: Ctx): ReactNode[] {
       if (stroke) style.border = `${evalNumber(el.getAttribute('weight'), ctx.vars, 1)}px solid ${argb(stroke)}`;
       if (tag === 'Circle') {
         const r = evalNumber(el.getAttribute('r'), ctx.vars);
+        // x / y is the centre; align / alignV do not move a circle.
+        if (typeof style.transform === 'string') style.transform = style.transform.replace(/translate\([^)]*\)\s*/, '') || undefined;
         Object.assign(style, { width: r * 2, height: r * 2, borderRadius: '50%', marginLeft: -r, marginTop: -r });
       } else if (tag === 'Ellipse') style.borderRadius = '50%';
       else if (el.hasAttribute('cornerRadius')) style.borderRadius = evalNumber((el.getAttribute('cornerRadius') ?? '0').split(',')[0], ctx.vars);
-      out.push(<div key={key} data-mk={mk} data-mt={tag} style={style} />);
+      out.push(<div key={key} data-mk={mk} data-mt={tag} {...fx(el, ctx)} style={style} />);
       continue;
     }
     if (tag === 'Arc') {
@@ -290,7 +438,7 @@ function renderNodes(parent: Element, ctx: Ctx): ReactNode[] {
       Object.assign(style, {
         fontSize: evalNumber(el.getAttribute('size'), ctx.vars, 18),
         color: argb(el.getAttribute('color')),
-        fontWeight: el.getAttribute('bold') === 'true' ? 700 : 400,
+        fontWeight: fontWeightOf(el, el.getAttribute('bold') === 'true'),
         whiteSpace: el.getAttribute('multiLine') === 'true' ? 'pre-wrap' : 'nowrap',
         lineHeight: 1.2,
         textAlign: (el.getAttribute('align') as 'left' | 'center' | 'right' | null) ?? 'left',
@@ -298,7 +446,7 @@ function renderNodes(parent: Element, ctx: Ctx): ReactNode[] {
         letterSpacing: el.hasAttribute('spacing') ? evalNumber(el.getAttribute('spacing'), ctx.vars) : undefined,
       });
       out.push(
-        <div key={key} data-mk={mk} data-mt={tag} style={style}>
+        <div key={key} data-mk={mk} data-mt={tag} {...fx(el, ctx)} style={style}>
           {text}
         </div>,
       );
@@ -307,9 +455,9 @@ function renderNodes(parent: Element, ctx: Ctx): ReactNode[] {
     if (tag === 'Time' || tag === 'ImageNumber') {
       // Digit images: time.png → time_0.png … time_9.png and time_dot.png.
       const base = el.getAttribute('src') ?? (tag === 'Time' ? 'time.png' : 'number.png');
-      const text = tag === 'Time' ? formatDate(el.getAttribute('format') ?? 'HH:mm', ctx.now) : String(Math.trunc(evalNumber(el.getAttribute('number') ?? el.getAttribute('numberExp'), ctx.vars)));
+      const text = tag === 'Time' ? formatDate(el.hasAttribute('formatExp') ? evalString(el.getAttribute('formatExp'), ctx.vars) : (el.getAttribute('format') ?? 'HH:mm'), ctx.now) : String(Math.trunc(evalNumber(el.getAttribute('number') ?? el.getAttribute('numberExp'), ctx.vars)));
       out.push(
-        <div key={key} data-mk={mk} data-mt={tag} style={{ ...place(el, ctx, anim), display: 'flex', gap: evalNumber(el.getAttribute('space'), ctx.vars) }}>
+        <div key={key} data-mk={mk} data-mt={tag} {...fx(el, ctx)} style={{ ...place(el, ctx, anim), display: 'flex', gap: evalNumber(el.getAttribute('space'), ctx.vars) }}>
           {[...text].map((ch, j) => {
             const f = fileFor(ctx, digitFile(base, ch));
             return f ? <img key={j} src={resourceUrl(ctx.slot, f.path, f.rev)} alt="" draggable={false} /> : null;
@@ -319,6 +467,73 @@ function renderNodes(parent: Element, ctx: Ctx): ReactNode[] {
       continue;
     }
     ctx.unknown.add(tag);
+  }
+  return out;
+}
+
+/** Plausible data for the phone's content providers, so weather and the like read as on a phone. */
+const SAMPLE_COLUMNS: Record<string, string[]> = {
+  city_name: ['Your city'],
+  weather_type: ['0', '0', '1', '1', '2'],
+  description: ['Clear'],
+  temperature: ['18℃'],
+  temperature_range: ['12℃~21℃'],
+  tmphighs: ['21', '22', '19', '20', '23'],
+  tmplows: ['12', '13', '11', '12', '14'],
+  forecast_type: ['0', '1', '1', '2', '0'],
+  weathernamesfrom: ['Clear', 'Cloudy', 'Cloudy', 'Rain', 'Clear'],
+  aqilevel: ['60'],
+  humidity: ['55'],
+  wind: ['3'],
+  pressure: ['1013'],
+  temperature_unit: ['1'],
+  somatosensory: ['17℃'],
+};
+
+/**
+ * Fills the variables a layout reads from content providers (<VariableBinders>):
+ * weather gets sample values by column, everything else (notifications, music)
+ * stays empty, as on a phone with nothing playing and no notifications.
+ */
+function bindSampleData(root: Element, ctx: Ctx) {
+  for (const binder of Array.from(root.getElementsByTagName('ContentProviderBinder'))) {
+    if (!/weather/i.test(binder.getAttribute('uri') ?? '')) continue;
+    const count = binder.getAttribute('countName');
+    if (count) ctx.vars.set(count, 1);
+    for (const v of Array.from(binder.getElementsByTagName('Variable'))) {
+      const name = v.getAttribute('name');
+      const values = SAMPLE_COLUMNS[v.getAttribute('column') ?? ''];
+      if (!name || !values) continue;
+      const type = v.getAttribute('type') ?? 'string';
+      const val = (x: string) => (/^(int|long|float|double|number)/.test(type) ? Number(x.replace(/[^\d.-]/g, '')) || 0 : x);
+      if (type.endsWith('[]')) values.forEach((x, i) => ctx.vars.set(`${name}[${i}]`, val(x)));
+      ctx.vars.set(name, val(values[0]));
+    }
+    // What the layout works out when the data arrives (air quality wording, icon ids…).
+    for (const trigger of Array.from(binder.children).filter((c) => c.tagName === 'Trigger'))
+      for (const cmd of Array.from(trigger.getElementsByTagName('VariableCommand'))) {
+        const name = cmd.getAttribute('name');
+        if (!name || (cmd.hasAttribute('condition') && evalNumber(cmd.getAttribute('condition'), ctx.vars) <= 0)) continue;
+        const expr = cmd.getAttribute('expression');
+        ctx.vars.set(name, cmd.getAttribute('type') === 'string' ? evalString(expr, ctx.vars) : evalNumber(expr, ctx.vars));
+      }
+  }
+}
+
+/**
+ * The theme's own settings (config.xml next to the manifest: switches, numbers,
+ * choices) at their defaults, as on a phone where nobody changed them.
+ */
+export function configDefaults(text: string | null): [string, string | number][] {
+  if (!text) return [];
+  const doc = new DOMParser().parseFromString(text.replace(/^\uFEFF/, ''), 'text/xml');
+  if (doc.querySelector('parsererror')) return [];
+  const out: [string, string | number][] = [];
+  for (const el of Array.from(doc.querySelectorAll('[id][default]'))) {
+    const id = el.getAttribute('id')!;
+    const raw = el.getAttribute('default') ?? '';
+    const numeric = el.tagName !== 'StringInput' && el.tagName !== 'StringChoice' && raw.trim() !== '' && !Number.isNaN(Number(raw));
+    out.push([id, numeric ? Number(raw) : raw]);
   }
   return out;
 }
@@ -365,6 +580,43 @@ function collectVars(root: Element, ctx: Ctx) {
   }
 }
 
+/**
+ * What the phone does when the screen wakes: the VariableCommands in
+ * <ExternalCommands><Trigger action="init|resume">, each after its delay.
+ * Layouts use them to switch on their resting state (and start intro
+ * animations from `#time`). When playing, commands fire at their delay after
+ * the preview starts; for the still pose the screen woke a while ago.
+ * Returns whether any variable was set.
+ */
+function runWakeCommands(root: Element, ctx: Ctx) {
+  const ext = Array.from(root.children).find((c) => c.tagName === 'ExternalCommands');
+  if (!ext) return false;
+  const now = ctx.now.getTime();
+  const wokeAt = ctx.t === null ? now - 600_000 : now - ctx.t;
+  const cmds: { el: Element; delay: number; i: number }[] = [];
+  let i = 0;
+  for (const trigger of Array.from(ext.children)) {
+    if (trigger.tagName !== 'Trigger' || !/(^|,)\s*(init|resume)\s*(,|$)/.test(trigger.getAttribute('action') ?? '')) continue;
+    for (const el of Array.from(trigger.getElementsByTagName('VariableCommand'))) {
+      const delay = Number(el.getAttribute('delay')) || 0;
+      if (ctx.t === null || delay <= ctx.t) cmds.push({ el, delay, i: i++ });
+    }
+  }
+  if (!cmds.length) return false;
+  cmds.sort((a, b) => a.delay - b.delay || a.i - b.i);
+  const time = ctx.vars.get('time');
+  for (const { el, delay } of cmds) {
+    const name = el.getAttribute('name');
+    if (!name) continue;
+    ctx.vars.set('time', wokeAt + delay);
+    if (el.hasAttribute('condition') && evalNumber(el.getAttribute('condition'), ctx.vars) <= 0) continue;
+    const expr = el.getAttribute('expression');
+    ctx.vars.set(name, el.getAttribute('type') === 'string' ? evalString(expr, ctx.vars) : evalNumber(expr, ctx.vars));
+  }
+  if (time !== undefined) ctx.vars.set('time', time);
+  return true;
+}
+
 // ---------- the hook ----------
 
 /** Manifests of a part, the main one first (the lock screen's advance/manifest.xml). */
@@ -382,7 +634,7 @@ export const useMamlSelection = create<{ path: string | null; ord: number | null
  * (saved or still being typed), any file it draws, the wallpaper or the clock
  * changes, so every edit shows straight away. `animate` plays the animations.
  */
-export function useMamlScene(componentId: string, opts: { path?: string | null; slot?: Slot; animate?: boolean } = {}) {
+export function useMamlScene(componentId: string, opts: { path?: string | null; slot?: Slot; animate?: boolean; ratio?: number } = {}) {
   const slot = opts.slot ?? 'main';
   const snapshot = useStore((s) => (slot === 'ref' ? s.reference : s.project));
   const screen = useStore((s) => (s.selectedSerial ? (s.deviceDetails[s.selectedSerial]?.screenOverride ?? s.deviceDetails[s.selectedSerial]?.screen) : null));
@@ -435,6 +687,22 @@ export function useMamlScene(componentId: string, opts: { path?: string | null; 
     };
   }, [manifest?.path, manifest?.rev, slot]);
 
+  // The theme's settings file next to the manifest (advance/config.xml).
+  const configFile = useMemo(() => (manifest ? projectFiles.find((f) => f.path.toLowerCase() === manifest.path.replace(/manifest\.xml$/i, 'config.xml').toLowerCase()) : undefined), [manifest, projectFiles]);
+  const [configText, setConfigText] = useState<string | null>(null);
+  useEffect(() => {
+    if (!configFile) return setConfigText(null);
+    let cancelled = false;
+    api
+      .fileText(configFile.path, slot)
+      .then((r) => !cancelled && setConfigText(r.text))
+      .catch(() => !cancelled && setConfigText(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [configFile?.path, configFile?.rev, slot]);
+  const config = useMemo(() => configDefaults(configText), [configText]);
+
   const text = draft ?? saved;
   const parsed = useMemo(() => {
     if (text === null) return null;
@@ -456,7 +724,7 @@ export function useMamlScene(componentId: string, opts: { path?: string | null; 
     const root = good.doc.documentElement;
     const lock = root.tagName === 'Lockscreen';
     const sw = Number(root.getAttribute('screenWidth')) || 1080;
-    const phone = screen && screen.width && screen.height ? Math.max(screen.width, screen.height) / Math.min(screen.width, screen.height) : 20 / 9;
+    const phone = opts.ratio && opts.ratio > 1 ? opts.ratio : screen && screen.width && screen.height ? Math.max(screen.width, screen.height) / Math.min(screen.width, screen.height) : 20 / 9;
     const w = lock ? sw : Number(root.getAttribute('width')) || Number(root.getAttribute('w')) || sw;
     const h = lock ? Math.round(sw * phone) : Number(root.getAttribute('height')) || Number(root.getAttribute('h')) || Math.round(sw * 0.46);
     const ctx: Ctx = { vars: systemVars(w, h, now), dir: manifest.path.replace(/manifest\.xml$/i, ''), files, wallpaper: findWallpaper(projectFiles, true), now, t: opts.animate ? t : null, slot, ord: good.ord, unknown: new Set() };
@@ -464,11 +732,15 @@ export function useMamlScene(componentId: string, opts: { path?: string | null; 
       ctx.vars.set('wall.bmp_width', ctx.wallpaper.width ?? w);
       ctx.vars.set('wall.bmp_height', ctx.wallpaper.height ?? h);
     }
+    for (const [id, value] of config) ctx.vars.set(id, value);
+    bindSampleData(root, ctx);
     collectVars(root, ctx);
+    // Variables the wake-up commands set, then everything that depends on them.
+    if (runWakeCommands(root, ctx)) collectVars(root, ctx);
     const nodes = renderNodes(root, ctx);
     const hasWallpaper = lock && root.getElementsByTagName('Wallpaper').length > 0;
     return { w, h, lock, nodes, unknown: [...ctx.unknown], hasWallpaper, wallpaper: ctx.wallpaper, slot, vars: ctx.vars };
-  }, [good, manifest, files, now, t, screen, projectFiles, opts.animate, slot]);
+  }, [good, manifest, files, now, t, screen, projectFiles, opts.animate, opts.ratio, slot, config]);
 
   /** Write a new manifest text: shown at once, then saved (undoable). */
   const apply = async (next: string) => {
@@ -1068,7 +1340,8 @@ export function MamlCanvas({
  * `width` × `height`, animations playing. `onPick` makes its pieces clickable.
  */
 export function PhoneLockScreen({ width, height, font, onPick }: { width: number; height: number; font?: string; onPick?: (path: string, ord: number | null) => void }) {
-  const { scene, manifest } = useMamlScene('lockscreen', { animate: true });
+  // Lay the layout out for this screen's shape, as the phone does (screen_height follows the aspect ratio).
+  const { scene, manifest } = useMamlScene('lockscreen', { animate: true, ratio: width ? Math.round((height / width) * 1e4) / 1e4 : undefined });
   if (!scene || !scene.lock || !width) return null;
   const scale = Math.max(width / scene.w, height / scene.h);
   return (

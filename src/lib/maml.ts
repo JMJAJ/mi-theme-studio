@@ -169,6 +169,12 @@ class Parser {
     }
     if (t.t === 'var') {
       this.i++;
+      // @name[i]: one item of an array variable (binder columns like tmphighs).
+      if (this.take('[')) {
+        const index = Math.trunc(num(this.or()));
+        this.take(']');
+        return this.vars.get(`${t.v}[${index}]`) ?? (t.s ? '' : 0);
+      }
       return this.vars.get(t.v) ?? (t.s ? '' : 0);
     }
     if (t.t === 'id') {

@@ -107,7 +107,7 @@ function DeviceThemeCard({
   );
 }
 
-export function DeviceThemes({ refreshKey, compact = false }: { refreshKey: number; compact?: boolean }) {
+export function DeviceThemes({ refreshKey, compact = false, headless = false }: { refreshKey: number; compact?: boolean; headless?: boolean }) {
   const selectedSerial = useStore((s) => s.selectedSerial);
   const attachedDevices = useStore((s) => s.adb?.devices ?? NO_DEVICES);
   const [themes, setThemes] = useState<CachedDeviceTheme[]>([]);
@@ -209,10 +209,12 @@ export function DeviceThemes({ refreshKey, compact = false }: { refreshKey: numb
         </div>
       ) : (
         <>
+          {!headless && (
           <div className="section-head">
             <h2>Cached themes</h2>
             <span className="muted">{themes.length} on {attachedDevices.find((d) => d.serial === selectedSerial)?.model ?? selectedSerial}</span>
           </div>
+          )}
           <div className="catalog-grid device-theme-grid">
             {themes.map((theme) => (
               <DeviceThemeCard

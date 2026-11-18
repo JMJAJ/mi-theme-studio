@@ -82,7 +82,7 @@ function readConsent() {
   }
 }
 
-function RemoteImage({
+export function RemoteImage({
   src,
   alt,
   className,
@@ -164,7 +164,7 @@ function GifCover({ product, playing }: { product: StoreProduct; playing: boolea
 }
 
 /** Put a download to use in the open theme: pick parts of a theme/font, or place a wallpaper/ringtone. */
-function putToUse(item: DownloadedTheme) {
+export function putToUse(item: DownloadedTheme) {
   // Nothing open yet: this download becomes the theme you work on.
   if (!getState().project) return void A.startFromDownload(item);
   return isPackage(item.kind) ? openSwap({ theme: item }) : openSwap({ media: item });

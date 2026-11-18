@@ -64,7 +64,7 @@ export type DockTab = 'problems' | 'output' | 'adb' | 'build' | 'history';
 export type SideTab = 'files' | 'search' | 'reference';
 
 /** Top-level areas of the app (left rail). */
-export type Section = 'design' | 'files' | 'store' | 'phone' | 'check';
+export type Section = 'design' | 'files' | 'store' | 'library' | 'phone' | 'check';
 
 /** A text range to select once its file is open in an editor. */
 export interface Reveal {

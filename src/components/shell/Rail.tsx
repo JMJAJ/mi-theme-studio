@@ -1,5 +1,5 @@
-// Left rail: the five places a theme author works in.
-import { FolderTree, Keyboard, Palette, PackageCheck, Settings, ShoppingBag, Smartphone, type LucideIcon } from 'lucide-react';
+// Left rail: the places a theme author works in.
+import { FolderTree, Keyboard, Library, Palette, PackageCheck, Settings, ShoppingBag, Smartphone, type LucideIcon } from 'lucide-react';
 import { goTo } from '../../state/actions';
 import { setState, useStore, type Section } from '../../state/store';
 import { useDeviceSummary } from './deviceSummary';
@@ -28,6 +28,7 @@ export function Rail() {
       <RailButton section="design" label="Design" icon={Palette} />
       <RailButton section="files" label="Files" icon={FolderTree} disabled={!project} />
       <RailButton section="store" label="Store" icon={ShoppingBag} />
+      <RailButton section="library" label="Library" icon={Library} />
       <RailButton section="phone" label="Phone" icon={Smartphone} dot={device.ready ? 'ok' : device.tone === 'warn' || device.tone === 'err' ? device.tone : undefined} />
       <RailButton
         section="check"

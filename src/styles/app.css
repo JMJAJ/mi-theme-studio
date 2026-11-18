@@ -805,3 +805,19 @@ button.catalog-card:hover, button.icon-link:hover { border-color: var(--line-str
 /* Find bar: only the box outline lights up, the input inside stays plain */
 .cm-find-field:focus-within { border-color: color-mix(in srgb, var(--accent) 80%, transparent); box-shadow: 0 0 6px rgba(255, 106, 20, 0.28); }
 .cm-find .cm-find-input, .cm-find .cm-find-input:focus, .cm-find .cm-find-input:focus-visible { border: 0 !important; outline: none !important; box-shadow: none !important; background: transparent !important; padding: 0; height: 100%; }
+
+/* Library */
+.lib-head { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+.lib-head h1 { display: flex; align-items: center; gap: 10px; font-size: var(--fs-xl, 22px); }
+.lib-head h1 svg { width: 22px; height: 22px; color: var(--accent); }
+.lib-toolbar { margin-bottom: 18px; flex-wrap: wrap; gap: 8px; padding: 0; border: 0; background: none; }
+.lib-search { position: relative; display: inline-flex; align-items: center; }
+.lib-search svg { position: absolute; left: 9px; width: 14px; height: 14px; color: var(--text-3); pointer-events: none; }
+.lib-search .input { padding-left: 28px; width: 220px; }
+.lib-section { margin-bottom: 26px; }
+.lib-section .section-head h2 { display: flex; align-items: center; gap: 7px; }
+.lib-section .section-head h2 svg { width: 16px; height: 16px; color: var(--text-3); }
+.lib-list .recent-row.is-open { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.lib-open { margin-left: 8px; vertical-align: middle; }
+.lib-empty { padding: 6px 2px; }
+.lib-more { margin-top: 8px; font-size: var(--fs-sm); }

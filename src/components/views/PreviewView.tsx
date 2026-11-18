@@ -10,6 +10,7 @@ import { useDeviceSummary } from '../shell/deviceSummary';
 import { MirrorButton } from '../common/MirrorButton';
 import { themeFontFile, usePackageFont } from '../common/themeFont';
 import { PhoneLockScreen, useHasLockLayout } from './MamlPreview';
+import { HomeScreen, StatusBar, SystemLockClock, useHomeColors, useWallpaperTone } from './PhoneMock';
 
 /** The current time, refreshed every 15 seconds so mock-up clocks keep up. */
 export function useClock() {
@@ -80,7 +81,8 @@ export function pickIcons(files: FileInfo[]) {
   for (const [key, file] of byStem) {
     if (matched.length >= 24) break;
     if (!used.has(key) && key.startsWith('com.')) {
-      matched.push({ file, label: key.split('.').slice(-1)[0] });
+      const last = key.split('.').slice(-1)[0];
+      matched.push({ file, label: last.charAt(0).toUpperCase() + last.slice(1) });
       used.add(key);
     }
   }
@@ -172,9 +174,10 @@ export function PreviewView() {
   const wallpaper = (wallPath && files.find((f) => f.path === wallPath)) || findWallpaper(files, screen === 'lock');
   const icons = useMemo(() => pickIcons(files), [files]);
   const hasLockLayout = useHasLockLayout();
+  const homeColors = useHomeColors(files);
+  const tone = useWallpaperTone(wallpaper, res.h / res.w);
   const now = useClock();
   const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-  const date = now.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
 
   let label: React.ReactNode;
   let content: React.ReactNode;
@@ -219,51 +222,24 @@ export function PreviewView() {
         ) : (
           <div className="fill" style={{ position: 'absolute', inset: 0, background: 'linear-gradient(160deg, #2b2f3a, #141519)' }} />
         )}
-        <div className="mock-status" style={{ fontSize: 12 * s, color: '#fff', fontFamily: themeFont }}>
-          <span>{time}</span>
-          <span>▮▮▮ ◔ 87%</span>
-        </div>
-        {realLock ? null : lock ? (
-          <div className="mock-clock" style={{ color: '#fff', fontFamily: themeFont }}>
-            <div className="t" style={{ fontSize: 74 * s }}>{time}</div>
-            <div style={{ fontSize: 14 * s, marginTop: 6 * s }}>{date}</div>
-          </div>
-        ) : (
+        <StatusBar w={screenW} left={lock ? '' : time} font={themeFont} dark={!realLock && tone.top} />
+        {lock ? (
           <>
-            <div className="mock-icons" style={{ rowGap: 18 * s }}>
-              {icons.slice(4, 24).map((icon) => (
-                <div key={icon.file.path} className="mock-icon" title={icon.file.path}>
-                  <div className="img">
-                    <img src={resourceUrl('main', icon.file.path, icon.file.rev)} alt="" loading="lazy" />
-                  </div>
-                  <div className="lbl" style={{ fontSize: 10.5 * s }}>{icon.label}</div>
-                </div>
-              ))}
-            </div>
-            <div className="mock-dock">
-              {icons.slice(0, 4).map((icon) => (
-                <div key={icon.file.path} className="mock-icon">
-                  <div className="img">
-                    <img src={resourceUrl('main', icon.file.path, icon.file.rev)} alt="" loading="lazy" />
-                  </div>
-                </div>
-              ))}
-            </div>
+            {!realLock && <SystemLockClock w={screenW} now={now} font={themeFont} dark={tone.top} />}
           </>
+        ) : (
+          <HomeScreen w={screenW} h={screenH} icons={icons} font={themeFont} tone={tone} colors={homeColors} />
         )}
       </>
     );
-    label = (
-      realLock ? (
-        <span className="badge badge-info" title="Drawn from the theme's lock screen manifest.xml at the current time. Animations, touch and live data (weather, notifications, music) only run on the phone.">
-          Lock screen layout · still preview
-        </span>
-      ) : (
-        <span className="badge badge-warn" title="Wallpaper and icon images from the package placed on a generic layout. System UI resources are not rendered.">
-          Mockup · {wallpaper ? fileName(wallpaper.path) : 'no wallpaper'}
-          {!lock ? ` · ${icons.length} icons` : ' · no lock screen layout in this theme'}
-        </span>
-      )
+    label = realLock ? (
+      <span className="badge badge-info" title="The theme's lock screen manifest.xml laid out for this screen size, with the status bar on top. Weather shows sample values; notifications, music and charging states only run on the phone.">
+        Lock screen · as on the phone
+      </span>
+    ) : (
+      <span className="badge badge-info" title="Theme wallpaper, icons, launcher label colours and font on the HyperOS launcher grid, measured from the phone. Only what the theme contains is drawn.">
+        {lock ? 'Lock screen · system clock (theme has no lock screen layout)' : `Home screen · ${Math.min(20, icons.length)} theme icons`}
+      </span>
     );
   }
 
@@ -273,10 +249,10 @@ export function PreviewView() {
         <div className="toolbar">
           <div className="segmented" role="group" aria-label="Preview mode">
             <button aria-pressed={screen === 'home'} onClick={() => setScreen('home')} disabled={!project}>
-              Home mockup
+              Home screen
             </button>
             <button aria-pressed={screen === 'lock'} onClick={() => setScreen('lock')} disabled={!project}>
-              Lock mockup
+              Lock screen
             </button>
             <button aria-pressed={screen === 'previews'} onClick={() => setScreen('previews')} disabled={!project}>
               Package previews{previews.length ? ` (${previews.length})` : ''}
@@ -359,7 +335,7 @@ export function PreviewView() {
               <p className="muted">No wallpaper/ images in this package.</p>
             )}
             <p className="faint" style={{ marginTop: 10, fontSize: 12.5, lineHeight: 1.5 }}>
-              The mockup places package images on a generic layout. It does not run lock screen MAML, theme fonts or system UI overlays, so the phone will look different.
+              Only what the theme contains is drawn, laid out as HyperOS does at the chosen resolution, with the theme's font and launcher label colours. Pick the connected phone's resolution to match it exactly.
             </p>
           </div>
         )}

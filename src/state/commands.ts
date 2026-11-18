@@ -106,6 +106,7 @@ export const COMMANDS: Command[] = [
   { id: 'go.store', group: 'Go', label: 'Theme store', shortcut: 'Ctrl+3', run: () => A.goTo('store'), global: true },
   { id: 'go.phone', group: 'Go', label: 'Phone', shortcut: 'Ctrl+4', run: () => A.goTo('phone'), global: true },
   { id: 'go.check', group: 'Go', label: 'Check & export', shortcut: 'Ctrl+5', run: () => A.goTo('check'), global: true },
+  { id: 'go.library', group: 'Go', label: 'Library', shortcut: 'Ctrl+6', run: () => A.goTo('library'), global: true },
   { id: 'view.phone', group: 'View', label: 'Toggle phone preview', shortcut: 'Ctrl+Alt+P', run: () => updateLayout({ phone: !getState().layout.phone }), global: true },
 
   // View

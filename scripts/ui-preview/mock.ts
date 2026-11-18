@@ -40,6 +40,13 @@ mockIPC((cmd, args) => {
   switch (cmd) {
     case 'app_info':
       return { version: '0.3.0', dataDir: 'C:/Users/me/AppData/Roaming/mi-theme-studio', recovery: null, settings: { adbPath: null, recent: [{ name: 'Glass Flower.mtz', path: 'C:/Themes/Glass Flower.mtz', openedAtMs: Date.now() }], autosaveEnabled: true, autosaveIntervalSeconds: 60, backupsEnabled: true } };
+    case 'file_text': {
+      // Text files straight from the fixture, so layouts (lock screen MAML, theme_values.xml) draw here too.
+      const { path } = args as { path: string };
+      return fetch(`/__res/main/${encodeURIComponent(path)}`)
+        .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`No such file: ${path}`))))
+        .then((text) => ({ path, text, lossy: false, bom: false, rev: 0 }));
+    }
     case 'project_snapshot':
       return withProject ? fixture : null;
     case 'metadata_get':

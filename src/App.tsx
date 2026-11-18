@@ -6,6 +6,7 @@ import { Rail } from './components/shell/Rail';
 import { PhonePanel } from './components/shell/PhonePanel';
 import { DesignView } from './components/views/DesignView';
 import { CatalogView } from './components/views/CatalogView';
+import { LibraryView } from './components/views/LibraryView';
 import { PhoneView } from './components/views/PhoneView';
 import { BuildView } from './components/views/BuildView';
 import { StatusBar } from './components/shell/StatusBar';
@@ -269,6 +270,8 @@ function SectionView() {
       return project ? <FilesSection /> : <DesignView />;
     case 'store':
       return <CatalogView />;
+    case 'library':
+      return <LibraryView />;
     case 'phone':
       return <PhoneView />;
     case 'check':

@@ -30,10 +30,10 @@ describe('mamlEdit', () => {
 });
 
 describe('lenientXml', () => {
-  it('keeps the first of a repeated attribute and escapes a bare &', () => {
+  it('keeps the last value of a repeated attribute and escapes a bare &', () => {
     const src = '<Lockscreen><Rectangle alpha="240" w="8" alpha="120" visibility="#a&#b"/><Text text="a &amp; b"/></Lockscreen>';
     const out = lenientXml(src);
-    expect(out).toBe('<Lockscreen><Rectangle alpha="240" w="8" visibility="#a&amp;#b"/><Text text="a &amp; b"/></Lockscreen>');
+    expect(out).toBe('<Lockscreen><Rectangle alpha="120" w="8" visibility="#a&amp;#b"/><Text text="a &amp; b"/></Lockscreen>');
   });
 
   it('separates attributes written without a space', () => {

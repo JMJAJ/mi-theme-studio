@@ -644,3 +644,4 @@ button.mock-clock.pp-click { color: #fff; text-align: center; }
 .maml-count { position: absolute; left: 0; top: 0; transform: translateY(-100%) scale(var(--inv)); transform-origin: 0 100%; margin-top: -4px; padding: 1px 6px; border-radius: 4px; background: #ff6a14; color: #fff; font: 600 11px/16px var(--font); white-space: nowrap; }
 .mi-row-multi { display: flex; align-items: center; gap: 2px; padding: 0 4px 0 0; }
 .mi-row-multi .mi-row-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.pm-icon.pp-click:hover img, .pm-status.pp-click:hover { outline: 2px dashed color-mix(in srgb, var(--accent) 75%, transparent); outline-offset: 2px; border-radius: 8px; }

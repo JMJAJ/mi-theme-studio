@@ -206,6 +206,7 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
   const isXml = file.kind === 'xml';
   const readOnly = slot === 'ref';
   const view = useRef<EditorView | null>(null);
+  const [editor, setEditor] = useState<EditorView | null>(null);
   const reveal = useStore((s) => (slot === 'main' && s.reveal?.path === file.path ? s.reveal : null));
 
   useEffect(() => {
@@ -226,11 +227,26 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [file.path, file.rev, slot]);
 
-  // Select a search match once the text is loaded.
+  // Select a search match / problem once the text is loaded AND the editor exists.
+  // CodeMirror creates its view a render after the text arrives, so wait for it,
+  // and handle each reveal once so a later reload does not jump back.
+  const handledReveal = useRef(0);
+  const revealTimers = useRef<{ frame: number; timer: number } | null>(null);
+  useEffect(
+    () => () => {
+      if (revealTimers.current) {
+        window.cancelAnimationFrame(revealTimers.current.frame);
+        window.clearTimeout(revealTimers.current.timer);
+      }
+    },
+    [],
+  );
   useEffect(() => {
-    const v = view.current;
-    if (!reveal || !v || !loaded) return;
+    const v = editor;
+    if (!reveal || !v || !loaded || handledReveal.current === reveal.nonce) return;
     const doc = v.state.doc;
+    if (doc.length === 0 && loaded.text.length > 0) return; // value not applied yet
+    handledReveal.current = reveal.nonce;
     if (reveal.line < 1 || reveal.line > doc.lines) return;
     const line = doc.line(reveal.line);
     // Columns are in characters; CodeMirror positions are UTF-16 units.
@@ -240,13 +256,18 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
     // Clear first and re-add next frame, so revealing the same line again restarts the flash.
     v.dispatch({ selection: { anchor: from, head: Math.min(from + hit.length, doc.length) }, effects: [EditorView.scrollIntoView(from, { y: 'center' }), setRevealLine.of(null)] });
     v.focus();
-    const frame = window.requestAnimationFrame(() => view.current?.dispatch({ effects: setRevealLine.of(line.from) }));
-    const timer = window.setTimeout(() => view.current?.dispatch({ effects: setRevealLine.of(null) }), REVEAL_MS);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.clearTimeout(timer);
+    if (revealTimers.current) {
+      window.cancelAnimationFrame(revealTimers.current.frame);
+      window.clearTimeout(revealTimers.current.timer);
+    }
+    revealTimers.current = {
+      frame: window.requestAnimationFrame(() => {
+        // Re-scroll too: layout can settle after the first frame on a freshly opened file.
+        v.dispatch({ effects: [setRevealLine.of(line.from), EditorView.scrollIntoView(from, { y: 'center' })] });
+      }),
+      timer: window.setTimeout(() => v.dispatch({ effects: setRevealLine.of(null) }), REVEAL_MS),
     };
-  }, [reveal?.nonce, loaded]);
+  }, [reveal?.nonce, loaded, editor, text]);
 
   const [syntax, setSyntax] = useState<string | null>(null);
   useEffect(() => {
@@ -365,6 +386,7 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
           extensions={extensions}
           onCreateEditor={(v) => {
             view.current = v;
+            setEditor(v);
           }}
           basicSetup={BASIC_SETUP}
           onChange={onChange}

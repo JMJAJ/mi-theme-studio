@@ -33,9 +33,17 @@ async function revealIssueLine(path: string, message: string) {
   const info = useStore.getState().fileIndex.get(path);
   if (!info || (info.kind !== 'xml' && info.kind !== 'text')) return;
   const lineNo = /\bline (\d+)/i.exec(message);
+  const byteAt = /\bat byte (\d+)/i.exec(message);
   const token = /`([^`]+)`/.exec(message)?.[1] ?? /“([^”]+)”/.exec(message)?.[1];
   try {
     if (lineNo) return A.revealInFile(path, Number(lineNo[1]), 1, 0);
+    if (byteAt) {
+      // Syntax errors point at a UTF-8 byte offset in the BOM-less text.
+      const { text } = await api.fileText(path);
+      const at = charIndexOfByte(text, Number(byteAt[1]));
+      const { line, column } = lineOf(text, at);
+      return A.revealInFile(path, line, column, 0);
+    }
     if (!token) return;
     const { text } = await api.fileText(path);
     // Prefer the name inside quotes (an attribute value), then anywhere.
@@ -47,6 +55,18 @@ async function revealIssueLine(path: string, message: string) {
   } catch {
     // The file opens either way; only the jump is skipped.
   }
+}
+
+/** The UTF-16 index in `text` where UTF-8 byte offset `byte` falls. */
+function charIndexOfByte(text: string, byte: number) {
+  let bytes = 0;
+  let i = 0;
+  while (i < text.length && bytes < byte) {
+    const cp = text.codePointAt(i)!;
+    bytes += cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4;
+    i += cp > 0xffff ? 2 : 1;
+  }
+  return i;
 }
 
 export function ProblemList({ limit }: { limit?: number }) {

@@ -175,7 +175,8 @@ const highlight = syntaxHighlighting(
   ]),
 );
 
-// The line a search hit or a problem pointed at stays highlighted until you edit.
+// The line a search hit or a problem pointed at flashes for a few seconds (or until you edit).
+const REVEAL_MS = 3000;
 const setRevealLine = StateEffect.define<number | null>();
 const revealLineField = StateField.define<DecorationSet>({
   create: () => Decoration.none,
@@ -236,8 +237,15 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
     const prefix = [...line.text].slice(0, reveal.column - 1).join('');
     const hit = [...line.text.slice(prefix.length)].slice(0, reveal.length).join('');
     const from = line.from + prefix.length;
-    v.dispatch({ selection: { anchor: from, head: Math.min(from + hit.length, doc.length) }, effects: [EditorView.scrollIntoView(from, { y: 'center' }), setRevealLine.of(line.from)] });
+    // Clear first and re-add next frame, so revealing the same line again restarts the flash.
+    v.dispatch({ selection: { anchor: from, head: Math.min(from + hit.length, doc.length) }, effects: [EditorView.scrollIntoView(from, { y: 'center' }), setRevealLine.of(null)] });
     v.focus();
+    const frame = window.requestAnimationFrame(() => view.current?.dispatch({ effects: setRevealLine.of(line.from) }));
+    const timer = window.setTimeout(() => view.current?.dispatch({ effects: setRevealLine.of(null) }), REVEAL_MS);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
   }, [reveal?.nonce, loaded]);
 
   const [syntax, setSyntax] = useState<string | null>(null);

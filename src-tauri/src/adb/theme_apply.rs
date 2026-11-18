@@ -826,6 +826,16 @@ impl Adb {
             steps.push("Wrote the AOD full-apply manifest and category".into());
             self.trigger_aod(serial)?;
             steps.push("Asked AOD to copy the files, set wallpaper and reload the theme".into());
+            if lock_xml {
+                self.set_aod_style(
+                    serial,
+                    &aod_lockscreen_manifest(has_lock_wallpaper),
+                    staging,
+                    cancel.clone(),
+                )?;
+                self.trigger_aod(serial)?;
+                steps.push("Installed the MAML lock-screen archive and wallpaper in a second AOD pass".into());
+            }
             let _ = self.shell(
                 serial,
                 &["sleep 15; am force-stop com.android.systemui; am force-stop com.miui.home; am force-stop com.mi.android.globallauncher; am force-stop com.android.settings; am force-stop com.android.contacts; am force-stop com.android.mms; am force-stop com.android.deskclock; am start -a android.intent.action.MAIN -c android.intent.category.HOME; sleep 5; settings put system clock_changed_time_2x4 \"$(date +%s%3N)\"; sleep 2"],
@@ -1136,6 +1146,82 @@ fn aod_full_manifest(
         "<IntentCommand type=\"broadcast\" action=\"miui.intent.action.ACTION_THEME_CHANGED\"/>".to_string(),
     );
     commands.extend(aod_blocker_commands());
+    let body = commands
+        .iter()
+        .map(|command| format!("        {command}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\
+<Aod frameRate=\"30\" screenWidth=\"1080\" version=\"1\">\n\
+  <Image name=\"mts_img\" x=\"0\" y=\"0\" w=\"1\" h=\"1\" src=\"drawable\">\n\
+    <Triggers>\n\
+      <Trigger action=\"init\">\n{body}\n      </Trigger>\n\
+    </Triggers>\n\
+  </Image>\n\
+</Aod>\n"
+    )
+}
+
+/// A separate short AOD pass for the lockscreen. Keeping it out of the long
+/// full-apply manifest makes the copy deterministic: the MAML lock archive,
+/// lock.xml type=maml and the MAML wallpaper slot are installed together, then
+/// the caller reboots once so the wallpaper service reloads lock.xml.
+fn aod_lockscreen_manifest(with_wallpaper: bool) -> String {
+    let mut commands = Vec::new();
+    commands.push(os_cmd("mkdir", &[(LOCK_MAML_DIR, false), ("511", true)]));
+    commands.push(os_cmd(
+        "unlink",
+        &[("/data/system/theme_magic/users/0/wallpaper/data/.mts_bak_lock.xml", false)],
+    ));
+    commands.push(os_cmd(
+        "rename",
+        &[
+            (LOCK_XML_PATH, false),
+            ("/data/system/theme_magic/users/0/wallpaper/data/.mts_bak_lock.xml", false),
+        ],
+    ));
+    commands.push(format!(
+        "<MethodCommand class=\"android.system.Os\" method=\"open\" params=\"'{}',0,0\" paramTypes=\"java.lang.String,int,int\" return=\"mts_lock2_in\" returnType=\"string\"/>",
+        LOCK_XML_STAGING
+    ));
+    commands.push(format!(
+        "<MethodCommand class=\"android.system.Os\" method=\"open\" params=\"'{}',577,438\" paramTypes=\"java.lang.String,int,int\" return=\"mts_lock2_out\" returnType=\"string\"/>",
+        LOCK_XML_PATH
+    ));
+    commands.push(
+        "<MethodCommand class=\"android.os.FileUtils\" method=\"copy\" params=\"'mts_lock2_in','mts_lock2_out'\" paramTypes=\"java.io.FileDescriptor,java.io.FileDescriptor\"/>".to_string(),
+    );
+    commands.push(
+        "<MethodCommand class=\"android.system.Os\" method=\"close\" params=\"'mts_lock2_in'\" paramTypes=\"java.io.FileDescriptor\"/>".to_string(),
+    );
+    commands.push(
+        "<MethodCommand class=\"android.system.Os\" method=\"close\" params=\"'mts_lock2_out'\" paramTypes=\"java.io.FileDescriptor\"/>".to_string(),
+    );
+    commands.push(os_cmd("chmod", &[(LOCK_XML_PATH, false), ("438", true)]));
+    if with_wallpaper {
+        commands.push(format!(
+            "<MethodCommand class=\"android.system.Os\" method=\"open\" params=\"'{}/wallpaper/default_lock_wallpaper.jpg',0,0\" paramTypes=\"java.lang.String,int,int\" return=\"mts_lockwp2_in\" returnType=\"string\"/>",
+            AOD_THEME_STAGING
+        ));
+        commands.push(format!(
+            "<MethodCommand class=\"android.system.Os\" method=\"open\" params=\"'{}',577,436\" paramTypes=\"java.lang.String,int,int\" return=\"mts_lockwp2_out\" returnType=\"string\"/>",
+            LOCK_MAML_WALLPAPER
+        ));
+        commands.push(
+            "<MethodCommand class=\"android.os.FileUtils\" method=\"copy\" params=\"'mts_lockwp2_in','mts_lockwp2_out'\" paramTypes=\"java.io.FileDescriptor,java.io.FileDescriptor\"/>".to_string(),
+        );
+        commands.push(
+            "<MethodCommand class=\"android.system.Os\" method=\"close\" params=\"'mts_lockwp2_in'\" paramTypes=\"java.io.FileDescriptor\"/>".to_string(),
+        );
+        commands.push(
+            "<MethodCommand class=\"android.system.Os\" method=\"close\" params=\"'mts_lockwp2_out'\" paramTypes=\"java.io.FileDescriptor\"/>".to_string(),
+        );
+        commands.push(os_cmd("chmod", &[(LOCK_MAML_WALLPAPER, false), ("436", true)]));
+    }
+    commands.push(
+        "<MethodCommand class=\"android.content.res.MiuiConfiguration\" method=\"sendThemeConfigurationChangeMsg\" params=\"268466329\" paramTypes=\"long\"/>".to_string(),
+    );
     let body = commands
         .iter()
         .map(|command| format!("        {command}"))

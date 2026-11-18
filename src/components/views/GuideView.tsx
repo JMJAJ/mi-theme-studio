@@ -5,9 +5,8 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, FlaskConical, LayoutGrid, Search, X } from 'lucide-react';
 import { CopyButton, Formula, XmlCode } from './GuideCode';
 import { RecipeGallery } from './GuideRecipes';
+import { TryPlayground } from './TryPlayground';
 import { parseInline, parseMarkdown, plainText, type Block, type Inline } from '../../lib/markdown';
-import { evalNumber, evalString, formatDate, type Value } from '../../lib/maml';
-import { DATE_EXAMPLES, EXPR_EXAMPLES, NUMBER_EXAMPLES, sampleVars } from '../../lib/mamlDocExamples';
 import { openGuide, rememberGuidePage, tryFormula, useGuide } from '../../state/guide';
 import starterManifest from '../../../docs/maml/examples/starter/manifest.xml?raw';
 
@@ -195,160 +194,6 @@ function Blocks({ page }: { page: Page }) {
   );
 }
 
-// ---------- Try it ----------
-
-const STATES: [number, string][] = [
-  [0, 'Normal'],
-  [1, 'Charging'],
-  [3, 'Full'],
-];
-
-function Result({ value, error }: { value: string; error?: boolean }) {
-  return <div className={`gd-result ${error ? 'is-empty' : ''}`}>{value === '' ? 'empty' : value}</div>;
-}
-
-function TryIt() {
-  const initial = useGuide((s) => s.tryText);
-  const [hour, setHour] = useState(21);
-  const [minute, setMinute] = useState(5);
-  const [battery, setBattery] = useState(82);
-  const [state, setStateV] = useState(0);
-  const [desc, setDesc] = useState('Clear');
-  const [temp, setTemp] = useState(18);
-  const [text, setText] = useState(initial ?? "@weather_description+' '+@weather_temperature");
-  const [pattern, setPattern] = useState('d/M EE');
-  const [num, setNum] = useState('360*#battery_level/100');
-  const textRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (initial) setText(initial);
-  }, [initial]);
-
-  const now = useMemo(() => new Date(2026, 2, 17, hour, minute, 7), [hour, minute]);
-  const vars = useMemo(() => {
-    const over: Record<string, Value> = { battery_level: battery, battery_state: state, weather_description: desc, weather_temperature: `${temp}℃`, weather_temp: temp };
-    return sampleVars(now, over);
-  }, [now, battery, state, desc, temp]);
-
-  const textOut = evalString(text, vars);
-  const numOut = evalNumber(num, vars, NaN);
-  const shown = ['hour24', 'hour12', 'minute', 'ampm', 'day_of_week', 'month', 'date', 'battery_level', 'battery_state', 'screen_width', 'screen_height', 'weather_description', 'weather_temperature', 'weather_temp', 'weather_city', 'steps', 'steps_goal', 'name'];
-
-  const insert = (token: string) => {
-    const el = textRef.current;
-    const at = el?.selectionStart ?? text.length;
-    setText(text.slice(0, at) + token + text.slice(el?.selectionEnd ?? at));
-    el?.focus();
-  };
-
-  return (
-    <div className="gd-try-page">
-      <h1>Try it</h1>
-      <p className="muted">Type a formula or a date pattern and see what the phone would show, worked out by the same engine as the lock screen preview. Change the moment, battery and weather to see formulas follow. Click any formula in the guide to bring it here.</p>
-
-      <div className="gd-try-state">
-        <label className="field">
-          <span className="field-label">
-            Time · {String(hour).padStart(2, '0')}:{String(minute).padStart(2, '0')}
-          </span>
-          <input type="range" min={0} max={23} value={hour} onChange={(e) => setHour(Number(e.target.value))} aria-label="Hour" />
-          <input type="range" min={0} max={59} value={minute} onChange={(e) => setMinute(Number(e.target.value))} aria-label="Minute" />
-        </label>
-        <label className="field">
-          <span className="field-label">Battery · {battery}%</span>
-          <input type="range" min={0} max={100} value={battery} onChange={(e) => setBattery(Number(e.target.value))} aria-label="Battery level" />
-          <div className="segmented">
-            {STATES.map(([v, label]) => (
-              <button key={v} aria-pressed={state === v} onClick={() => setStateV(v)}>
-                {label}
-              </button>
-            ))}
-          </div>
-        </label>
-        <label className="field">
-          <span className="field-label">Weather</span>
-          <input className="input" value={desc} onChange={(e) => setDesc(e.target.value)} aria-label="Weather description" />
-          <input className="input" type="number" value={temp} onChange={(e) => setTemp(Number(e.target.value) || 0)} aria-label="Temperature" />
-        </label>
-      </div>
-
-      <section className="gd-tester">
-        <h2>Text formula</h2>
-        <p className="muted">
-          What a <code>textExp</code> shows. <code>#</code> reads a number, <code>@</code> reads text, words go in single quotes.
-        </p>
-        <div className="gd-tester-row">
-          <input ref={textRef} className="input gd-mono" value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} aria-label="Text formula" />
-          <Result value={textOut} error={textOut === ''} />
-        </div>
-        <div className="gd-chips">
-          {EXPR_EXAMPLES.slice(0, 10).map((e) => (
-            <button key={e.code} className="chip" title={e.code} onClick={() => setText(e.code)}>
-              {e.note}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="gd-tester">
-        <h2>Date pattern</h2>
-        <p className="muted">
-          What <code>{'<DateTime format="…"/>'}</code> shows. Letters: <code>d</code> day, <code>M</code> month, <code>y</code> year, <code>E</code> weekday, <code>H</code>/<code>h</code> hour, <code>m</code> minute, <code>a</code> AM/PM; words in <code>'…'</code>.
-        </p>
-        <div className="gd-tester-row">
-          <input className="input gd-mono" value={pattern} onChange={(e) => setPattern(e.target.value)} spellCheck={false} aria-label="Date pattern" />
-          <Result value={formatDate(pattern, now)} />
-        </div>
-        <div className="gd-chips">
-          {DATE_EXAMPLES.map((e) => (
-            <button key={e.code} className="chip" aria-pressed={pattern === e.code} title={e.note} onClick={() => setPattern(e.code)}>
-              {e.code}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="gd-tester">
-        <h2>Number formula</h2>
-        <p className="muted">
-          For <code>x</code>, <code>w</code>, <code>alpha</code>, <code>rotation</code>, <code>sweep</code>, <code>visibility</code>… Write <code>{'{'}</code> for less than, <code>{'}'}</code> for greater than, <code>**</code> for and.
-        </p>
-        <div className="gd-tester-row">
-          <input className="input gd-mono" value={num} onChange={(e) => setNum(e.target.value)} spellCheck={false} aria-label="Number formula" />
-          <Result value={Number.isNaN(numOut) ? '—' : String(+numOut.toFixed(2))} error={Number.isNaN(numOut)} />
-        </div>
-        <div className="gd-chips">
-          {NUMBER_EXAMPLES.map((e) => (
-            <button key={e.code} className="chip" title={e.code} onClick={() => setNum(e.code)}>
-              {e.kind === 'number' ? `${e.attr}: ` : ''}{e.note}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="gd-tester">
-        <h2>Variables right now</h2>
-        <p className="muted">Click one to put it in the text formula.</p>
-        <div className="gd-vars">
-          {shown.map((k) => {
-            const v = vars.get(k);
-            const token = `${typeof v === 'string' ? '@' : '#'}${k}`;
-            return (
-              <button key={k} className="gd-var" onClick={() => insert(token)}>
-                <code>
-                  <Formula code={token} />
-                </code>
-                <span>{String(v ?? '')}</span>
-              </button>
-            );
-          })}
-        </div>
-        <p className="faint">Weather, steps and name are sample values; the phone fills them from its apps and your own variables.</p>
-      </section>
-    </div>
-  );
-}
-
 // ---------- the view ----------
 
 interface Hit {
@@ -388,7 +233,7 @@ function Reference() {
   const { page: pageId, anchor, nonce } = useGuide();
   const [query, setQuery] = useState('');
   const body = useRef<HTMLDivElement>(null);
-  const page = pageById.get(pageId) ?? (pageId === 'try' ? undefined : pageById.get('README'));
+  const page = pageById.get(pageId) ?? pageById.get('README');
   const hits = useMemo(() => search(query), [query]);
   const headings = page ? page.blocks.filter((b): b is Extract<Block, { t: 'h' }> => b.t === 'h' && b.level === 2) : [];
 
@@ -449,7 +294,7 @@ function Reference() {
         )}
       </nav>
       <div className="guide-body" ref={body}>
-        <article className="guide-doc">{pageId === 'try' ? <TryIt /> : page ? <Blocks page={page} /> : null}</article>
+        <article className="guide-doc">{page ? <Blocks page={page} /> : null}</article>
       </div>
     </div>
   );
@@ -474,10 +319,10 @@ export function GuideView() {
           </button>
         </div>
         <span className="muted guide-modes-hint">
-          {mode === 'recipes' ? 'Ready-made widgets you adjust and add.' : mode === 'try' ? 'Work out any formula or date pattern live.' : 'How lock screens work: formulas, dates, variables, layout.'}
+          {mode === 'recipes' ? 'Ready-made widgets you adjust and add.' : mode === 'try' ? 'One thing per line: formulas, dates, conditions, names, elements. Results on the right.' : 'How lock screens work: formulas, dates, variables, layout.'}
         </span>
       </div>
-      {mode === 'recipes' ? <RecipeGallery /> : <Reference />}
+      {mode === 'recipes' ? <RecipeGallery /> : mode === 'try' ? <TryPlayground /> : <Reference />}
     </div>
   );
 }

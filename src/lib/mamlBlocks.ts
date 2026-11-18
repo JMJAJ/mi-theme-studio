@@ -168,7 +168,7 @@ export function insertBlock(text: string, block: LockBlock, target: number, widt
   while (new RegExp(`name="${block.id}_${n}"`).test(text)) n++;
   const name = `${block.id}_${n}`;
   const k = width / 1080;
-  const scaled = block.body(name).replace(/\b(x|y|w|h|size|cornerRadius|weight)="(\d+(?:\.\d+)?)"/g, (_m, a: string, v: string) => `${a}="${Math.round(Number(v) * k)}"`);
+  const scaled = block.body(name).replace(/\b(x|y|w|h|r|size|cornerRadius|weight|pivotX|pivotY)="(\d+(?:\.\d+)?)"/g, (_m, a: string, v: string) => `${a}="${Math.round(Number(v) * k)}"`);
   const body = scaled.replace('{x}', String(Math.round((width - block.w * k) / 2))).replace('{y}', String(Math.round(y)));
   // Literal sizes inside formulas (520*#battery_level) scale too.
   const sized = k === 1 ? body : body.replace(/="(\d+)\*/g, (_m, v: string) => `="${Math.round(Number(v) * k)}*`);

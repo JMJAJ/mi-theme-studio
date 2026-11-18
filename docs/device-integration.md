@@ -33,12 +33,36 @@ validation without root. It is a confirmed, invasive operation:
   3.0.5.19-global), the app extracts the `.mtz` to `/data/local/tmp` and writes
   an AOD MAML manifest that copies every real top-level file into
   `/data/system/theme`, sets the wallpaper through `WallpaperManager`, calls
-  `IconCustomizer.prepareCustomizedIcons` to regenerate the icon cache, sends
-  the framework configuration change and `ACTION_THEME_CHANGED`, restarts
-  System UI/launcher, and writes the same blocker. Tested as an installed
-  3.0.5.19 update on the test phone: `ApplyThemeForScreenshot` was absent and
-  the AOD backend returned `mode=aodFull, blockerVerified=true`; the wallpaper,
-  lock screen and icons visibly changed.
+  `IconCustomizer.prepareCustomizedIcons`, sends the framework configuration
+  change and `ACTION_THEME_CHANGED`, restarts System UI/launcher, and writes the
+  same blocker. The method is called, but executing it in the AOD/System UI
+  context does not initialize `ThemeResources`; on the `.19` AOD-only attempt,
+  `/data/system/theme_magic/customized_icons` remained empty. The launcher's
+  private home-clock cache is not rebuilt reliably by this path.
+  Tested as an installed 3.0.5.19 update on the test phone:
+  `ApplyThemeForScreenshot` was absent and the AOD backend returned
+  `mode=aodFull, blockerVerified=true`; the AOD-only result was theme files,
+  wallpaper and MAML lock screen, while icons and home clock stayed stock.
+- The earlier report that icons and the home clock worked on `.19` came from a
+  phone where the theme had first been applied through Theme Manager 3.0.5.16.
+  Installing `.19` as an update preserved `/data/system/theme`,
+  `/data/system/theme_magic` and launcher caches created by `.16`. That result
+  does not establish that the `.19` AOD path generated those caches.
+- The verified non-root route for all three visual parts on this phone is to
+  apply through the real `.16` Theme Manager designer entry point, update the
+  app to `.19`, and not reapply. A factory `.19` phone has no `.16` designer
+  entry point, and Android rejects the downgrade, so the clean `.19` icons and
+  home-clock problem remains unsolved.
+- To distinguish copied resources from launcher state, check the generated icon
+  cache and both clock timestamps/caches. Correct files under `/data/system/theme`
+  alone do not show that the launcher consumed them:
+
+  ```sh
+  adb shell ls -l /data/system/theme_magic/customized_icons
+  adb shell settings get system clock_changed_time_2x4
+  adb shell ls -l /data/system/theme/clock_2x4 /data/system/theme/icons
+  adb shell ls -l /data/user_de/0/com.mi.android.globallauncher/app_clock_bak/
+  ```
 - The blocker is `/data/system/theme/boots` with mode `01777`, containing
   `bootanimation.zip -> /dev/input/event0`. `ThemeReceiver` validates that path
   directly; `HashUtilsCompat.getSHA1` blocks reading the input device in the
@@ -55,8 +79,10 @@ always-on display. The app checks the provider before changing the phone and
 refuses with an `unsupported` error otherwise. Tested on a 2510DPC44G
 (HyperOS 3, Android 16, Theme Manager 3.0.5.16). A 3.0.5.19 update was also
 installed and tested; the AOD path does not depend on the removed designer
-activity. A phone that ships 3.0.5.19 as its factory image remains untested,
-but the relevant Theme Manager surface is the same.
+activity. The earlier all-three `.19` observation inherited `.16`-generated
+launcher caches. A phone that ships 3.0.5.19 as its factory image remains
+untested; the clean `.19` AOD path is not known to apply icons or the home
+clock.
 
 ## Applying themes and opening Theme Manager
 

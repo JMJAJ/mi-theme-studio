@@ -61,4 +61,27 @@ describe('recipes', () => {
     expect(done.text).toContain('<ContentProviderBinder name="mts_weather"');
     expect(done.text).toContain('<Group name="wline_1"');
   });
+
+  it('works out the new widgets', () => {
+    const code = (id: string) => recipeCode(recipe(id), recipe(id).defaults);
+    // Tuesday 17 March 2026, 21:05:07: Tuesday is the 2nd day of a Monday week.
+    const circle = /_today" x="([^"]*)"/.exec(code('weekstrip'))![1];
+    expect(evalNumber(circle, vars)).toBe(180);
+    expect(evalNumber(/_hour"[^>]*rotation="([^"]*)"/.exec(code('analog'))![1], vars)).toBe(272.5);
+    expect(evalString(attrOf(code('daybar'), 'textExp'), vars)).toBe('87% of today');
+    expect(evalString(attrOf(code('quote'), 'textExp'), vars)).toBe('Stay curious');
+    vars.set('battery_state', 3);
+    expect(evalString(attrOf(code('chargeline'), 'textExp'), vars)).toBe('Fully charged');
+    vars.set('battery_state', 1);
+    expect(evalString(attrOf(code('chargeline'), 'textExp'), vars)).toBe('Charging · 82%');
+    vars.set('battery_state', 0);
+  });
+
+  it('scales pivots and radii on other screen widths', () => {
+    const r = recipe('analog');
+    const done = insertBlock('<Lockscreen screenWidth="720">\n</Lockscreen>\n', r.block(r.defaults), 0, 720, 600)!;
+    expect(done.text).toMatch(/_pin" x="173" y="173" r="11"/);
+    expect(done.text).toMatch(/_hour" x="167" y="83" w="12" h="90" cornerRadius="6" pivotX="6" pivotY="90"/);
+  });
 });
+

@@ -127,6 +127,13 @@ const LOCK_XML_PATH: &str = "/data/system/theme_magic/users/0/wallpaper/data/loc
 const LOCK_XML_STAGING: &str = "/data/local/tmp/mts_lock.xml";
 const LOCK_MAML_DIR: &str = "/data/system/theme_magic/users/0/wallpaper/maml";
 const LOCK_MAML_WALLPAPER: &str = "/data/system/theme_magic/users/0/wallpaper/maml/lock_wallpaper.jpg";
+/// `ThemeCompatibility.isCompatibleResource()` refuses to open any theme ZIP
+/// under `/data/system/theme/` while a theme file exists and this marker
+/// directory does not. Without it `ThemeZipFile` silently ignores the copied
+/// `icons` archive, so the launcher keeps its stock icons. Theme Manager
+/// normally creates it; a phone whose theme directory was populated outside
+/// Theme Manager may not have it.
+const THEME_COMPAT_MARKER: &str = "/data/system/theme/compatibility-v12";
 const AOD_KEEPALIVE_SCRIPT_PATH: &str = "/data/local/tmp/mts_aod_keep.sh";
 
 /// Reapplies the staged package when the framework's periodic DRM reset
@@ -838,11 +845,20 @@ impl Adb {
             }
             let _ = self.shell(
                 serial,
-                &["sleep 15; am force-stop com.android.systemui; am force-stop com.miui.home; am force-stop com.mi.android.globallauncher; am force-stop com.android.settings; am force-stop com.android.contacts; am force-stop com.android.mms; am force-stop com.android.deskclock; am start -a android.intent.action.MAIN -c android.intent.category.HOME; sleep 5; settings put system clock_changed_time_2x4 \"$(date +%s%3N)\"; sleep 2"],
-                Duration::from_secs(30),
+                &["sleep 15; am force-stop com.android.systemui; am force-stop com.miui.home; am force-stop com.mi.android.globallauncher; am force-stop com.android.settings; am force-stop com.android.contacts; am force-stop com.android.mms; am force-stop com.android.deskclock; am start -a android.intent.action.MAIN -c android.intent.category.HOME; sleep 5; settings put system clock_changed_time_2x4 \"$(date +%s%3N)\"; o=$(settings get system resident_timezone); a=$(settings get system auto_dual_clock); settings put system resident_timezone America/New_York; settings put system auto_dual_clock 1; sleep 3; settings put system auto_dual_clock 0; sleep 3; if [ \"$o\" = \"null\" ]; then settings delete system resident_timezone; else settings put system resident_timezone \"$o\"; fi; settings put system auto_dual_clock \"$a\"; sleep 2"],
+                Duration::from_secs(60),
                 cancel.clone(),
             );
             steps.push("Restarted System UI and cold-started the launcher after the theme copy".into());
+            steps.push(
+                "Home icons: the launcher reads /data/system/theme/icons itself and regenerates its icon bitmaps on every process start, so an empty /data/system/theme_magic/customized_icons is expected".into(),
+            );
+            steps.push(
+                "Home clock: flipped the system dual-clock setting and back. That is the only state change the launcher turns into a forced DualClockUtils.updateBackup(), which reloads app_clock_bak from /data/system/theme/clock_2x4 and reloads clock gadgets 6/8. The original dual-clock settings were restored".into(),
+            );
+            steps.push(
+                "A clock that is a MAML widget (HyperOS 3 'Default classic clock') is a different widget: it only applies /data/system/theme/clock_2x4 when it was provisioned by Theme Manager (addSource 1011), so re-add the clock from the launcher widget picker if the home screen shows the stock one".into(),
+            );
             if lock_xml {
                 steps.push("Reboot the phone once to make the wallpaper service load the MAML lock screen".into());
             }
@@ -1050,6 +1066,11 @@ fn aod_full_manifest(
             "<MethodCommand targetType=\"var\" target=\"mts_wm\" method=\"setBitmap\" params=\"'mts_bmp'\" paramTypes=\"android.graphics.Bitmap\"/>".to_string(),
         );
     }
+    // The framework only opens `/data/system/theme/<component>` ZIPs when the
+    // v12 compatibility marker exists. `mkdir` throws when it is already there;
+    // MAML keeps running the remaining commands, which is what we want.
+    commands.push(os_cmd("mkdir", &[(THEME_COMPAT_MARKER, false), ("493", true)]));
+    commands.push(os_cmd("chmod", &[(THEME_COMPAT_MARKER, false), ("493", true)]));
     for (index, (source, destination)) in entries.iter().enumerate() {
         let source = format!("{AOD_THEME_STAGING}/{source}");
         let destination = format!("/data/system/theme/{destination}");
@@ -1077,6 +1098,12 @@ fn aod_full_manifest(
         commands.push(format!(
             "<MethodCommand class=\"android.system.Os\" method=\"close\" params=\"'mts_out_{variable}'\" paramTypes=\"java.io.FileDescriptor\"/>"
         ));
+        // `Os.open(..., 577, 420)` is filtered through the process umask. In the
+        // System UI process that umask turns 0644 into 0600, and every other app
+        // (the launcher included) then fails to read the theme file and silently
+        // falls back to stock art. The explicit chmod is what makes the copy
+        // usable; without it icons revert the next time the launcher re-resolves.
+        commands.push(os_cmd("chmod", &[(&destination, false), ("420", true)]));
     }
     if lock_xml {
         commands.push(os_cmd("mkdir", &[(LOCK_MAML_DIR, false), ("511", true)]));
@@ -1127,12 +1154,20 @@ fn aod_full_manifest(
         );
         commands.push(os_cmd("chmod", &[(LOCK_MAML_WALLPAPER, false), ("436", true)]));
     }
+    // Icon caches. `/data/system/theme_magic/customized_icons/` is owned by uid
+    // 6101 while this manifest runs as System UI, so these two calls cannot
+    // populate it; they are kept because they are cheap and remain correct for
+    // builds where System UI *is* allowed to prime the cache.
     commands.push(
         "<MethodCommand class=\"miui.content.res.IconCustomizer\" method=\"clearCustomizedIcons\" params=\"''\" paramTypes=\"java.lang.String\"/>".to_string(),
     );
     commands.push(
         "<MethodCommand class=\"miui.content.res.IconCustomizer\" method=\"prepareCustomizedIcons\" params=\"'mts_ctx','mts_null'\" paramTypes=\"android.content.Context,miui.content.res.IconCustomizer$CustomizedIconsListener\"/>".to_string(),
     );
+    // Legacy `ConfigableGadget` clock bookkeeping: this is the path that feeds
+    // `app_clock_bak` from `/data/system/theme/clock_2x4` for a clock *gadget*.
+    // The HyperOS 3 launcher's MAML clock widget is a different widget and is
+    // gated on `addSource == 1011`, so it needs the picker instead.
     commands.push(
         "<MethodCommand targetType=\"ctor\" class=\"miui.content.res.ThemeRuntimeManager\" params=\"'mts_ctx'\" paramTypes=\"android.content.Context\" return=\"mts_rt\" returnType=\"string\"/>".to_string(),
     );

@@ -1340,7 +1340,8 @@ export async function confirmPermanentApply(): Promise<boolean> {
       'This uses the AOD/System UI MAML vulnerability to write the theme and a sticky boot-animation blocker into /data/system/theme. The framework’s 2-hour licence check then hangs instead of restoring the default theme.',
     detail: [
       'No root and no APK patching. It needs USB debugging, the AOD provider, and always-on display enabled.',
-      'On builds with the editor entry point, Theme Manager copies the real files first. On 3.0.5.19 the AOD/System UI path copies every real theme file, sets the wallpaper through WallpaperManager, triggers the framework theme reload, restarts System UI/launcher, and installs the sticky blocker.',
+      'On builds with the editor entry point, Theme Manager applies the real files first. On 3.0.5.19 the AOD/System UI path copies theme files, sets the wallpaper, triggers the framework theme reload, restarts System UI/launcher, and installs the sticky blocker. Its icon-generation call does not reliably populate the customized icon cache, and the launcher home-clock cache may remain stock.',
+      'On the test phone, the verified non-root route for lock screen, icons and home clock is to apply with Theme Manager 3.0.5.16, update to 3.0.5.19, and not reapply. A clean .19 AOD apply has only confirmed theme files, wallpaper and lock screen.',
       'The screen turns off and on once to run the AOD manifest. System UI and the launcher restart, so the phone may flicker for a few seconds.',
       'AOD is left on the maml category. The validation worker may stay stuck, and normal theme cleanup may restore some parts; AOD recreates the blocker on screen off/on.',
       'Use “Remove AOD blocker” to undo the blocker and restore the AOD category. Your next theme apply is the normal way to change themes.',
@@ -1399,7 +1400,7 @@ export async function applyThemePermanently(confirmed = false) {
       const reboot = await confirmDialog({
         title: 'Reboot to activate the lock screen?',
         message:
-          'The theme files, icons, wallpaper, clock and MAML lockscreen are written. The lock wallpaper service only reloads lock.xml at startup, so the themed lockscreen appears after a reboot.',
+          'The theme files and wallpaper are written, and the MAML lockscreen files are installed. The lock wallpaper service only reloads lock.xml at startup, so the themed lockscreen appears after a reboot. On a clean 3.0.5.19 AOD apply, home icons and the clock may remain stock because the launcher caches are not reliably prepared.',
         detail: [
           'The phone will disconnect from ADB while it restarts.',
           'Reconnect USB after boot; the sticky blocker and applied theme persist.',

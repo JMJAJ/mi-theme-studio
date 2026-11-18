@@ -9,6 +9,7 @@ import { RECIPE_COLORS, RECIPES, recipeCode, type Params, type Recipe } from '..
 import type { FileInfo } from '../../lib/types';
 import { addToLockScreen } from '../../state/guide';
 import { useStore } from '../../state/store';
+import { Splitter } from '../common/Splitter';
 import { XmlCode } from './GuideCode';
 import { buildScene, MamlCanvas } from './MamlPreview';
 
@@ -42,6 +43,7 @@ function overrides(sim: Sim): Record<string, number | string> {
     battery_level: sim.battery,
     battery_state: sim.state,
     sms_unread_count: sim.unread ? 3 : 0,
+    call_missed_count: sim.unread ? 2 : 0,
     next_alarm_time: sim.alarm ? '07:30' : '',
     mts_weather_desc: desc,
     mts_weather_temp: temp,
@@ -124,6 +126,18 @@ function Controls({ recipe, params, onChange }: { recipe: Recipe; params: Params
 
 const CATEGORIES = ['All', ...new Set(RECIPES.map((r) => r.category))];
 
+const WIDTH_KEY = 'mts.guide.detailWidth.v1';
+const MIN_WIDTH = 280;
+const MAX_WIDTH = 760;
+function loadWidth() {
+  try {
+    const v = Number(localStorage.getItem(WIDTH_KEY));
+    return v >= MIN_WIDTH && v <= MAX_WIDTH ? v : 360;
+  } catch {
+    return 360;
+  }
+}
+
 export function RecipeGallery() {
   const project = useStore((s) => s.project);
   const [query, setQuery] = useState('');
@@ -132,6 +146,15 @@ export function RecipeGallery() {
   const [all, setAll] = useState<Record<string, Params>>(() => Object.fromEntries(RECIPES.map((r) => [r.id, { ...r.defaults }])));
   const [sim, setSim] = useState<Sim>({ hour: 21, minute: 5, battery: 82, state: 0, weather: 0, unread: false, alarm: true });
   const [copied, setCopied] = useState(false);
+  const [width, setWidth] = useState(loadWidth);
+  const resize = (w: number) => {
+    setWidth(w);
+    try {
+      localStorage.setItem(WIDTH_KEY, String(w));
+    } catch {
+      /* storage unavailable */
+    }
+  };
 
   const q = query.trim().toLowerCase();
   const list = RECIPES.filter((r) => (category === 'All' || r.category === category) && (!q || `${r.title} ${r.hint} ${r.category} ${r.keywords}`.toLowerCase().includes(q)));
@@ -198,7 +221,7 @@ export function RecipeGallery() {
               ))}
             </select>
             <button className="chip" aria-pressed={sim.unread} onClick={() => set({ unread: !sim.unread })}>
-              3 messages
+              3 messages, 2 missed calls
             </button>
             <button className="chip" aria-pressed={sim.alarm} onClick={() => set({ alarm: !sim.alarm })}>
               Alarm set
@@ -219,10 +242,11 @@ export function RecipeGallery() {
         </div>
       </div>
 
-      <aside className="rc-detail" aria-label={recipe.title}>
+      <Splitter orientation="vertical" label="Resize the widget settings" value={width} min={MIN_WIDTH} max={MAX_WIDTH} direction={-1} onChange={resize} />
+      <aside className="rc-detail" aria-label={recipe.title} style={{ width }}>
         <div className="faint rc-cat">{recipe.category}</div>
         <h2>{recipe.title}</h2>
-        <BlockView block={blocks[recipe.id]} sim={sim} width={300} height={170} />
+        <BlockView block={blocks[recipe.id]} sim={sim} width={width - 36} height={Math.round(Math.min(360, Math.max(160, (width - 36) * 0.56)))} />
         <Controls recipe={recipe} params={params} onChange={(p) => setAll((a) => ({ ...a, [recipe.id]: p }))} />
         <div className="rc-actions">
           <button className="btn btn-primary" onClick={() => addToLockScreen(blocks[recipe.id], recipe.title)} title={project ? 'Open the lock screen editor and add it to the page you are editing' : 'Open or create a theme first'}>

@@ -2,7 +2,7 @@
 // with a plain description, the functions, ready-made snippets, and the
 // mistakes worth pointing out while typing.
 
-import type { Vars } from './maml';
+import { FUNCTION_NAMES, type Vars } from './maml';
 
 /** The phone's own variables (and the binders the editor adds), described for the autocomplete. */
 export const VAR_INFO: Record<string, string> = {
@@ -119,6 +119,11 @@ export function formulaProblems(code: string, vars: Vars): string[] {
   for (const c of outsideQuotes) depth += c === '(' ? 1 : c === ')' ? -1 : 0;
   if (depth > 0) out.push('A bracket is not closed.');
   if (depth < 0) out.push('There is an extra closing bracket.');
+  for (const m of outsideQuotes.matchAll(/(^|[^\w#@.])([A-Za-z_]\w*)\s*\(/g))
+    if (!FUNCTION_NAMES.has(m[2])) {
+      out.push(`${m[2]}() isn’t a function the preview knows, so it works out as 0.`);
+      break;
+    }
   for (const m of outsideQuotes.matchAll(/([#@])([A-Za-z_][\w.]*)/g)) {
     const name = m[2];
     if (!vars.has(name) && !(name in VAR_INFO)) {

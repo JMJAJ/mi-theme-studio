@@ -1,6 +1,6 @@
 {
   "name": "mi-theme-studio",
-  "version": "0.4.2",
+  "version": "0.4.5",
   "private": true,
   "type": "module",
   "author": "JMJAJ",
@@ -23,6 +23,7 @@
     "build:win:ci": "node scripts/build-windows.mjs"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "^6.20.4",
     "@codemirror/lang-xml": "^6.1.0",
     "@codemirror/language": "^6.13.1",
     "@codemirror/search": "^6.7.2",

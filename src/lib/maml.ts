@@ -88,6 +88,9 @@ const FUNCS: Record<string, (a: Value[]) => Value> = {
   },
 };
 
+/** Every function the evaluator knows (others work out as 0). */
+export const FUNCTION_NAMES: ReadonlySet<string> = new Set(Object.keys(FUNCS));
+
 class Parser {
   private i = 0;
   constructor(

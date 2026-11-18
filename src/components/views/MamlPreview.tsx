@@ -9,6 +9,7 @@ import { api, errorMessage, resourceUrl } from '../../lib/api';
 import { evalNumber, evalString, evaluate, formatDate, formatWithParas, systemVars, type Vars } from '../../lib/maml';
 import { insertBlock, pageGroupOrdinal, type LockBlock } from '../../lib/mamlBlocks';
 import { BLOCK_IDS } from '../../lib/mamlRecipes';
+import { SAMPLE_COLUMNS } from '../../lib/sampleData';
 import { usePendingBlock } from '../../state/guide';
 import { absOffset, extractSnippet, pasteSnippet, type Snippet } from '../../lib/mamlCopy';
 import { lenientXml, removeElements, setAttributes } from '../../lib/mamlEdit';
@@ -474,27 +475,6 @@ function renderNodes(parent: Element, ctx: Ctx): ReactNode[] {
   return out;
 }
 
-/** Plausible data for the phone's content providers, so weather and the like read as on a phone. */
-const SAMPLE_COLUMNS: Record<string, string[]> = {
-  city_name: ['Your city'],
-  weather_type: ['0', '0', '1', '1', '2'],
-  description: ['Clear'],
-  temperature: ['18℃'],
-  temperature_range: ['12℃~21℃'],
-  tmphighs: ['21', '22', '19', '20', '23'],
-  tmplows: ['12', '13', '11', '12', '14'],
-  forecast_type: ['0', '1', '1', '2', '0'],
-  weathernamesfrom: ['Clear', 'Cloudy', 'Cloudy', 'Rain', 'Clear'],
-  aqilevel: ['60'],
-  humidity: ['55'],
-  wind: ['3'],
-  pressure: ['1013'],
-  temperature_unit: ['1'],
-  somatosensory: ['17℃'],
-  // Mi Fitness steps
-  steps: ['6532'],
-  goal: ['8000'],
-};
 
 /**
  * Fills the variables a layout reads from content providers (<VariableBinders>):

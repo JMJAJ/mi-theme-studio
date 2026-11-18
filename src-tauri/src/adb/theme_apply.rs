@@ -317,6 +317,50 @@ impl Adb {
         })
     }
 
+    /// Install a Xiaomi-signed Theme Manager APK as an update. This is the
+    /// fallback for phones whose factory build (for example a preinstalled
+    /// 3.0.5.19) has no editor apply entry point. The package manager enforces
+    /// the OEM signature; `-d` allows a version downgrade to the factory APK.
+    pub fn install_theme_manager_apk(
+        &self,
+        serial: &str,
+        apk: &Path,
+        cancel: Option<Arc<AtomicBool>>,
+    ) -> AppResult<ThemeManagerSupport> {
+        valid_serial(serial)?;
+        let is_apk = apk.extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("apk"));
+        if !is_apk {
+            return Err(AppError::invalid("Choose a Theme Manager .apk file."));
+        }
+        let size = std::fs::metadata(apk).map_err(|e| AppError::io("Could not read the APK", e))?.len();
+        if size < 1024 * 1024 || size > 512 * 1024 * 1024 {
+            return Err(AppError::invalid("That APK does not look like Theme Manager (unexpected size)."));
+        }
+        let local = apk.to_string_lossy().into_owned();
+        let out = self.exec(
+            &["-s", serial, "install", "-r", "-d", "-g", &local],
+            Duration::from_secs(240),
+            cancel,
+            false,
+        )?;
+        let text = out.stdout_text();
+        self.expect_ok(out, "adb install")?;
+        if !text.contains("Success") {
+            return Err(AppError::new(
+                "install_failed",
+                format!("The phone rejected the APK: {}", text.lines().last().unwrap_or("no output")),
+            ));
+        }
+        let support = self.theme_manager_support(serial)?;
+        if !support.installed || !support.can_apply {
+            return Err(AppError::new(
+                "unsupported",
+                "The APK installed, but its Theme Manager still has no editor apply entry point.",
+            ));
+        }
+        Ok(support)
+    }
+
     /// Apply a package with Theme Manager's editor entry point. Requires
     /// `support.can_apply`; the caller must have asked the user first.
     pub fn apply_theme(&self, serial: &str, local: &Path, support: &ThemeManagerSupport, cancel: Option<Arc<AtomicBool>>) -> AppResult<ApplyResult> {

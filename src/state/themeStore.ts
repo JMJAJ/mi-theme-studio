@@ -128,7 +128,8 @@ export function downloadFor(moduleId: string): DownloadedTheme | undefined {
  */
 export const partListings = new Map<string, StoreProduct>();
 export function rememberPartListing(product: StoreProduct, alsoAs?: string) {
-  if (!product.part) return;
+  // Icon packs too: many of their IDs have no store page either.
+  if (!product.part && product.kind !== 'icon') return;
   partListings.set(product.moduleId, product);
   if (alsoAs) partListings.set(alsoAs, product);
 }
@@ -139,7 +140,7 @@ export async function downloadTheme(moduleId: string, name: string): Promise<Dow
   useThemeStore.setState((s) => ({ progress: { ...s.progress, [moduleId]: { received: 0, total: 0 } } }));
   try {
     const listed = partListings.get(moduleId);
-    const listing = listed?.part ? { part: listed.part, name: listed.name, cover: listed.imageUrl } : undefined;
+    const listing = listed ? { part: listed.part ?? null, kind: listed.kind, name: listed.name, cover: listed.imageUrl } : undefined;
     const record = await api.storeDownload(moduleId, useThemeStore.getState().region, listing);
     if (listed && record.moduleId !== moduleId) partListings.set(record.moduleId, listed);
     useThemeStore.setState((s) => ({ downloads: [record, ...s.downloads.filter((d) => d.moduleId !== record.moduleId)] }));

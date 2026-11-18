@@ -1327,6 +1327,54 @@ export async function keepThemeApplied(enabled: boolean): Promise<boolean | null
   }
 }
 
+/**
+ * Install a Xiaomi-signed Theme Manager APK as an update. This is the fallback
+ * for phones whose factory build has no editor apply entry point and whose
+ * 3.0.5.19 cannot be removed with `pm uninstall-system-updates`.
+ */
+export async function installThemeManagerApk(): Promise<ThemeManagerSupport | null> {
+  const device = readyDevice();
+  if (!device) {
+    toast('warning', 'Connect and authorize a phone first.');
+    return null;
+  }
+  if (getState().busy) return null;
+  const picked = await openDialog({
+    multiple: false,
+    filters: [{ name: 'Theme Manager APK', extensions: ['apk'] }],
+  });
+  if (!picked || Array.isArray(picked)) return null;
+  const details = getState().deviceDetails[device.serial];
+  const name = details?.marketName ?? details?.model ?? device.model ?? device.serial;
+  const ok = await confirmDialog({
+    title: `Install a Theme Manager APK on ${name}?`,
+    message: 'Android will install the APK as an update. The OEM signature must match. A lower version cannot replace a factory system app, so this only helps with a same-version or newer build.',
+    detail: [
+      'Use a Xiaomi-signed Theme Manager build from the same model/region.',
+      'A preinstalled 3.0.5.19 cannot be downgraded this way; Android rejects the version downgrade even with the downgrade flag.',
+      'Theme Manager data is normally preserved, but back up anything important first.',
+      'Do not install an APK you do not trust: it runs with Theme Manager’s system-shared uid.',
+    ],
+    confirmLabel: 'Install APK',
+    danger: true,
+  });
+  if (!ok) return null;
+  const opId = newOpId('install-tm');
+  operations.set(opId, 'Installing Theme Manager');
+  setState({ busy: 'Installing the Theme Manager APK…' });
+  try {
+    const support = await api.adbInstallThemeManagerApk(device.serial, picked, opId);
+    toast('success', `Theme Manager ${support.version ?? ''} installed; one-click apply is ready.`);
+    return support;
+  } catch (error) {
+    toast('error', `Install Theme Manager: ${errorMessage(error)}`);
+    return null;
+  } finally {
+    operations.delete(opId);
+    setState({ busy: null });
+  }
+}
+
 export async function tryOnPhone(force = false) {
   const device = readyDevice();
   const project = getState().project;

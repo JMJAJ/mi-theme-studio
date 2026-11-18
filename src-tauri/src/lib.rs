@@ -112,6 +112,7 @@ pub fn run() {
             commands::adb_send_package,
             commands::adb_theme_support,
             commands::adb_prepare_theme_manager,
+            commands::adb_install_theme_manager_apk,
             commands::adb_open_store_item,
             commands::adb_open_theme_settings,
             commands::adb_apply_theme,

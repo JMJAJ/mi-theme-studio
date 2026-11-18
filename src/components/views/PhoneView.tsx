@@ -172,6 +172,11 @@ export function PhoneView() {
     if (next) setSupportNonce((n) => n + 1);
   }
 
+  async function installThemeManagerApk() {
+    const next = await A.installThemeManagerApk();
+    if (next) setSupportNonce((n) => n + 1);
+  }
+
   async function toggleKeepAlive() {
     const next = await A.keepThemeApplied(!keepAlive);
     if (next !== null) setKeepAlive(next);
@@ -264,6 +269,9 @@ export function PhoneView() {
                   </div>
                   <button className="btn btn-sm" disabled={!!busy} onClick={() => void prepareThemeManager()}>
                     Enable non-root apply
+                  </button>
+                  <button className="btn btn-sm" disabled={!!busy} onClick={() => void installThemeManagerApk()} title="Install a same-version or newer Xiaomi-signed Theme Manager APK (cannot downgrade a factory 3.0.5.19)">
+                    Install APK…
                   </button>
                 </div>
               )}

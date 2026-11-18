@@ -41,7 +41,7 @@ import type { DeviceApp, TryOnResult,
   Settings,
   Slot,
   TextFile,
-  ValidationReport, StorePart } from './types';
+  ValidationReport, StorePart, ProductKind } from './types';
 
 export class ApiError extends Error {
   code: string;
@@ -171,6 +171,8 @@ export const api = {
   adbThemeSupport: (serial: string) => call<ThemeManagerSupport>('adb_theme_support', { serial }),
   adbPrepareThemeManager: (serial: string, opId?: string) =>
     call<PrepareThemeManagerResult>('adb_prepare_theme_manager', { serial, confirmed: true, opId }),
+  adbInstallThemeManagerApk: (serial: string, apkPath: string, opId?: string) =>
+    call<ThemeManagerSupport>('adb_install_theme_manager_apk', { serial, apkPath, confirmed: true, opId }),
   adbKeepThemeApplied: (serial: string, enabled: boolean, opId?: string) =>
     call<KeepAppliedResult>('adb_keep_theme_applied', { serial, enabled, opId }),
   adbKeepaliveStatus: (serial: string) => call<boolean>('adb_keepalive_status', { serial }),
@@ -187,7 +189,7 @@ export const api = {
     call<{ result: ReplaceResult; snapshot: ProjectSnapshot }>('project_replace', { options, replacement, targets, allowInvalidXml }),
   storePage: (query: StoreQuery, start = 0, region?: string) => call<StorePage>('store_page', { query, start, region }),
   storeDetail: (id: string, region?: string) => call<ThemeDetail>('store_detail', { id, region }),
-  storeDownload: (moduleId: string, region?: string, listing?: { part: StorePart; name: string; cover: string | null }) => call<DownloadedTheme>('store_download', { moduleId, region, listing }),
+  storeDownload: (moduleId: string, region?: string, listing?: { part: StorePart | null; kind: ProductKind; name: string; cover: string | null }) => call<DownloadedTheme>('store_download', { moduleId, region, listing }),
   storeCancel: (moduleId: string) => call<void>('store_cancel', { moduleId }),
   storeDownloads: () => call<DownloadedTheme[]>('store_downloads'),
   storeRemoveDownload: (moduleId: string) => call<void>('store_remove_download', { moduleId }),

@@ -1311,6 +1311,33 @@ pub async fn adb_apply_theme(
     .await
 }
 
+/// Install a Xiaomi-signed Theme Manager APK (normally the factory 3.0.5.16
+/// build) as an update. Needed when a phone has no update to remove, e.g. a
+/// preinstalled 3.0.5.19 build without the editor entry point.
+#[tauri::command]
+pub async fn adb_install_theme_manager_apk(
+    app: AppHandle,
+    serial: String,
+    apk_path: String,
+    confirmed: bool,
+    op_id: Option<String>,
+) -> AppResult<adb::theme_apply::ThemeManagerSupport> {
+    blocking(app, move |state, app| {
+        if !confirmed {
+            return Err(AppError::new(
+                "unconfirmed",
+                "Installing a Theme Manager APK requires confirmation.",
+            ));
+        }
+        let adb = adb_for(state, app)?;
+        let cancel = register_op(state, &op_id);
+        let result = adb.install_theme_manager_apk(&serial, std::path::Path::new(&apk_path), cancel);
+        finish_op(state, &op_id);
+        result
+    })
+    .await
+}
+
 /// Stage the open project and keep reapplying it after the framework's
 /// periodic theme DRM reset. The loop runs on the phone as the adb shell user;
 /// it is not permanent (a reboot stops it) but needs no root.

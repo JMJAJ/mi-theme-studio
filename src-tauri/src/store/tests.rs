@@ -313,3 +313,14 @@ fn part_listings_search_that_category() {
     let page = r#"{"apiCode":0,"apiData":{"cards":[{"products":[{"uuid":"c-1","name":"Clock","imageUrl":"https://t17.market.mi-img.com/thumbnail/webp/w212q80/"}]}]}}"#;
     assert_eq!(parse_page(page, 0).unwrap().sections[0].products[0].image_url, None);
 }
+
+#[test]
+fn icon_covers_drop_details_suffix() {
+    let page = r#"{"apiCode":0,"apiData":{"root":"https://t17.market.mi-img.com/thumbnail/","cards":[{"products":[{"uuid":"i-1","name":"K","imageUrl":"https://t17.market.mi-img.com/thumbnail/webp/w212q80/ThemeMarket/abc/details"}]}]}}"#;
+    let p = &parse_page_as(page, 0, ProductKind::Icon).unwrap().sections[0].products[0];
+    assert_eq!(p.image_url.as_deref(), Some("https://t17.market.mi-img.com/thumbnail/webp/w212q80/ThemeMarket/abc"));
+    let l: PartListing = serde_json::from_str(r#"{"kind":"icon","name":"K","cover":null}"#).unwrap();
+    assert_eq!((l.category(), listing_detail("i-1", &l).kind), ("Icon", ProductKind::Icon));
+    let l: PartListing = serde_json::from_str(r#"{"part":"lockscreen","kind":"theme","name":"K"}"#).unwrap();
+    assert_eq!(l.category(), "LockStyle");
+}

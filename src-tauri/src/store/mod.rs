@@ -444,6 +444,11 @@ pub fn safe_image_url(url: &str) -> Option<String> {
 fn image(value: Option<String>, root: &str) -> Option<String> {
     // A bare folder ("…/w212q80/") means the store has no picture for it.
     let value = value.filter(|v| !v.trim().is_empty() && !v.ends_with('/'))?;
+    // Icon pack covers end in "/details", which the thumbnail server refuses; the picture is the folder.
+    let value = match value.strip_suffix("/details") {
+        Some(base) if value.contains("thumbnail/") || !value.contains("://") => base.to_string(),
+        _ => value,
+    };
     if value.starts_with("https://") {
         return safe_image_url(&value);
     }
@@ -870,13 +875,22 @@ pub fn remove_download(dir: &Path, module_id: &str) -> AppResult<()> {
 }
 
 /// Download a free theme into `dir`, verifying size and SHA-1.
-/// A result from a part listing, for when the store has no detail page for its ID.
+/// A result from a part or icon listing, for when the store has no detail page for its ID.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PartListing {
-    pub part: StorePart,
+    #[serde(default)]
+    pub part: Option<StorePart>,
+    #[serde(default)]
+    pub kind: ProductKind,
     pub name: String,
     pub cover: Option<String>,
+}
+
+impl PartListing {
+    fn category(&self) -> &'static str {
+        self.part.map(StorePart::category).unwrap_or(self.kind.category())
+    }
 }
 
 pub fn download(
@@ -893,12 +907,12 @@ pub fn download(
     // part's category) gives the theme they come from, checked by SHA-1 as usual.
     let (detail, category) = match (fetch_detail(&module_id, region, user_agent), listing) {
         // Same ID as listed: keep asking by the part's category, which serves it.
-        (Ok(detail), Some(listing)) if detail.module_id == module_id => (detail, listing.part.category()),
+        (Ok(detail), Some(listing)) if detail.module_id == module_id => (detail, listing.category()),
         (Ok(detail), _) => {
             let category = detail.kind.category();
             (detail, category)
         }
-        (Err(_), Some(listing)) => (listing_detail(&module_id, &listing), listing.part.category()),
+        (Err(_), Some(listing)) => (listing_detail(&module_id, &listing), listing.category()),
         (Err(e), None) => return Err(e),
     };
     // Allow free themes and premium (paid) themes that can be downloaded
@@ -1011,7 +1025,7 @@ fn listing_detail(module_id: &str, listing: &PartListing) -> ThemeDetail {
     let name: String = listing.name.trim().chars().take(120).collect();
     ThemeDetail {
         product_id: None,
-        kind: ProductKind::Theme,
+        kind: if listing.part.is_some() { ProductKind::Theme } else { listing.kind },
         name: if name.is_empty() { "Untitled theme".into() } else { name },
         designer: None,
         author: None,

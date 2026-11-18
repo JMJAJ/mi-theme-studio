@@ -100,6 +100,16 @@ function ThemeManagerActions({ serial, hasProject, busy }: { serial: string; has
     }
   }
 
+  async function installApk() {
+    setPreparing(true);
+    try {
+      const next = await A.installThemeManagerApk();
+      if (next) setSupport(next);
+    } finally {
+      setPreparing(false);
+    }
+  }
+
   async function toggleKeepAlive() {
     const next = await A.keepThemeApplied(!keepAlive);
     if (next !== null) setKeepAlive(next);
@@ -121,6 +131,9 @@ function ThemeManagerActions({ serial, hasProject, busy }: { serial: string; has
           <span>This Theme Manager build has no editor apply entry point. Removing its update restores the factory build (no root) and enables one-click apply.</span>
           <button className="btn btn-sm" style={{ marginLeft: 'auto' }} disabled={busy || preparing} onClick={() => void prepare()}>
             {preparing ? <RefreshCw className="spin" /> : <ShieldCheck />} Enable non-root apply
+          </button>
+          <button className="btn btn-sm" disabled={busy || preparing} onClick={() => void installApk()} title="Install a same-version or newer Xiaomi-signed Theme Manager APK (cannot downgrade a factory 3.0.5.19)">
+            Install APK…
           </button>
         </div>
       )}

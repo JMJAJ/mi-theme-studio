@@ -1,7 +1,7 @@
 // Theme store: browse and search the online catalog, inspect a theme
 // (screenshots, description, details), download free themes and apply all
 // or selected parts of them to the open project.
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -22,6 +22,8 @@ import {
   Image as ImageIcon,
   Type,
   Palette,
+  ChevronDown,
+  Info,
   BatteryMedium,
   House,
   Clock,
@@ -83,18 +85,189 @@ const KINDS: { kind: ProductKind; label: string; noun: string; icon: typeof Pale
   { kind: 'ringtone', label: 'Ringtones', noun: 'ringtone', icon: Music },
 ];
 // Theme parts the store can list themes by. `component` is the part of your theme it swaps into.
-const PARTS: { part: StorePart; label: string; plural: string; component: string; icon: typeof Palette; note?: string }[] = [
-  { part: 'lockscreen', label: 'Lock screen', plural: 'Lock screens', component: 'lockscreen', icon: Lock },
-  { part: 'statusBar', label: 'Status bar', plural: 'Status bars', component: 'systemui', icon: BatteryMedium },
-  { part: 'homeScreen', label: 'Home screen', plural: 'Home screens', component: 'home', icon: House },
-  { part: 'clock', label: 'Clock widget', plural: 'Clock widgets', component: 'widgets', icon: Clock, note: 'The store has no pictures of clock widgets; the cover is empty until you open it.' },
-  { part: 'contacts', label: 'Contacts & calls', plural: 'Contacts & calls', component: 'apps', icon: Contact },
-  { part: 'messages', label: 'Messages', plural: 'Messages', component: 'apps', icon: MessageSquare },
-  { part: 'bootAnimation', label: 'Boot animation', plural: 'Boot animations', component: 'boot', icon: Power, note: 'A boot animation only changes on a rooted phone.' },
-  { part: 'superWallpaper', label: 'Super wallpaper', plural: 'Super wallpapers', component: 'wallpapers', icon: Wand2 },
-  { part: 'aod', label: 'Always-on display', plural: 'Always-on displays', component: 'other', icon: Moon, note: 'Always-on display styles come as small packages with only that part; the store shows no pictures of them.' },
+const PARTS: { part: StorePart; short: string; desc: string; label: string; plural: string; component: string; icon: typeof Palette; note?: string }[] = [
+  { part: 'lockscreen', desc: 'Clock, date and the unlock layout', short: 'Lock screen', label: 'Lock screen', plural: 'Lock screens', component: 'lockscreen', icon: Lock },
+  { part: 'statusBar', desc: 'Battery, signal and the quick settings look', short: 'Status bar', label: 'Status bar', plural: 'Status bars', component: 'systemui', icon: BatteryMedium },
+  { part: 'homeScreen', desc: 'Launcher layout, folders and dock', short: 'Home screen', label: 'Home screen', plural: 'Home screens', component: 'home', icon: House },
+  { part: 'clock', desc: 'Clock widgets for the home screen', short: 'Clocks', label: 'Clock widget', plural: 'Clock widgets', component: 'widgets', icon: Clock, note: 'The store has no pictures of clock widgets; the cover is empty until you open it.' },
+  { part: 'contacts', desc: 'Dialer, contacts and the call screen', short: 'Contacts', label: 'Contacts & calls', plural: 'Contacts & calls', component: 'apps', icon: Contact },
+  { part: 'messages', desc: 'The look of the Messages app', short: 'Messages', label: 'Messages', plural: 'Messages', component: 'apps', icon: MessageSquare },
+  { part: 'bootAnimation', desc: 'The animation when the phone starts', short: 'Boot animation', label: 'Boot animation', plural: 'Boot animations', component: 'boot', icon: Power, note: 'A boot animation only changes on a rooted phone.' },
+  { part: 'superWallpaper', desc: 'Animated, live wallpapers', short: 'Super wallpaper', label: 'Super wallpaper', plural: 'Super wallpapers', component: 'wallpapers', icon: Wand2 },
+  { part: 'aod', desc: 'What shows while the screen is off', short: 'Always-on', label: 'Always-on display', plural: 'Always-on displays', component: 'other', icon: Moon, note: 'Always-on display styles come as small packages with only that part; the store shows no pictures of them.' },
 ];
 export const partInfo = (part: StorePart | null | undefined) => PARTS.find((p) => p.part === part) ?? null;
+
+// Everything the store can be browsed for, as equals: whole themes, things sold on
+// their own, and parts taken from themes. Grouped by what it changes on the phone.
+type ScopeId = 'theme' | 'icon' | 'font' | 'wallpaper' | 'ringtone' | StorePart;
+type ScopeGroup = 'Look' | 'Screens' | 'Apps' | 'Wallpapers & sound';
+const SCOPES: { id: ScopeId; label: string; plural: string; desc: string; icon: typeof Palette; group: ScopeGroup | null; own: boolean }[] = [
+  { id: 'theme', label: 'Whole themes', plural: 'Whole themes', desc: 'Every part at once', icon: Palette, group: null, own: true },
+  { id: 'icon', label: 'Icons', plural: 'Icon packs', desc: 'App icons', icon: Shapes, group: 'Look', own: true },
+  { id: 'font', label: 'Fonts', plural: 'Fonts', desc: 'The system typeface', icon: Type, group: 'Look', own: true },
+  { id: 'clock', label: 'Clock widgets', plural: 'Clock widgets', desc: 'Clocks for the home screen', icon: Clock, group: 'Look', own: false },
+  { id: 'lockscreen', label: 'Lock screen', plural: 'Lock screens', desc: 'Clock, date and the unlock layout', icon: Lock, group: 'Screens', own: false },
+  { id: 'homeScreen', label: 'Home screen', plural: 'Home screens', desc: 'Launcher layout, folders and dock', icon: House, group: 'Screens', own: false },
+  { id: 'statusBar', label: 'Status bar', plural: 'Status bars', desc: 'Battery, signal and quick settings', icon: BatteryMedium, group: 'Screens', own: false },
+  { id: 'aod', label: 'Always-on display', plural: 'Always-on displays', desc: 'What shows while the screen is off', icon: Moon, group: 'Screens', own: true },
+  { id: 'bootAnimation', label: 'Boot animation', plural: 'Boot animations', desc: 'When the phone starts (root only)', icon: Power, group: 'Screens', own: false },
+  { id: 'contacts', label: 'Contacts & calls', plural: 'Contacts & calls', desc: 'Dialer, contacts and call screen', icon: Contact, group: 'Apps', own: false },
+  { id: 'messages', label: 'Messages', plural: 'Messages', desc: 'The Messages app', icon: MessageSquare, group: 'Apps', own: false },
+  { id: 'wallpaper', label: 'Wallpapers', plural: 'Wallpapers', desc: 'Home and lock screen pictures', icon: ImageIcon, group: 'Wallpapers & sound', own: true },
+  { id: 'superWallpaper', label: 'Super wallpapers', plural: 'Super wallpapers', desc: 'Animated, live wallpapers', icon: Wand2, group: 'Wallpapers & sound', own: false },
+  { id: 'ringtone', label: 'Ringtones', plural: 'Ringtones', desc: 'Ringtone, notification and alarm', icon: Music, group: 'Wallpapers & sound', own: true },
+];
+const SCOPE_GROUPS: ScopeGroup[] = ['Look', 'Screens', 'Apps', 'Wallpapers & sound'];
+const KIND_IDS: ProductKind[] = ['theme', 'icon', 'font', 'wallpaper', 'ringtone'];
+const scopeOf = (product: ProductKind, part: StorePart | null): ScopeId => (product === 'theme' && part ? part : product);
+const scopeInfo = (id: ScopeId) => SCOPES.find((x) => x.id === id) ?? SCOPES[0];
+const scopeTarget = (id: ScopeId): { product: ProductKind; part: StorePart | null } =>
+  (KIND_IDS as string[]).includes(id) ? { product: id as ProductKind, part: null } : { product: 'theme', part: id as StorePart };
+
+// Shortcuts next to the picker are your recent picks; before you pick anything, the most used kinds fill in.
+const RECENT_KEY = 'mts.store.recent.v1';
+const RECENT_DEFAULT: ScopeId[] = ['icon', 'wallpaper', 'lockscreen', 'font', 'ringtone', 'statusBar'];
+function loadRecent(): ScopeId[] {
+  try {
+    const saved = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]') as string[];
+    const valid = saved.filter((id): id is ScopeId => SCOPES.some((x) => x.id === id));
+    return [...valid, ...RECENT_DEFAULT.filter((id) => !valid.includes(id))].slice(0, 8);
+  } catch {
+    return RECENT_DEFAULT;
+  }
+}
+
+/** "Looking for" menu plus recent shortcuts. The menu lays groups out side by side and never runs past the store. */
+function ScopePicker({ scope, onPick }: { scope: ScopeId; onPick: (id: ScopeId) => void }) {
+  const [open, setOpen] = useState(false);
+  const [recent, setRecent] = useState(loadRecent);
+  const root = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const shortcuts = useRef<HTMLDivElement>(null);
+  const current = scopeInfo(scope);
+  const pick = (id: ScopeId) => {
+    onPick(id);
+    setOpen(false);
+    if (id === 'theme') return;
+    const next = [id, ...recent.filter((r) => r !== id)].slice(0, 8);
+    setRecent(next);
+    try {
+      localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
+  };
+  useEffect(() => {
+    if (!open) return;
+    const down = (e: PointerEvent) => !root.current?.contains(e.target as Node) && setOpen(false);
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    window.addEventListener('pointerdown', down);
+    window.addEventListener('keydown', key);
+    return () => {
+      window.removeEventListener('pointerdown', down);
+      window.removeEventListener('keydown', key);
+    };
+  }, [open]);
+  // Keep the menu inside the store: as tall as the room below it, scrolling inside if ever needed.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const fit = () => {
+      const el = panel.current;
+      const store = root.current?.closest('.store-root');
+      if (!el || !store) return;
+      el.style.maxHeight = `${Math.max(160, store.getBoundingClientRect().bottom - el.getBoundingClientRect().top - 12)}px`;
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [open]);
+  // Shortcuts that do not fit the width drop off (every option is in the menu).
+  const shown = recent.filter((r) => r !== scope).slice(0, 6);
+  useLayoutEffect(() => {
+    const box = shortcuts.current;
+    if (!box) return;
+    const fit = () => {
+      const chips = Array.from(box.children) as HTMLElement[];
+      chips.forEach((c) => (c.style.display = ''));
+      for (let i = chips.length - 1; i >= 0 && box.scrollWidth > box.clientWidth + 1; i--) chips[i].style.display = 'none';
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, [shown.join()]);
+
+  const Icon = current.icon;
+  return (
+    <div className="scope" ref={root}>
+      <button className="scope-btn" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((o) => !o)} title="Choose what to browse and search">
+        <span className="scope-btn-icon">
+          <Icon />
+        </span>
+        <span className="scope-pre">Looking for</span>
+        <span className="scope-name">{current.plural}</span>
+        <ChevronDown className="scope-caret" />
+      </button>
+      <span className="scope-recent-label">Recent</span>
+      <div className="scope-recent" ref={shortcuts}>
+        {shown.map((id) => {
+          const x = scopeInfo(id);
+          return (
+            <button key={id} className="scope-chip" onClick={() => pick(id)} title={x.desc}>
+              <x.icon /> {x.plural}
+            </button>
+          );
+        })}
+      </div>
+      {open && (
+        <div className="scope-menu" ref={panel} role="menu">
+          <button role="menuitemradio" aria-checked={scope === 'theme'} className={`scope-whole ${scope === 'theme' ? 'is-on' : ''}`} onClick={() => pick('theme')}>
+            <span className="scope-ic">
+              <Palette />
+            </span>
+            <strong>Whole themes</strong>
+            <span className="muted">Every part at once</span>
+          </button>
+          <div className="scope-cols">
+            {SCOPE_GROUPS.map((g) => (
+              <div key={g} className="scope-group">
+                <h4>{g}</h4>
+                {SCOPES.filter((x) => x.group === g).map((x) => (
+                  <button
+                    key={x.id}
+                    role="menuitemradio"
+                    aria-checked={scope === x.id}
+                    className={`scope-item ${scope === x.id ? 'is-on' : ''}`}
+                    onClick={() => pick(x.id)}
+                    title={x.own ? `${x.label}: its own download` : `${x.label}: taken from a theme; Use takes only this part`}
+                  >
+                    <span className="scope-ic">
+                      <x.icon />
+                    </span>
+                    <span className="scope-text">
+                      <strong>{x.label}</strong>
+                      <small>{x.desc}</small>
+                    </span>
+                    <i className={`scope-dot ${x.own ? 'is-own' : ''}`} aria-label={x.own ? 'Own download' : 'Taken from a theme'} />
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+          <div className="scope-legend">
+            <span>
+              <i className="scope-dot is-own" /> Own download
+            </span>
+            <span>
+              <i className="scope-dot" /> Taken from a theme: Use takes only that part
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const nounOf = (kind: ProductKind) => KINDS.find((k) => k.kind === kind)?.noun ?? 'item';
 const isPackage = (kind: ProductKind) => kind === 'theme' || kind === 'font' || kind === 'icon';
@@ -850,7 +1023,7 @@ function listingDetail(p: StoreProduct): ThemeDetail {
   return {
     moduleId: p.moduleId,
     productId: p.productId,
-    kind: 'theme',
+    kind: p.kind,
     name: p.name,
     designer: null,
     author: null,
@@ -969,6 +1142,12 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
 
       <div className="detail-body">
         <div className="detail-main">
+          {lite && !listedPart && (
+            <div className="banner banner-info" style={{ marginBottom: 12 }}>
+              <Info />
+              <span className="grow">The store has no full page for this {nounOf(detail.kind)}, so only its picture is shown. The download works as usual and is checked by SHA-1.</span>
+            </div>
+          )}
           {listedPart && (
             <div className="banner banner-info" style={{ marginBottom: 12 }}>
               <listedPart.icon />
@@ -1342,28 +1521,23 @@ export function CatalogView() {
     if (current?.type === 'list' && current.query.kind === 'search') setStack([searchRoute(nextProduct, nextPart, current.query.keywords)]);
     else setStack([]);
   };
-  const setPart = (next: StorePart | null) => {
-    setPartState(next);
+  /** What to browse and search: one kind, or one part of themes. */
+  const setScope = (next: ProductKind, nextPart: StorePart | null = null) => {
+    const p = next === 'theme' ? nextPart : null;
+    if (scopeOf(product, part) === scopeOf(next, p) && tab === 'discover') return;
+    setProductState(next);
+    setPartState(p);
     try {
-      if (next) localStorage.setItem(PART_KEY, next);
+      localStorage.setItem(PRODUCT_KEY, next);
+      if (p) localStorage.setItem(PART_KEY, p);
       else localStorage.removeItem(PART_KEY);
     } catch {
       /* ignore */
     }
-    if (tab !== 'discover') setTab('discover');
-    reroute('theme', next);
+    if ((tab === 'categories' && (next !== 'theme' || p)) || tab === 'device') setTab('discover');
+    reroute(next, p);
   };
-  const setProduct = (next: ProductKind) => {
-    setProductState(next);
-    try {
-      localStorage.setItem(PRODUCT_KEY, next);
-    } catch {
-      /* ignore */
-    }
-    if (tab === 'categories' && next !== 'theme') setTab('discover');
-    if (tab === 'device') setTab('discover');
-    reroute(next, part);
-  };
+  const setProduct = (next: ProductKind) => setScope(next);
   const [consent, setConsent] = useState(readConsent);
   const [search, setSearch] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
@@ -1407,54 +1581,51 @@ export function CatalogView() {
   const savedCount = useSaved((s) => s.items.length);
 
   return (
-    <div className="center-body">
-      <div className="toolbar">
+    <div className="center-body store-root">
+      <div className="toolbar store-toolbar">
         {stack.length > 0 && (
           <button className="btn btn-ghost btn-sm" onClick={back} title="Back">
             <ArrowLeft /> Back
           </button>
         )}
-        <div className="segmented" role="group" aria-label="Store section">
+        <div className="segmented store-sections" role="group" aria-label="Store section">
           <button aria-pressed={tab === 'discover' && !stack.length} onClick={() => switchTab('discover')}>
-            <Sparkles /> Discover
+            <Sparkles /> <span className="lbl">Discover</span>
           </button>
           <button aria-pressed={tab === 'categories' && !stack.length} onClick={() => switchTab('categories')} disabled={product !== 'theme'} title={product !== 'theme' ? 'Categories are available for themes' : undefined}>
-            <LayoutGrid /> Categories
+            <LayoutGrid /> <span className="lbl">Categories</span>
           </button>
           <button aria-pressed={tab === 'downloads' && !stack.length} onClick={() => switchTab('downloads')}>
-            <HardDrive /> Downloaded
+            <HardDrive /> <span className="lbl">Downloaded</span>
           </button>
           <button aria-pressed={tab === 'saved' && !stack.length} onClick={() => switchTab('saved')}>
-            <Heart /> Saved{savedCount ? ` ${savedCount}` : ''}
+            <Heart /> <span className="lbl">Saved</span>{savedCount ? ` ${savedCount}` : ''}
           </button>
           <button aria-pressed={tab === 'device'} onClick={() => switchTab('device')}>
-            <Smartphone /> On device
+            <Smartphone /> <span className="lbl">On device</span>
           </button>
         </div>
         <form
-          className="search grow"
-          style={{ maxWidth: 340, minWidth: 200 }}
+          className="search store-search"
           onSubmit={(e) => {
             e.preventDefault();
             runSearch();
           }}
         >
           <Search />
-          <input className="input" placeholder={`Search ${(product === 'theme' && partInfo(part)?.plural) || KINDS.find((k) => k.kind === product)?.label}…`.replace(/^Search (\w)/, (_m, c: string) => `Search ${c.toLowerCase()}`)} value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search the store" />
+          <input className="input" placeholder={`Search ${scopeInfo(scopeOf(product, part)).plural.toLowerCase()}…`} value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search the store" />
         </form>
-        <span className="grow" />
         {tab !== 'device' && (
           <>
-            <label className="check" title="Hide paid themes (only free themes can be downloaded)">
-          <input type="checkbox" checked={freeOnly} onChange={(e) => setFreeOnly(e.target.checked)} /> Free only
+            <label className="check store-free" title="Hide paid items">
+          <input type="checkbox" checked={freeOnly} onChange={(e) => setFreeOnly(e.target.checked)} /> <span className="lbl">Free only</span>
         </label>
         <select
-          className="select"
           value={region}
           onChange={(e) => setRegion(e.target.value)}
           aria-label="Store region"
           title="Store region: changes which themes and prices the store returns"
-          style={{ width: 'auto' }}
+          className="select store-region"
         >
           {REGIONS.map((r) => (
             <option key={r} value={r}>
@@ -1470,12 +1641,14 @@ export function CatalogView() {
         </button>
       </div>
       {tab !== 'device' && (
-        <div className="kind-bar" role="tablist" aria-label="Store content type">
-          {KINDS.map(({ kind, label, icon: Icon }) => (
-            <button key={kind} role="tab" aria-selected={product === kind} className={product === kind ? 'is-on' : ''} onClick={() => setProduct(kind)}>
-              <Icon /> {label}
-            </button>
-          ))}
+        <div className="scope-row">
+          <ScopePicker
+            scope={scopeOf(product, part)}
+            onPick={(id) => {
+              const t = scopeTarget(id);
+              setScope(t.product, t.part);
+            }}
+          />
           {projectTitle && (
             <span className="store-context">
               <span className="faint">Adding to</span>
@@ -1487,22 +1660,9 @@ export function CatalogView() {
           )}
         </div>
       )}
-      {tab !== 'device' && tab !== 'categories' && product === 'theme' && (
-        <div className="part-bar" role="group" aria-label="Look for one part of a theme">
-          <span className="faint">Part</span>
-          <button className={!part ? 'is-on' : ''} aria-pressed={!part} onClick={() => setPart(null)}>
-            Whole theme
-          </button>
-          {PARTS.map((p) => (
-            <button key={p.part} className={part === p.part ? 'is-on' : ''} aria-pressed={part === p.part} onClick={() => setPart(p.part)} title={`Themes listed for their ${p.label.toLowerCase()}. Use takes just that part into your theme.${p.note ? ` ${p.note}` : ''}`}>
-              <p.icon /> {p.plural}
-            </button>
-          ))}
-        </div>
-      )}
       {stack.length > 0 && (
         <div className="crumbs">
-          <button onClick={() => setStack([])}>{tab === 'categories' ? 'Categories' : tab === 'downloads' ? 'Downloaded' : tab === 'saved' ? 'Saved' : KINDS.find((k) => k.kind === product)?.label}</button>
+          <button onClick={() => setStack([])}>{tab === 'categories' ? 'Categories' : tab === 'downloads' ? 'Downloaded' : tab === 'saved' ? 'Saved' : (product === 'theme' && partInfo(part)?.plural) || KINDS.find((k) => k.kind === product)?.label}</button>
           {stack.map((r, i) => (
             <span key={i} className="row" style={{ gap: 4 }}>
               <ChevronRight width={13} className="faint" />
@@ -1533,7 +1693,28 @@ export function CatalogView() {
             <StoreDetail key={route.moduleId} moduleId={route.moduleId} refreshKey={refreshKey} navigate={navigate} />
           ) : route?.type === 'list' ? (
             <>
-              {stack.length > 0 && (
+              {(() => {
+                const q = route.query;
+                const p = (q.kind === 'home' || q.kind === 'search') && (q.product ?? 'theme') === 'theme' ? partInfo(q.part) : null;
+                if (!p) return null;
+                return (
+                  <div className="part-head">
+                    <span className="part-head-icon">
+                      <p.icon />
+                    </span>
+                    <div className="grow">
+                      <strong>{q.kind === 'search' ? route.title : p.plural}</strong>
+                      <span className="muted">
+                        Themes picked for their {p.label.toLowerCase()}. <b>Use</b> takes only the {p.label.toLowerCase()} into your theme.{p.note ? ` ${p.note}` : ''}
+                      </span>
+                    </div>
+                    <button className="btn btn-sm" onClick={() => setScope('theme', null)}>
+                      <Palette /> Whole themes
+                    </button>
+                  </div>
+                );
+              })()}
+              {stack.length > 0 && !(route.query.kind === 'search' && route.query.part) && (
                 <div className="section-head" style={{ marginBottom: 14 }}>
                   <h1 style={{ fontSize: 'var(--fs-xl)' }}>{route.title}</h1>
                 </div>

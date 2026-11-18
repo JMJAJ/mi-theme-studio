@@ -85,16 +85,25 @@ function createFindPanel(view: EditorView): Panel {
     view.dispatch({ effects: setSearchQuery.of(new SearchQuery({ search: findInput.value, replace: replaceInput.value, ...opts })) });
   };
 
+  // findNext/findPrevious select all the text of the `main-field` input
+  // (CodeMirror's selectSearchInput), so the next keystroke would replace the
+  // whole query. Put the caret back where it was.
+  const keepCaret = (fn: (v: EditorView) => boolean) => {
+    const { selectionStart: s, selectionEnd: e, selectionDirection: d } = findInput;
+    fn(view);
+    if (document.activeElement === findInput && s !== null && e !== null) findInput.setSelectionRange(s, e, d ?? undefined);
+  };
+
   findInput.addEventListener('input', () => {
     commit();
     // Jump to the first match from where you are, like a browser.
-    if (findInput.value) findNext(view);
+    if (findInput.value) keepCaret(findNext);
   });
   replaceInput.addEventListener('input', commit);
   findInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      (e.shiftKey ? findPrevious : findNext)(view);
+      keepCaret(e.shiftKey ? findPrevious : findNext);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       closeSearchPanel(view);

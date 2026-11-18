@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1308" viewBox="0 0 1000 1308" role="img" aria-label="Date and time patterns">
+<title>Date and time patterns</title>
+<rect width="1000" height="1308" rx="14" fill="#0f1115"/>
+<text x="32" y="44" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="24" font-weight="700" fill="#e8eaf0">Date and time patterns</text>
+<text x="32" y="70" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="14" fill="#8a93a6">DateTime format, drawn at Tuesday 17 March 2026, 21:05:07</text>
+<rect x="20" y="92" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="120" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;DateTime format=&quot;</tspan><tspan fill="#c9d1e0">H</tspan><tspan fill="#c9d1e0">H</tspan><tspan fill="#c9d1e0">:</tspan><tspan fill="#c9d1e0">m</tspan><tspan fill="#c9d1e0">m</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="151" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="131" width="89.2" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="151" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">21:05</text>
+<text x="169.2" y="151" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">24-hour clock</text>
+<rect x="20" y="178" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="206" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;DateTime format=&quot;</tspan><tspan fill="#c9d1e0">h</tspan><tspan fill="#c9d1e0">h</tspan><tspan fill="#c9d1e0">:</tspan><tspan fill="#c9d1e0">m</tspan><tspan fill="#c9d1e0">m</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="237" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="217" width="89.2" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="237" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">09:05</text>
+<text x="169.2" y="237" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">12-hour, leading zero</text>
+<rect x="20" y="264" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="292" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;DateTime format=&quot;</tspan><tspan fill="#c9d1e0">h</tspan><tspan fill="#c9d1e0">:</tspan><tspan fill="#c9d1e0">m</tspan><tspan fill="#c9d1e0">m</tspan><tspan fill="#c9d1e0">&#160;</tspan><tspan fill="#c9d1e0">a</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="323" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="303" width="110.48" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="323" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">9:05 PM</text>
+<text x="190.48000000000002" y="323" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">12-hour with AM/PM</text>
+<rect x="20" y="350" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="378" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;DateTime format=&quot;</tspan><tspan fill="#c9d1e0">H</tspan><tspan fill="#c9d1e0">H</tspan><tspan fill="#c9d1e0">:</tspan><tspan fill="#c9d1e0">m</tspan><tspan fill="#c9d1e0">m</tspan><tspan fill="#c9d1e0">:</tspan><tspan fill="#c9d1e0">s</tspan><tspan fill="#c9d1e0">s</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="409" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="389" width="121.12" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="409" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">21:05:07</text>
+<text x="201.12" y="409" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">with seconds</text>
+<rect x="20" y="436" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="464" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;DateTime format=&quot;</tspan><tspan fill="#c9d1e0">d</tspan><tspan fill="#c9d1e0">/</tspan><tspan fill="#c9d1e0">M</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="495" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="475" width="78.56" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="495" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">17/3</text>
+<text x="158.56" y="495" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">day/month, no zeros</text>
+<rect x="20" y="522" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="550" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;DateTime format=&quot;</tspan><tspan fill="#c9d1e0">d</tspan><tspan fill="#c9d1e0">/</tspan><tspan fill="#c9d1e0">M</tspan><tspan fill="#c9d1e0">&#160;</tspan><tspan fill="#c9d1e0">E</tspan><tspan fill="#c9d1e0">E</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="581" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="561" width="121.12" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="581" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">17/3 Tue</text>
+<text x="201.12" y="581" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">day/month + short weekday</text>
+<rect x="20" y="608" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="636" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;DateTime format=&quot;</tspan><tspan fill="#c9d1e0">d</tspan><tspan fill="#c9d1e0">d</tspan><tspan fill="#c9d1e0">/</tspan><tspan fill="#c9d1e0">M</tspan><tspan fill="#c9d1e0">M</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="667" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="647" width="89.2" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="667" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">17/03</text>
+<text x="169.2" y="667" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">zero-padded</text>
+<rect x="20" y="694" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="722" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;DateTime format=&quot;</tspan><tspan fill="#c9d1e0">M</tspan><tspan fill="#c9d1e0">/</tspan><tspan fill="#c9d1e0">d</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="753" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="733" width="78.56" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="753" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">3/17</text>
+<text x="158.56" y="753" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">US order</text>
+<rect x="20" y="780" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="808" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;DateTime format=&quot;</tspan><tspan fill="#c9d1e0">E</tspan><tspan fill="#c9d1e0">E</tspan><tspan fill="#c9d1e0">E</tspan><tspan fill="#c9d1e0">E</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="839" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="819" width="110.48" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="839" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">Tuesday</text>
+<text x="190.48000000000002" y="839" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">full weekday</text>
+<rect x="20" y="866" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="894" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;DateTime format=&quot;</tspan><tspan fill="#c9d1e0">E</tspan><tspan fill="#c9d1e0">E</tspan><tspan fill="#c9d1e0">E</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#c9d1e0">&#160;</tspan><tspan fill="#c9d1e0">d</tspan><tspan fill="#c9d1e0">&#160;</tspan><tspan fill="#c9d1e0">M</tspan><tspan fill="#c9d1e0">M</tspan><tspan fill="#c9d1e0">M</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="925" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="905" width="153.04000000000002" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="925" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">Tue, 17 Mar</text>
+<text x="233.04000000000002" y="925" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">short date</text>
+<rect x="20" y="952" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="980" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;DateTime format=&quot;</tspan><tspan fill="#c9d1e0">d</tspan><tspan fill="#c9d1e0">&#160;</tspan><tspan fill="#c9d1e0">M</tspan><tspan fill="#c9d1e0">M</tspan><tspan fill="#c9d1e0">M</tspan><tspan fill="#c9d1e0">M</tspan><tspan fill="#c9d1e0">&#160;</tspan><tspan fill="#c9d1e0">y</tspan><tspan fill="#c9d1e0">y</tspan><tspan fill="#c9d1e0">y</tspan><tspan fill="#c9d1e0">y</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="1011" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="991" width="174.32000000000002" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="1011" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">17 March 2026</text>
+<text x="254.32000000000002" y="1011" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">long date</text>
+<rect x="20" y="1038" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="1066" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;DateTime format=&quot;</tspan><tspan fill="#c9d1e0">y</tspan><tspan fill="#c9d1e0">y</tspan><tspan fill="#c9d1e0">y</tspan><tspan fill="#c9d1e0">y</tspan><tspan fill="#c9d1e0">-</tspan><tspan fill="#c9d1e0">M</tspan><tspan fill="#c9d1e0">M</tspan><tspan fill="#c9d1e0">-</tspan><tspan fill="#c9d1e0">d</tspan><tspan fill="#c9d1e0">d</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="1097" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="1077" width="142.4" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="1097" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">2026-03-17</text>
+<text x="222.4" y="1097" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">ISO date</text>
+<rect x="20" y="1124" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="1152" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;DateTime format=&quot;</tspan><tspan fill="#c9d1e0">M</tspan><tspan fill="#c9d1e0">M</tspan><tspan fill="#c9d1e0">/</tspan><tspan fill="#c9d1e0">d</tspan><tspan fill="#c9d1e0">d</tspan><tspan fill="#c9d1e0">/</tspan><tspan fill="#c9d1e0">y</tspan><tspan fill="#c9d1e0">y</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="1183" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="1163" width="121.12" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="1183" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">03/17/26</text>
+<text x="201.12" y="1183" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">two-digit year</text>
+<rect x="20" y="1210" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="1238" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;DateTime format=&quot;</tspan><tspan fill="#9ecbff">'Today&#160;is'</tspan><tspan fill="#c9d1e0">&#160;</tspan><tspan fill="#c9d1e0">E</tspan><tspan fill="#c9d1e0">E</tspan><tspan fill="#c9d1e0">E</tspan><tspan fill="#c9d1e0">E</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="1269" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="1249" width="206.24" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="1269" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">Today is Tuesday</text>
+<text x="286.24" y="1269" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">literal words in '…'</text>
+</svg>

@@ -12,6 +12,7 @@
 pub mod adb;
 pub mod commands;
 pub mod error;
+pub mod inventory;
 pub mod package;
 pub mod project;
 pub mod protocol;
@@ -52,6 +53,11 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            commands::inventory_list,
+            commands::inventory_save,
+            commands::inventory_update,
+            commands::inventory_delete,
+            commands::inventory_files,
             commands::settings_update,
             commands::recent_remove,
             commands::project_new,
@@ -116,6 +122,8 @@ pub fn run() {
             commands::adb_open_store_item,
             commands::adb_open_theme_settings,
             commands::adb_apply_theme,
+            commands::adb_apply_theme_permanent,
+            commands::adb_restore_aod,
             commands::adb_keep_theme_applied,
             commands::adb_keepalive_status,
             commands::mirror_start,

@@ -72,7 +72,7 @@ export function setAttributes(text: string, ordinal: number, attrs: Record<strin
 }
 
 /** Where the element with this document-order index sits, from its start tag through its end tag. */
-function elementRange(text: string, ordinal: number): { start: number; end: number } | null {
+export function elementRange(text: string, ordinal: number): { start: number; end: number } | null {
   const tag = findStartTag(text, ordinal);
   if (!tag) return null;
   if (/\/\s*>$/.test(text.slice(tag.start, tag.end))) return { start: tag.start, end: tag.end };

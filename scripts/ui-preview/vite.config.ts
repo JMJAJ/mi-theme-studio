@@ -26,9 +26,9 @@ function fixtureServer(): Plugin {
           res.end(readFileSync(path.join(fixture, url.slice('/__fixture/'.length).split('?')[0])));
           return;
         }
-        if (url.startsWith('/__res/main/')) {
+        if (url.startsWith('/__res/main/') || url.startsWith('/__res/ref/')) {
           index ??= JSON.parse(readFileSync(path.join(fixture, 'index.json'), 'utf8'));
-          const key = decodeURIComponent(url.slice('/__res/main/'.length).split('?')[0]);
+          const key = decodeURIComponent(url.slice(url.indexOf('/', '/__res/'.length) + 1).split('?')[0]);
           const file = index![key];
           if (!file) {
             res.statusCode = 404;

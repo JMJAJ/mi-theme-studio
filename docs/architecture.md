@@ -29,7 +29,7 @@ React UI ──invoke──▶ commands.rs ──▶ project / package / validat
 
 - Archive paths are sanitized on import (`package/paths.rs`); user-entered names are validated against Windows-unsafe characters.
 - Import limits: 100 000 entries, 512 MB per entry, 2 GB expanded total; declared sizes are not trusted.
-- Device commands only run via `adb/runner.rs` with timeouts, cancellation and `CREATE_NO_WINDOW`; device-side shell arguments are fixed or restricted to `[A-Za-z0-9._-]`. The Theme Manager cache browser reads bounded metadata and image files from fixed paths and validates IDs and preview names before constructing remote paths.
+- Device commands only run via `adb/runner.rs` with timeouts, cancellation and `CREATE_NO_WINDOW`; device-side shell arguments are fixed or restricted to `[A-Za-z0-9._+-]`. The Theme Manager cache browser reads bounded metadata and image files from fixed paths and validates IDs and preview names before constructing remote paths. The experimental AOD permanent apply (see `docs/device-integration.md`) uses fixed remote directories and generated MAML; it rejects unsafe top-level package names before building paths.
 - The store client builds every URL from fixed routes and validated IDs; image URLs are limited to `https://*.mi-img.com` (also enforced by the CSP), downloads to HTTPS Xiaomi hosts, and packages are SHA-1 verified. Paid themes are never downloaded.
 
 ## Tests

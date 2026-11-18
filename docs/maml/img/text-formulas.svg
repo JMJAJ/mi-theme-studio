@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1394" viewBox="0 0 1000 1394" role="img" aria-label="Text formulas (textExp)">
+<title>Text formulas (textExp)</title>
+<rect width="1000" height="1394" rx="14" fill="#0f1115"/>
+<text x="32" y="44" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="24" font-weight="700" fill="#e8eaf0">Text formulas (textExp)</text>
+<text x="32" y="70" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="14" fill="#8a93a6">weather_description = Clear, weather_temperature = 18℃, battery 82%, 21:05</text>
+<rect x="20" y="92" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="120" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;Text textExp=&quot;</tspan><tspan fill="#7ee0a4">@weather_description</tspan><tspan fill="#c9d1e0">+</tspan><tspan fill="#9ecbff">'&#160;'</tspan><tspan fill="#c9d1e0">+</tspan><tspan fill="#7ee0a4">@weather_temperature</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="151" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="131" width="131.76" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="151" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">Clear 18℃</text>
+<text x="211.76" y="151" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">join two strings with a space</text>
+<rect x="20" y="178" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="206" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;Text textExp=&quot;</tspan><tspan fill="#ffb86b">#weather_temp</tspan><tspan fill="#c9d1e0">+</tspan><tspan fill="#9ecbff">'°'</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="237" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="217" width="70" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="237" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">18°</text>
+<text x="150" y="237" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">number + text becomes text</text>
+<rect x="20" y="264" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="292" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;Text textExp=&quot;</tspan><tspan fill="#7ee0a4">@weather_city</tspan><tspan fill="#c9d1e0">+</tspan><tspan fill="#9ecbff">'&#160;·&#160;'</tspan><tspan fill="#c9d1e0">+</tspan><tspan fill="#ffb86b">#weather_temp</tspan><tspan fill="#c9d1e0">+</tspan><tspan fill="#9ecbff">'°'</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="323" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="303" width="195.60000000000002" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="323" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">Your city · 18°</text>
+<text x="275.6" y="323" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">mix strings and numbers</text>
+<rect x="20" y="350" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="378" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;Text textExp=&quot;</tspan><tspan fill="#ffb86b">#battery_level</tspan><tspan fill="#c9d1e0">+</tspan><tspan fill="#9ecbff">'%'</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="409" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="389" width="70" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="409" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">82%</text>
+<text x="150" y="409" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">battery percent</text>
+<rect x="20" y="436" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="464" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;Text textExp=&quot;</tspan><tspan fill="#9ecbff">'Hi,&#160;'</tspan><tspan fill="#c9d1e0">+</tspan><tspan fill="#7ee0a4">@name</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="495" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="475" width="121.12" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="495" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">Hi, Alex</text>
+<text x="201.12" y="495" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">your own string variable</text>
+<rect x="20" y="522" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="550" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;Text textExp=&quot;</tspan><tspan fill="#d6a6ff">ifelse</tspan><tspan fill="#c9d1e0">(</tspan><tspan fill="#ffb86b">#hour24</tspan><tspan fill="#c9d1e0">{</tspan><tspan fill="#ffb86b">12</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#9ecbff">'Good&#160;morning'</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#ffb86b">#hour24</tspan><tspan fill="#c9d1e0">{</tspan><tspan fill="#ffb86b">18</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#9ecbff">'Good&#160;afternoon'</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#9ecbff">'Good&#160;evening'</tspan><tspan fill="#c9d1e0">)</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="581" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="561" width="163.68" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="581" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">Good evening</text>
+<text x="243.68" y="581" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">pick text by the hour</text>
+<rect x="20" y="608" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="636" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;Text textExp=&quot;</tspan><tspan fill="#d6a6ff">ifelse</tspan><tspan fill="#c9d1e0">(</tspan><tspan fill="#d6a6ff">eq</tspan><tspan fill="#c9d1e0">(</tspan><tspan fill="#ffb86b">#battery_state</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#ffb86b">1</tspan><tspan fill="#c9d1e0">)</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#9ecbff">'Charging'</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#ffb86b">#battery_level</tspan><tspan fill="#c9d1e0">+</tspan><tspan fill="#9ecbff">'%'</tspan><tspan fill="#c9d1e0">)</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="667" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="647" width="70" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="667" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">82%</text>
+<text x="150" y="667" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">charging or percent</text>
+<rect x="20" y="694" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="722" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;Text textExp=&quot;</tspan><tspan fill="#d6a6ff">ifelse</tspan><tspan fill="#c9d1e0">(</tspan><tspan fill="#ffb86b">#sms_unread_count</tspan><tspan fill="#c9d1e0">}</tspan><tspan fill="#ffb86b">0</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#ffb86b">#sms_unread_count</tspan><tspan fill="#c9d1e0">+</tspan><tspan fill="#9ecbff">'&#160;new'</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#9ecbff">'No&#160;messages'</tspan><tspan fill="#c9d1e0">)</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="753" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="733" width="153.04000000000002" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="753" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">No messages</text>
+<text x="233.04000000000002" y="753" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">unread counter</text>
+<rect x="20" y="780" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="808" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;Text textExp=&quot;</tspan><tspan fill="#d6a6ff">formatDate</tspan><tspan fill="#c9d1e0">(</tspan><tspan fill="#9ecbff">'EEEE'</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#ffb86b">#time</tspan><tspan fill="#c9d1e0">)</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="839" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="819" width="110.48" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="839" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">Tuesday</text>
+<text x="190.48000000000002" y="839" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">a date inside a formula</text>
+<rect x="20" y="866" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="894" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;Text textExp=&quot;</tspan><tspan fill="#d6a6ff">formatDate</tspan><tspan fill="#c9d1e0">(</tspan><tspan fill="#9ecbff">'d/M&#160;EE'</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#ffb86b">#time</tspan><tspan fill="#c9d1e0">)</tspan><tspan fill="#c9d1e0">+</tspan><tspan fill="#9ecbff">'&#160;&#160;'</tspan><tspan fill="#c9d1e0">+</tspan><tspan fill="#7ee0a4">@weather_temperature</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="925" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="905" width="174.32000000000002" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="925" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">17/3 Tue  18℃</text>
+<text x="254.32000000000002" y="925" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">date and weather on one line</text>
+<rect x="20" y="952" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="980" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;Text textExp=&quot;</tspan><tspan fill="#d6a6ff">strToUpperCase</tspan><tspan fill="#c9d1e0">(</tspan><tspan fill="#7ee0a4">@weather_city</tspan><tspan fill="#c9d1e0">)</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="1011" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="991" width="131.76" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="1011" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">YOUR CITY</text>
+<text x="211.76" y="1011" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">upper case</text>
+<rect x="20" y="1038" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="1066" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;Text textExp=&quot;</tspan><tspan fill="#d6a6ff">substr</tspan><tspan fill="#c9d1e0">(</tspan><tspan fill="#7ee0a4">@weather_description</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#ffb86b">0</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#ffb86b">3</tspan><tspan fill="#c9d1e0">)</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="1097" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="1077" width="70" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="1097" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">Cle</text>
+<text x="150" y="1097" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">first three letters</text>
+<rect x="20" y="1124" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="1152" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;Text textExp=&quot;</tspan><tspan fill="#d6a6ff">ifelse</tspan><tspan fill="#c9d1e0">(</tspan><tspan fill="#ffb86b">#minute</tspan><tspan fill="#c9d1e0">{</tspan><tspan fill="#ffb86b">10</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#9ecbff">'0'</tspan><tspan fill="#c9d1e0">+</tspan><tspan fill="#ffb86b">#minute</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#ffb86b">#minute</tspan><tspan fill="#c9d1e0">)</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="1183" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="1163" width="70" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="1183" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">05</text>
+<text x="150" y="1183" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">leading zero by hand</text>
+<rect x="20" y="1210" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="1238" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;Text textExp=&quot;</tspan><tspan fill="#ffb86b">#hour12</tspan><tspan fill="#c9d1e0">+</tspan><tspan fill="#9ecbff">':'</tspan><tspan fill="#c9d1e0">+</tspan><tspan fill="#d6a6ff">ifelse</tspan><tspan fill="#c9d1e0">(</tspan><tspan fill="#ffb86b">#minute</tspan><tspan fill="#c9d1e0">{</tspan><tspan fill="#ffb86b">10</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#9ecbff">'0'</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#9ecbff">''</tspan><tspan fill="#c9d1e0">)</tspan><tspan fill="#c9d1e0">+</tspan><tspan fill="#ffb86b">#minute</tspan><tspan fill="#c9d1e0">+</tspan><tspan fill="#d6a6ff">ifelse</tspan><tspan fill="#c9d1e0">(</tspan><tspan fill="#ffb86b">#ampm</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#9ecbff">'&#160;PM'</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#9ecbff">'&#160;AM'</tspan><tspan fill="#c9d1e0">)</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="1269" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="1249" width="110.48" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="1269" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">9:05 PM</text>
+<text x="190.48000000000002" y="1269" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">a 12-hour clock from parts</text>
+<rect x="20" y="1296" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="1324" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;Text textExp=&quot;</tspan><tspan fill="#d6a6ff">int</tspan><tspan fill="#c9d1e0">(</tspan><tspan fill="#ffb86b">#steps</tspan><tspan fill="#c9d1e0">*</tspan><tspan fill="#ffb86b">100</tspan><tspan fill="#c9d1e0">/</tspan><tspan fill="#ffb86b">#steps_goal</tspan><tspan fill="#c9d1e0">)</tspan><tspan fill="#c9d1e0">+</tspan><tspan fill="#9ecbff">'%&#160;of&#160;goal'</tspan><tspan fill="#8a93a6">&quot;/&gt;</tspan></text>
+<text x="36" y="1355" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="1335" width="153.04000000000002" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="1355" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">81% of goal</text>
+<text x="233.04000000000002" y="1355" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">arithmetic, then text</text>
+</svg>

@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1050" viewBox="0 0 1000 1050" role="img" aria-label="Formulas in number attributes">
+<title>Formulas in number attributes</title>
+<rect width="1000" height="1050" rx="14" fill="#0f1115"/>
+<text x="32" y="44" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="24" font-weight="700" fill="#e8eaf0">Formulas in number attributes</text>
+<text x="32" y="70" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="14" fill="#8a93a6">Screen 1080 × 2400, battery 82%, 21:05:07</text>
+<rect x="20" y="92" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="120" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">x=&quot;</tspan><tspan fill="#ffb86b">#screen_width</tspan><tspan fill="#c9d1e0">/</tspan><tspan fill="#ffb86b">2</tspan><tspan fill="#8a93a6">&quot;</tspan></text>
+<text x="36" y="151" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="131" width="110.48" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="151" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">x = 540</text>
+<text x="190.48000000000002" y="151" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">centre of the screen (use align=&quot;center&quot;)</text>
+<rect x="20" y="178" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="206" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">y=&quot;</tspan><tspan fill="#ffb86b">#screen_height</tspan><tspan fill="#c9d1e0">-</tspan><tspan fill="#ffb86b">200</tspan><tspan fill="#8a93a6">&quot;</tspan></text>
+<text x="36" y="237" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="217" width="121.12" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="237" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">y = 2200</text>
+<text x="201.12" y="237" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">200 px from the bottom</text>
+<rect x="20" y="264" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="292" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">w=&quot;</tspan><tspan fill="#ffb86b">520</tspan><tspan fill="#c9d1e0">*</tspan><tspan fill="#ffb86b">#battery_level</tspan><tspan fill="#c9d1e0">/</tspan><tspan fill="#ffb86b">100</tspan><tspan fill="#8a93a6">&quot;</tspan></text>
+<text x="36" y="323" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="303" width="131.76" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="323" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">w = 426.4</text>
+<text x="211.76" y="323" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">a bar that fills with the battery</text>
+<rect x="20" y="350" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="378" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">sweep=&quot;</tspan><tspan fill="#ffb86b">360</tspan><tspan fill="#c9d1e0">*</tspan><tspan fill="#ffb86b">#battery_level</tspan><tspan fill="#c9d1e0">/</tspan><tspan fill="#ffb86b">100</tspan><tspan fill="#8a93a6">&quot;</tspan></text>
+<text x="36" y="409" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="389" width="174.32000000000002" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="409" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">sweep = 295.2</text>
+<text x="254.32000000000002" y="409" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">a ring that fills with the battery</text>
+<rect x="20" y="436" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="464" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">rotation=&quot;</tspan><tspan fill="#ffb86b">#second</tspan><tspan fill="#c9d1e0">*</tspan><tspan fill="#ffb86b">6</tspan><tspan fill="#8a93a6">&quot;</tspan></text>
+<text x="36" y="495" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="475" width="174.32000000000002" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="495" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">rotation = 42</text>
+<text x="254.32000000000002" y="495" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">second hand: 6° per second</text>
+<rect x="20" y="522" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="550" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">rotation=&quot;</tspan><tspan fill="#c9d1e0">(</tspan><tspan fill="#ffb86b">#hour12</tspan><tspan fill="#c9d1e0">%</tspan><tspan fill="#ffb86b">12</tspan><tspan fill="#c9d1e0">)</tspan><tspan fill="#c9d1e0">*</tspan><tspan fill="#ffb86b">30</tspan><tspan fill="#c9d1e0">+</tspan><tspan fill="#ffb86b">#minute</tspan><tspan fill="#c9d1e0">*</tspan><tspan fill="#ffb86b">0.5</tspan><tspan fill="#8a93a6">&quot;</tspan></text>
+<text x="36" y="581" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="561" width="206.24" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="581" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">rotation = 272.5</text>
+<text x="286.24" y="581" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">hour hand</text>
+<rect x="20" y="608" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="636" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">alpha=&quot;</tspan><tspan fill="#d6a6ff">ifelse</tspan><tspan fill="#c9d1e0">(</tspan><tspan fill="#ffb86b">#hour24</tspan><tspan fill="#c9d1e0">}</tspan><tspan fill="#c9d1e0">=</tspan><tspan fill="#ffb86b">20</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#ffb86b">150</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#ffb86b">255</tspan><tspan fill="#c9d1e0">)</tspan><tspan fill="#8a93a6">&quot;</tspan></text>
+<text x="36" y="667" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="647" width="153.04000000000002" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="667" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">alpha = 150</text>
+<text x="233.04000000000002" y="667" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">dimmer after 8 pm</text>
+<rect x="20" y="694" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="722" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">visibility=&quot;</tspan><tspan fill="#d6a6ff">eq</tspan><tspan fill="#c9d1e0">(</tspan><tspan fill="#ffb86b">#battery_state</tspan><tspan fill="#c9d1e0">,</tspan><tspan fill="#ffb86b">1</tspan><tspan fill="#c9d1e0">)</tspan><tspan fill="#8a93a6">&quot;</tspan></text>
+<text x="36" y="753" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="733" width="184.96" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="753" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">visibility = 0</text>
+<text x="264.96000000000004" y="753" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">1 only while charging</text>
+<rect x="20" y="780" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="808" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">visibility=&quot;</tspan><tspan fill="#ffb86b">#battery_level</tspan><tspan fill="#c9d1e0">{</tspan><tspan fill="#ffb86b">20</tspan><tspan fill="#8a93a6">&quot;</tspan></text>
+<text x="36" y="839" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="819" width="184.96" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="839" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">visibility = 0</text>
+<text x="264.96000000000004" y="839" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">low battery warning</text>
+<rect x="20" y="866" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="894" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">visibility=&quot;</tspan><tspan fill="#ffb86b">#hour24</tspan><tspan fill="#c9d1e0">}</tspan><tspan fill="#c9d1e0">=</tspan><tspan fill="#ffb86b">6</tspan><tspan fill="#c9d1e0">*</tspan><tspan fill="#c9d1e0">*</tspan><tspan fill="#ffb86b">#hour24</tspan><tspan fill="#c9d1e0">{</tspan><tspan fill="#ffb86b">18</tspan><tspan fill="#8a93a6">&quot;</tspan></text>
+<text x="36" y="925" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="905" width="184.96" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="925" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">visibility = 0</text>
+<text x="264.96000000000004" y="925" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">daytime only (** is AND)</text>
+<rect x="20" y="952" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="980" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">visibility=&quot;</tspan><tspan fill="#ffb86b">#hour24</tspan><tspan fill="#c9d1e0">{</tspan><tspan fill="#ffb86b">6</tspan><tspan fill="#c9d1e0">|</tspan><tspan fill="#c9d1e0">|</tspan><tspan fill="#ffb86b">#hour24</tspan><tspan fill="#c9d1e0">}</tspan><tspan fill="#c9d1e0">=</tspan><tspan fill="#ffb86b">18</tspan><tspan fill="#8a93a6">&quot;</tspan></text>
+<text x="36" y="1011" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="991" width="184.96" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="1011" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">visibility = 1</text>
+<text x="264.96000000000004" y="1011" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">night only (|| is OR)</text>
+</svg>

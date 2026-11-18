@@ -21,6 +21,43 @@ The **Online themes → On device** tab browses themes already cached on the sel
 
 **Open as reference** reads supported `.mrc` modules that are already in the Theme Manager cache and assembles them into a temporary in-memory MTZ view. It maps known resource codes to common MTZ paths, preserves theme title and author, and warns about missing or unsupported modules. The reference stays read-only; selected files can be copied into the active project through the existing attribution workflow. This does not modify the phone, call store download or rights endpoints, or read/change `.mra` rights records. Unknown resource types still need mapping work.
 
+## Permanent AOD apply (experimental)
+
+The **Permanent apply (AOD)** button (Phone page and Device panel) uses the AOD
+MAML path to make a theme survive the framework's 2-hour `CHECK_TIME_UP`
+validation without root. It is a confirmed, invasive operation:
+
+- On a Theme Manager build with the editor entry point, the theme is first
+  applied normally; the app then writes only a sticky validation blocker.
+- On a build without the editor entry point (for example factory
+  3.0.5.19-global), the app extracts the `.mtz` to `/data/local/tmp` and writes
+  an AOD MAML manifest that copies every real top-level file into
+  `/data/system/theme`, sets the wallpaper through `WallpaperManager`, calls
+  `IconCustomizer.prepareCustomizedIcons` to regenerate the icon cache, sends
+  the framework configuration change and `ACTION_THEME_CHANGED`, restarts
+  System UI/launcher, and writes the same blocker. Tested as an installed
+  3.0.5.19 update on the test phone: `ApplyThemeForScreenshot` was absent and
+  the AOD backend returned `mode=aodFull, blockerVerified=true`; the wallpaper,
+  lock screen and icons visibly changed.
+- The blocker is `/data/system/theme/boots` with mode `01777`, containing
+  `bootanimation.zip -> /dev/input/event0`. `ThemeReceiver` validates that path
+  directly; `HashUtilsCompat.getSHA1` blocks reading the input device in the
+  Theme Manager process, so no reset occurs. The blocker still has to be
+  verified against the real 2-hour check on 3.0.5.19; a validation invoked from
+  System UI is not equivalent because System UI can read the input device.
+- AOD is left on the `maml` category. **Remove AOD blocker** restores the
+  category and asks AOD to remove the sticky directory. The current theme files
+  are left in place.
+
+The path is device-specific: it requires `com.miui.aod`, the exported
+`com.miui.aod.settings` provider, shell-writable secure settings, and
+always-on display. The app checks the provider before changing the phone and
+refuses with an `unsupported` error otherwise. Tested on a 2510DPC44G
+(HyperOS 3, Android 16, Theme Manager 3.0.5.16). A 3.0.5.19 update was also
+installed and tested; the AOD path does not depend on the removed designer
+activity. A phone that ships 3.0.5.19 as its factory image remains untested,
+but the relevant Theme Manager surface is the same.
+
 ## Applying themes and opening Theme Manager
 
 Findings (Theme Manager global 3.0.5.19, verified read-only on a HyperOS 3.0 / Android 16 phone):

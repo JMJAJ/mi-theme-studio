@@ -1,5 +1,5 @@
 // Left rail: the places a theme author works in.
-import { FolderTree, Keyboard, Library, Palette, PackageCheck, Settings, ShoppingBag, Smartphone, type LucideIcon } from 'lucide-react';
+import { BookOpen, FolderTree, Keyboard, Library, Palette, PackageCheck, Settings, ShoppingBag, Smartphone, type LucideIcon } from 'lucide-react';
 import { goTo } from '../../state/actions';
 import { setState, useStore, type Section } from '../../state/store';
 import { useDeviceSummary } from './deviceSummary';
@@ -37,6 +37,7 @@ export function Rail() {
         disabled={!project}
         badge={problems ? <span className={`rail-badge ${validation?.errors ? 'is-err' : 'is-warn'}`}>{problems > 99 ? '99+' : problems}</span> : undefined}
       />
+      <RailButton section="guide" label="Guide" icon={BookOpen} />
       <span className="grow" />
       <button className="rail-item rail-small" title="Keyboard shortcuts (Ctrl+/)" onClick={() => setState({ dialog: { type: 'shortcuts' } })}>
         <span className="rail-icon">

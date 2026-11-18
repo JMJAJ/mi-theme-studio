@@ -2,7 +2,7 @@
 // then the themes already on it, then connection details for when ADB needs
 // attention.
 import { TryOnButton } from '../common/TryOnButton';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Bug, Camera, Check, ChevronDown, ChevronRight, Copy, Info, Loader2, MonitorPlay, Palette, RotateCcw, Send, Settings2, ShieldCheck, Smartphone, Sparkles, Usb } from 'lucide-react';
 import { api, screenshotUrl } from '../../lib/api';
 import type { ThemeManagerSupport } from '../../lib/types';
@@ -141,6 +141,38 @@ function ConnectGuide() {
   );
 }
 
+/** Last screenshot at the full height of the hero, as wide as the screen's own shape needs. */
+function PhoneShot({ src }: { src: string | null }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [ratio, setRatio] = useState(9 / 19.5);
+  const [width, setWidth] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => setWidth(Math.round(el.clientHeight * ratio));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ratio]);
+  return (
+    <div ref={ref} className="ph-shot" style={width ? { width } : undefined}>
+      {src ? (
+        <img
+          src={src}
+          alt="Last screenshot"
+          onLoad={(e) => {
+            const img = e.currentTarget;
+            if (img.naturalWidth && img.naturalHeight) setRatio(img.naturalWidth / img.naturalHeight);
+          }}
+        />
+      ) : (
+        <Smartphone />
+      )}
+    </div>
+  );
+}
+
 export function PhoneView() {
   const device = useDeviceSummary();
   const serial = useStore((s) => s.selectedSerial);
@@ -192,7 +224,7 @@ export function PhoneView() {
       <div className="phone-page">
         {device.ready ? (
           <section className="phone-hero">
-            <div className="ph-shot">{shot ? <img src={screenshotUrl(shot.id)} alt="Last screenshot" /> : <Smartphone />}</div>
+            <PhoneShot src={shot ? screenshotUrl(shot.id) : null} />
             <div className="ph-body">
               <div className="hero-kicker">Connected phone</div>
               <h1>{device.label}</h1>
@@ -245,6 +277,11 @@ export function PhoneView() {
                     title="Keep reapplying this theme after the framework’s periodic licence check. No root; a reboot stops it."
                   >
                     <ShieldCheck /> {keepAlive ? 'Stop keep-alive' : 'Keep applied'}
+                  </button>
+                )}
+                {!support?.rooted && (
+                  <button className="btn" disabled={!!busy} onClick={() => void A.restoreAodChanges()} title="Remove the sticky boot-animation blocker and restore the AOD category.">
+                    <RotateCcw /> Remove AOD blocker
                   </button>
                 )}
                 <MirrorButton className="btn" />

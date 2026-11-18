@@ -35,6 +35,7 @@ const details = {
   themeManagerInstalled: true,
 };
 
+const inventory = new Map<string, { item: Record<string, unknown>; files: { path: string; data: number[] }[] }>();
 mockWindows('main');
 mockIPC((cmd, args) => {
   switch (cmd) {
@@ -47,12 +48,35 @@ mockIPC((cmd, args) => {
         .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`No such file: ${path}`))))
         .then((text) => ({ path, text, lossy: false, bom: false, rev: 0 }));
     }
+    case 'file_write_text':
+      (globalThis as { __lastWrite?: unknown }).__lastWrite = args;
+      return null;
     case 'project_snapshot':
       return withProject ? fixture : null;
     case 'metadata_get':
       return metadata;
     case 'reference_snapshot':
+      return params.get('ref') ? { ...fixture, title: 'Reference copy' } : null;
+    case 'inventory_list':
+      return [...inventory.values()].map((v) => v.item);
+    case 'inventory_save': {
+      const { item, files } = args as { item: Record<string, unknown>; files: { path: string; data: number[] }[] };
+      const id = (item.id as string) || `i${Date.now().toString(16)}`;
+      const saved = { ...item, id, createdMs: Date.now(), files: files.map((f) => f.path) };
+      inventory.set(id, { item: saved, files });
+      return saved;
+    }
+    case 'inventory_update': {
+      const { id, patch } = args as { id: string; patch: object };
+      const v = inventory.get(id)!;
+      v.item = { ...v.item, ...patch };
+      return v.item;
+    }
+    case 'inventory_delete':
+      inventory.delete((args as { id: string }).id);
       return null;
+    case 'inventory_files':
+      return inventory.get((args as { id: string }).id)?.files ?? [];
     case 'adb_log':
     case 'screenshots_list':
     case 'store_downloads':

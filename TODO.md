@@ -31,6 +31,8 @@
 - [x] Live screen mirroring with bundled scrcpy 3.3.1 (pinned, checksum-verified, Apache-2.0); its adb is also used when no other adb is found.
 - [x] Theme Manager intents investigated (docs/device-integration.md): editor apply entry point (absent in global builds), deep links to store items and settings.
 - [x] Apply on phone where Theme Manager supports it: confirmation, verified push, screenshot afterwards; previous theme stays in My themes. Not yet exercised on a supporting (China) build.
+- [x] Experimental non-root permanent apply (AOD): sticky boot-animation validation blocker; Theme Manager/AOD and AOD-full modes; MAML lockscreen install (`lockstyle` + `lock.xml type=maml`, reboot), wallpaper, icons, clock and blocker; verified visually on HyperOS 3 / Theme Manager 3.0.5.16 and a 3.0.5.19 update. Factory-image 3.0.5.19 and other models remain untested; old Settings/SystemUI vector resources remain incompatible.
+- [x] Remove AOD blocker / restore the normal AOD category from the Phone page.
 - [ ] Device-resolution preview of individual resources (e.g. icon masks at the device's density).
 
 ## Editor and package quality

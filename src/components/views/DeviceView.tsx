@@ -158,6 +158,16 @@ function ThemeManagerActions({ serial, hasProject, busy }: { serial: string; has
           <ShieldCheck /> {keepAlive ? 'Stop keep-alive' : 'Keep applied'}
         </button>
       )}
+      {!support.rooted && (
+        <button
+          className="btn"
+          disabled={busy}
+          onClick={() => void A.restoreAodChanges()}
+          title="Remove the sticky boot-animation blocker and restore the AOD category."
+        >
+          <RotateCcw /> Remove AOD blocker
+        </button>
+      )}
       {hasProject && (
         <button className="btn" style={{ justifyContent: 'flex-start' }} disabled={busy} onClick={() => void A.checkLicences()}>
           <ShieldCheck /> Check licences

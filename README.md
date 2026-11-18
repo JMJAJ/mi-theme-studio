@@ -28,7 +28,7 @@ Mi Theme Studio is a free, open-source **MIUI and HyperOS theme editor** for Win
 Everything runs locally. Packages are edited in memory, saves are atomic and backed up, and files the editor does not understand are written back untouched.
 
 > [!IMPORTANT]
-> **Phone support.** Full customization (applying every part of a theme: icons, system UI, fonts, lock screen and the rest) currently works only on **rooted** phones. Normal (non-rooted) phones can apply a whole theme through Theme Manager's own editor entry point when the phone's factory Theme Manager build has it (see **Phone** below); otherwise only wallpapers, lock screens and sounds apply, and other parts are refused without a Xiaomi licence. Non-root support is still being tested across devices. Designing, editing and exporting themes on your PC works the same either way.
+> **Phone support.** Full customization on rooted phones is the stable path. On normal (non-rooted) phones, a whole theme can be applied through Theme Manager's own editor entry point when the phone's factory build has it. The newer **Permanent apply (AOD)** option works for phones whose Theme Manager lacks that entry point: it needs ADB, `com.miui.aod`, the AOD settings provider and always-on display. It copies the real theme files, sets the wallpaper, regenerates the icon cache, reloads System UI/launcher, and deliberately blocks the framework's periodic validation. It was verified on one HyperOS 3 / Android 16 phone (including a 3.0.5.19-global update); it is not a Xiaomi-supported API and has not been tested across Xiaomi's whole range. The app checks the provider and asks for explicit confirmation before changing the phone. Designing, editing and exporting themes on your PC works the same either way.
 
 > [!NOTE]
 > Mi Theme Studio is an independent, unofficial tool. It is not affiliated with, endorsed by or sponsored by Xiaomi. MIUI, HyperOS and Xiaomi are trademarks of their respective owners.
@@ -67,7 +67,7 @@ Everything runs locally. Packages are edited in memory, saves are atomic and bac
 ### Theme store
 
 - Browse shelves and categories, search, and open any theme for its screenshots, description, designer, tags, size and version.
-- Download free themes, fonts, wallpapers and ringtones, verified against the store's SHA-1, into a local library. Paid items are never downloaded and rights protection is never bypassed.
+- Download free themes, fonts, wallpapers and ringtones, verified against the store's SHA-1, into a local library. Paid items are never downloaded, and store entitlements are never granted or transferred. The optional permanent AOD apply is a separate local-validation workaround for a theme you already have; it is not a store licence.
 - Apply all or selected parts of a download to your theme as a single undoable change, or open it whole as a new project.
 
 ### Phone
@@ -75,24 +75,31 @@ Everything runs locally. Packages are edited in memory, saves are atomic and bac
 - Detects devices over ADB, including unauthorized, offline and multiple-device states, and shows model, HyperOS / MIUI and Android version, resolution and density.
 - **Rooted phones: full customization.** Every part of the theme is applied, including icons, system UI, fonts and lock screen, with a backup you can restore.
 - **Normal phones (work in progress).** **Try on phone** places the theme in Theme Manager's local library and applies it, without root. Theme Manager applies wallpapers, lock screen and sounds from locally imported themes; other parts need a licence that Xiaomi only issues for unmodified store themes, so they may be refused.
-- **Non-root one-click apply.** When Theme Manager has its editor entry point (`ApplyThemeForScreenshot`, the one Xiaomi's desktop theme editor uses), the whole package is applied directly. Some store updates removed it; **Enable non-root apply** removes Theme Manager's update with Android's package manager so the factory build already on the phone is used again. No root, no APK patching. This **clears Theme Manager's app data**: imported and downloaded themes disappear from My themes (store purchases stay on your Xiaomi account and can be downloaded again), and the app asks before doing it. A later store update removes the entry point again until you re-run it. Phones whose factory build lacks the entry point are reported as unsupported.
+- **Non-root one-click apply.** When Theme Manager has its editor entry point (`ApplyThemeForScreenshot`, the one Xiaomi's desktop theme editor uses), the whole package is applied directly. Some store updates removed it; **Enable non-root apply** removes Theme Manager's update with Android's package manager so the factory build already on the phone is used again. No root, no APK patching. This **clears Theme Manager's app data**: imported and downloaded themes disappear from My themes (store purchases stay on your Xiaomi account and can be downloaded again), and the app asks before doing it. A later store update removes the entry point again until you re-run it. Phones whose factory build lacks the entry point are reported as unsupported for this path.
+- **Permanent apply (AOD), experimental.** For setups where the editor entry point is unavailable, this writes the theme and a sticky validation blocker through the AOD/System UI MAML path. On a build with the editor entry point the real theme files are applied first; otherwise the package is extracted to `/data/local/tmp`, every real top-level file is copied into `/data/system/theme`, the wallpaper is set through `WallpaperManager`, and `IconCustomizer` regenerates the customized icon cache. It also installs the theme's MAML lockscreen (`lockscreen`/`lockstyle` archive), sets the lock wallpaper type to `maml`, and updates `lock.xml`; one reboot is required so the wallpaper service loads the MAML lockscreen. It then sends the framework configuration change and `ACTION_THEME_CHANGED`, restarts System UI and the launcher, and installs the sticky boot-animation blocker. The blocker makes `ThemeReceiver`'s 2-hour validation hang at `/data/system/theme/boots/bootanimation.zip -> /dev/input/event0` instead of restoring the default theme. No root, no APK patching. It requires USB debugging, `com.miui.aod`, shell-writable secure settings and always-on display; it is visually verified on a 2510DPC44G (HyperOS 3, Android 16, Theme Manager 3.0.5.16) and on a 3.0.5.19-global update, but not on every Xiaomi device, and the real 2-hour validation on 3.0.5.19 is still being checked. It mutates `/data/system/theme` and AOD settings, and leaves a validation worker blocked; **Remove AOD blocker** restores the AOD category and asks AOD to remove the sticky blocker. Use only with themes you own or are authorized to use.
 - **Force apply (non-root).** Theme Manager skips parts (system UI, Settings, status bar, AOD, overlays) when the theme declares an older `uiVersion` than the part needs. Force apply raises the `uiVersion` of the copy sent to the phone to the newest format the phone renders, so every part is copied. The project file is never changed. Parts made for another format can render wrong; go back from Themes → My themes. Hidden on rooted phones, which already get every part.
 - Non-root apply checks the cases that cannot work and says so instead of failing silently: Second space or another active user, Theme Manager's storage folder not created yet, and Theme Manager falling back to the file picker.
 - Compares the theme's format with the phone's (`theme_compatibility.xml`) and warns before applying a theme made for a newer system, in the store, on the Phone page and on Try on phone.
 - Browse themes already cached on the phone and open them as read-only references.
 - Copy a package to the phone after confirmation, verified by file size.
 
-#### Supported Theme Manager versions (non-root apply)
+#### Supported Theme Manager versions
 
-Non-root one-click apply and Force apply depend on the Theme Manager build on the phone. The app checks this itself and shows the result on the Phone page.
+Standard non-root apply and Force apply depend on Theme Manager's editor entry point. **Permanent apply (AOD)** is a separate experimental path that does not use that activity; it depends on the phone's AOD provider instead. The app checks the editor entry point before standard apply, and checks the AOD provider before changing anything for the permanent path.
 
-| Theme Manager | Non-root apply | Notes |
+| Theme Manager | Standard non-root apply | Permanent AOD |
 | --- | --- | --- |
-| 3.0.5.16-global | ✅ Verified | Tested on HyperOS 3 (Android 16). Full apply and Force apply work. |
-| 3.0.5.19-global and later | ❌ No entry point | Supported only if the phone's factory build is older: **Enable non-root apply** removes the update and goes back to it. |
-| Factory build 3.0.5.19-global or later | ❌ Not possible | Android does not allow installing an older Theme Manager below the factory version without root. Use root, or Try on phone through the library (wallpapers, lock screen and sounds). |
-| China builds | ⚠️ Untested | Builds that include the editor entry point (`ApplyThemeForScreenshot`) are expected to work. |
-| Older global builds (MIUI 14 and earlier) | ⚠️ Untested | Expected to work if the entry point is present. |
+| 3.0.5.16-global | ✅ Verified | ✅ Verified on the test phone |
+| 3.0.5.19-global update | ❌ No entry point | ✅ Verified visually on the test phone (wallpaper, lock screen, icons) |
+| Factory build 3.0.5.19-global or later | ❌ No entry point; Android rejects a downgrade below the factory version without root | ⚠️ Same AOD full-apply path; not physically tested on a factory-image device, so try only on a phone you can recover |
+
+### Preserving an applied theme when updating to 3.0.5.19
+
+If the phone is still on the factory **3.0.5.16** build, apply the theme there through Theme Manager first, then install the 3.0.5.19 update over it. The update keeps `/data/system/theme`, `/data/system/theme_magic`, `lock.xml` and the MAML lockscreen. Do not reapply through the missing editor entry after the update; keep the blocker or the AOD keep-alive so the 2-hour check does not reset the theme. This preserves the full applied state, including the lockscreen; Settings/System UI still obey the theme-format limits below.
+
+Theme packages also declare a `uiVersion`. A theme made for older MIUI (for example `uiVersion` 15) may provide Settings, System UI, status-bar or clock archives that HyperOS 3 applications no longer load. The files are copied and the theme-change sequence is sent, but those old parts remain stock. This is a theme compatibility limit; it is not fixed by root or by the AOD path.
+| China builds | ⚠️ Untested | ⚠️ Untested |
+| Older global builds (MIUI 14 and earlier) | ⚠️ Untested | ⚠️ Untested |
 
 Rooted phones apply every part, whatever the Theme Manager version. If you test another version, please open an issue with your phone model, HyperOS / MIUI version and Theme Manager version (Settings → Apps → Themes).
 
@@ -116,7 +123,7 @@ Yes. `Ctrl+N` creates a new theme, or you can start from a free theme downloaded
 It reads and writes the shared `.mtz` format used by MIUI and HyperOS, and warns when a theme was made for a newer system than your phone (`theme_compatibility.xml`).
 
 **Do I need root to apply a theme?**
-Rooted phones get every part applied. On normal phones, the whole theme can be applied without root if the phone's factory Theme Manager build has the editor entry point (**Enable non-root apply**, then **Try on phone** or **Force apply**). Otherwise wallpapers, lock screens and sounds work through Theme Manager and other parts may be refused.
+Rooted phones get every part applied. On normal phones, the whole theme can be applied without root if the phone's factory Theme Manager build has the editor entry point (**Enable non-root apply**, then **Try on phone** or **Force apply**). If it does not, the experimental **Permanent apply (AOD)** can work on supported phones (the app checks for `com.miui.aod`, the settings provider and writable secure settings). Otherwise wallpapers, lock screens and sounds work through Theme Manager and other parts may be refused. The AOD path is device-specific, leaves AOD on a custom category and should be removed with **Remove AOD blocker** before switching approaches.
 
 **Does it work on macOS or Linux?**
 Not yet; current releases are Windows 10 / 11 only.
@@ -145,6 +152,7 @@ Not yet; current releases are Windows 10 / 11 only.
 - Saves write to a temporary file and rename it into place, after copying the previous file to a backups folder.
 - ADB runs only from the native backend, never from the web view, with timeouts and cancellation. Every command is shown in the ADB log.
 - Anything that writes to the phone asks for confirmation first.
+- **Permanent apply (AOD) is invasive.** It is a confirmed, experimental operation that writes `/data/system/theme`, changes AOD secure settings and leaves a sticky boot-animation symlink to `/dev/input/event0`. That intentionally makes the framework's 2-hour validation worker block, which can affect system responsiveness and battery until the blocker is removed. It also relies on a device-specific AOD provider and is not a universal Xiaomi supported API. Use it only on a phone you own or are authorized to modify, and keep **Remove AOD blocker** available.
 
 ## Build from source
 
@@ -222,6 +230,7 @@ docs/                    format notes, architecture, device and store notes
 
 ## Documentation
 
+- [Lock screen & widget guide (MAML)](docs/maml/README.md): formulas, date formats, variables, recipes, with pictures
 - [Architecture](docs/architecture.md)
 - [Device integration](docs/device-integration.md)
 - [Theme store](docs/online-catalog.md)

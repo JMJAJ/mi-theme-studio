@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="620" viewBox="0 0 1000 620" role="img" aria-label="format + paras">
+<title>format + paras</title>
+<rect width="1000" height="620" rx="14" fill="#0f1115"/>
+<text x="32" y="44" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="24" font-weight="700" fill="#e8eaf0">format + paras</text>
+<text x="32" y="70" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="14" fill="#8a93a6">Each %d / %s slot takes the next formula from paras</text>
+<rect x="20" y="92" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="120" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;Text format=&quot;</tspan><tspan fill="#c9d1e0">%</tspan><tspan fill="#c9d1e0">d</tspan><tspan fill="#c9d1e0">%</tspan><tspan fill="#c9d1e0">%</tspan><tspan fill="#8a93a6">&quot; paras=&quot;#battery_level&quot;/&gt;</tspan></text>
+<text x="36" y="151" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="131" width="70" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="151" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">82%</text>
+<text x="150" y="151" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">%% prints a percent sign</text>
+<rect x="20" y="178" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="206" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;Text format=&quot;</tspan><tspan fill="#c9d1e0">%</tspan><tspan fill="#ffb86b">02</tspan><tspan fill="#c9d1e0">d</tspan><tspan fill="#c9d1e0">:</tspan><tspan fill="#c9d1e0">%</tspan><tspan fill="#ffb86b">02</tspan><tspan fill="#c9d1e0">d</tspan><tspan fill="#8a93a6">&quot; paras=&quot;#hour24,#minute&quot;/&gt;</tspan></text>
+<text x="36" y="237" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="217" width="89.2" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="237" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">21:05</text>
+<text x="169.2" y="237" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">%02d pads to two digits</text>
+<rect x="20" y="264" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="292" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;Text format=&quot;</tspan><tspan fill="#c9d1e0">%</tspan><tspan fill="#c9d1e0">d</tspan><tspan fill="#c9d1e0">°</tspan><tspan fill="#8a93a6">&quot; paras=&quot;#weather_temp&quot;/&gt;</tspan></text>
+<text x="36" y="323" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="303" width="70" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="323" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">18°</text>
+<text x="150" y="323" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">number with a degree sign</text>
+<rect x="20" y="350" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="378" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;Text format=&quot;</tspan><tspan fill="#c9d1e0">%</tspan><tspan fill="#c9d1e0">s</tspan><tspan fill="#c9d1e0">&#160;</tspan><tspan fill="#c9d1e0">%</tspan><tspan fill="#c9d1e0">s</tspan><tspan fill="#8a93a6">&quot; paras=&quot;@weather_description,@weather_temperature&quot;/&gt;</tspan></text>
+<text x="36" y="409" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="389" width="131.76" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="409" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">Clear 18℃</text>
+<text x="211.76" y="409" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">same as the textExp join</text>
+<rect x="20" y="436" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="464" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;Text format=&quot;</tspan><tspan fill="#c9d1e0">%</tspan><tspan fill="#c9d1e0">d</tspan><tspan fill="#c9d1e0">&#160;</tspan><tspan fill="#c9d1e0">/</tspan><tspan fill="#c9d1e0">&#160;</tspan><tspan fill="#c9d1e0">%</tspan><tspan fill="#c9d1e0">d</tspan><tspan fill="#c9d1e0">&#160;</tspan><tspan fill="#c9d1e0">s</tspan><tspan fill="#c9d1e0">t</tspan><tspan fill="#c9d1e0">e</tspan><tspan fill="#c9d1e0">p</tspan><tspan fill="#c9d1e0">s</tspan><tspan fill="#8a93a6">&quot; paras=&quot;#steps,#steps_goal&quot;/&gt;</tspan></text>
+<text x="36" y="495" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="475" width="216.88000000000002" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="495" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">6532 / 8000 steps</text>
+<text x="296.88" y="495" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">several slots, in order</text>
+<rect x="20" y="522" width="960" height="76" rx="10" fill="#171a21"/>
+<text x="36" y="550" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15"><tspan fill="#8a93a6">&lt;Text format=&quot;</tspan><tspan fill="#c9d1e0">%</tspan><tspan fill="#c9d1e0">s</tspan><tspan fill="#8a93a6">&quot; paras=&quot;ifelse(#ampm,'PM','AM')&quot;/&gt;</tspan></text>
+<text x="36" y="581" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="18" fill="#ff6a1a">→</text>
+<rect x="62" y="561" width="70" height="28" rx="8" fill="#232b3d" stroke="#34405a"/>
+<text x="80" y="581" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="19" font-weight="600" fill="#ffffff">PM</text>
+<text x="150" y="581" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">a slot can be any formula</text>
+</svg>

@@ -4,13 +4,21 @@
 // Lock screen page you can click any piece to edit it, or drag it to move it.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { create } from 'zustand';
-import { AlertTriangle, Info, Loader2, Pause, Play } from 'lucide-react';
+import { AlertTriangle, ArrowLeftRight, BatteryCharging, ClipboardPaste, Copy, CopyPlus, FileArchive, Info, Loader2, Package, PackagePlus, Pause, Play, Trash2, X } from 'lucide-react';
 import { api, errorMessage, resourceUrl } from '../../lib/api';
-import { evalNumber, evalString, evaluate, formatDate, systemVars, type Vars } from '../../lib/maml';
+import { evalNumber, evalString, evaluate, formatDate, formatWithParas, systemVars, type Vars } from '../../lib/maml';
+import { insertBlock, pageGroupOrdinal, type LockBlock } from '../../lib/mamlBlocks';
+import { BLOCK_IDS } from '../../lib/mamlRecipes';
+import { usePendingBlock } from '../../state/guide';
+import { absOffset, extractSnippet, pasteSnippet, type Snippet } from '../../lib/mamlCopy';
 import { lenientXml, removeElements, setAttributes } from '../../lib/mamlEdit';
+import { openContextMenu } from '../common/Menu';
 import type { FileInfo, Slot } from '../../lib/types';
 import * as A from '../../state/actions';
-import { useStore } from '../../state/store';
+import { toast, useStore } from '../../state/store';
+import { itemReader, saveToInventory, slotReader, useInventory, type ByteReader, type InventoryItem } from '../../state/inventory';
+import { refreshDownloads, useThemeStore } from '../../state/themeStore';
+import { InventoryPanel } from './LockKit';
 import { themeFontFile, usePackageFont } from '../common/themeFont';
 import { findWallpaper } from './PreviewView';
 import { MamlInspector } from './MamlInspector';
@@ -38,7 +46,11 @@ interface Ctx {
   slot: Slot;
   ord: Map<Element, number>;
   unknown: Set<string>;
+  /** Where a file is loaded from (the theme by default; inventory pictures are in memory). */
+  url?: (f: FileInfo) => string;
 }
+
+const urlOf = (ctx: Ctx, f: FileInfo): string => (ctx.url ? ctx.url(f) : resourceUrl(ctx.slot, f.path, f.rev));
 
 function fileFor(ctx: Ctx, src: string) {
   const clean = src.replace(/^\/+/, '');
@@ -175,16 +187,7 @@ function visible(el: Element, ctx: Ctx) {
   return evalNumber(v, ctx.vars, 1) > 0;
 }
 
-/** "%d"-style format with comma-separated expression arguments. */
-function formatParas(format: string, paras: string | null, ctx: Ctx) {
-  const args = (paras ?? '').split(',').filter(Boolean);
-  let p = 0;
-  return format.replace(/%[-0-9.]*([dsf])/g, (m, kind: string) => {
-    const v = evaluate(args[p++], ctx.vars, '');
-    if (kind === 'd') return String(Math.trunc(Number(v) || 0)).padStart(/%0(\d)d/.exec(m)?.[1] ? Number(/%0(\d)d/.exec(m)![1]) : 0, '0');
-    return String(v);
-  });
-}
+const formatParas = (format: string, paras: string | null, ctx: Ctx) => formatWithParas(format, paras, ctx.vars);
 
 function imageSource(el: Element, ctx: Ctx, anim: Anim) {
   let src = anim.src ?? (el.hasAttribute('srcExp') ? evalString(el.getAttribute('srcExp'), ctx.vars) : el.hasAttribute('srcFormat') ? formatParas(el.getAttribute('srcFormat')!, el.getAttribute('srcParas'), ctx) : (el.getAttribute('src') ?? ''));
@@ -338,7 +341,7 @@ function renderNodes(parent: Element, ctx: Ctx): ReactNode[] {
     if (tag === 'Wallpaper') {
       const b = el.hasAttribute('blur') ? evalNumber(el.getAttribute('blur'), ctx.vars) : 0;
       const a = el.hasAttribute('alpha') ? Math.min(1, Math.max(0, evalNumber(el.getAttribute('alpha'), ctx.vars, 255) / 255)) : 1;
-      if (ctx.wallpaper) out.push(<img key={key} data-mk={mk} data-mt={tag} {...fx(el, ctx)} src={resourceUrl(ctx.slot, ctx.wallpaper.path, ctx.wallpaper.rev)} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: b > 0 ? `blur(${blurPx(b)}px)` : undefined, opacity: a < 1 ? a : undefined }} draggable={false} />);
+      if (ctx.wallpaper) out.push(<img key={key} data-mk={mk} data-mt={tag} {...fx(el, ctx)} src={urlOf(ctx, ctx.wallpaper)} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: b > 0 ? `blur(${blurPx(b)}px)` : undefined, opacity: a < 1 ? a : undefined }} draggable={false} />);
       continue;
     }
     if (CONTAINERS.has(tag)) {
@@ -362,13 +365,13 @@ function renderNodes(parent: Element, ctx: Ctx): ReactNode[] {
     if (tag === 'Image') {
       const src = imageSource(el, ctx, anim);
       const file = src ? fileFor(ctx, src) : undefined;
-      if (file) out.push(<img key={key} data-mk={mk} data-mt={tag} {...fx(el, ctx)} src={resourceUrl(ctx.slot, file.path, file.rev)} alt="" style={place(el, ctx, anim)} draggable={false} />);
+      if (file) out.push(<img key={key} data-mk={mk} data-mt={tag} {...fx(el, ctx)} src={urlOf(ctx, file)} alt="" style={place(el, ctx, anim)} draggable={false} />);
       continue;
     }
     if (tag === 'Video') {
       const src = el.getAttribute('src') ?? '';
       const file = src ? fileFor(ctx, src) : undefined;
-      if (file) out.push(<video key={key} data-mk={mk} data-mt={tag} src={resourceUrl(ctx.slot, file.path, file.rev)} muted loop autoPlay playsInline style={{ ...place(el, ctx, anim), objectFit: 'cover' }} />);
+      if (file) out.push(<video key={key} data-mk={mk} data-mt={tag} src={urlOf(ctx, file)} muted loop autoPlay playsInline style={{ ...place(el, ctx, anim), objectFit: 'cover' }} />);
       continue;
     }
     if (tag === 'Rectangle' || tag === 'Circle' || tag === 'Ellipse') {
@@ -460,7 +463,7 @@ function renderNodes(parent: Element, ctx: Ctx): ReactNode[] {
         <div key={key} data-mk={mk} data-mt={tag} {...fx(el, ctx)} style={{ ...place(el, ctx, anim), display: 'flex', gap: evalNumber(el.getAttribute('space'), ctx.vars) }}>
           {[...text].map((ch, j) => {
             const f = fileFor(ctx, digitFile(base, ch));
-            return f ? <img key={j} src={resourceUrl(ctx.slot, f.path, f.rev)} alt="" draggable={false} /> : null;
+            return f ? <img key={j} src={urlOf(ctx, f)} alt="" draggable={false} /> : null;
           })}
         </div>,
       );
@@ -488,6 +491,9 @@ const SAMPLE_COLUMNS: Record<string, string[]> = {
   pressure: ['1013'],
   temperature_unit: ['1'],
   somatosensory: ['17℃'],
+  // Mi Fitness steps
+  steps: ['6532'],
+  goal: ['8000'],
 };
 
 /**
@@ -497,7 +503,7 @@ const SAMPLE_COLUMNS: Record<string, string[]> = {
  */
 function bindSampleData(root: Element, ctx: Ctx) {
   for (const binder of Array.from(root.getElementsByTagName('ContentProviderBinder'))) {
-    if (!/weather/i.test(binder.getAttribute('uri') ?? '')) continue;
+    if (!/weather|steps/i.test(binder.getAttribute('uri') ?? '')) continue;
     const count = binder.getAttribute('countName');
     if (count) ctx.vars.set(count, 1);
     for (const v of Array.from(binder.getElementsByTagName('Variable'))) {
@@ -694,7 +700,55 @@ export function useLockPages() {
   }, [text]);
 }
 
+/** What some pieces cover on the screen, in layout pixels. */
+export function measurePieces(canvas: HTMLElement, ords: number[], scale: number) {
+  const box = unionBox(ords.map((o) => canvas.querySelector<HTMLElement>(`[data-mk="${o}"]`)).map((n) => (n ? visibleBox(n, canvas, scale) : null)));
+  return box ? { x: Math.round(box.l), y: Math.round(box.t), w: Math.round(box.w), h: Math.round(box.h) } : null;
+}
+
 // ---------- the hook ----------
+
+export interface SceneOptions {
+  /** Phone height / width, for lock screens. */
+  phone: number;
+  aspect?: number;
+  dir: string;
+  files: Map<string, FileInfo>;
+  wallpaper?: FileInfo;
+  now: Date;
+  t: number | null;
+  slot: Slot;
+  config?: [string, string | number][];
+  overrides?: Record<string, number | string> | null;
+  url?: (f: FileInfo) => string;
+}
+
+/** Lay a parsed layout out and draw it: what the phone shows right now. */
+export function buildScene(doc: Document, ord: Map<Element, number>, o: SceneOptions) {
+  const root = doc.documentElement;
+  const lock = root.tagName === 'Lockscreen';
+  const sw = Number(root.getAttribute('screenWidth')) || 1080;
+  const w = lock ? sw : Number(root.getAttribute('width')) || Number(root.getAttribute('w')) || sw;
+  const h = lock ? Math.round(sw * o.phone) : o.aspect ? Math.round(w * o.aspect) : Number(root.getAttribute('height')) || Number(root.getAttribute('h')) || Math.round(sw * 0.46);
+  const ctx: Ctx = { vars: systemVars(w, h, o.now), dir: o.dir, files: o.files, wallpaper: o.wallpaper, now: o.now, t: o.t, slot: o.slot, ord, unknown: new Set(), url: o.url };
+  if (ctx.wallpaper) {
+    ctx.vars.set('wall.bmp_width', ctx.wallpaper.width ?? w);
+    ctx.vars.set('wall.bmp_height', ctx.wallpaper.height ?? h);
+  }
+  for (const [id, value] of o.config ?? []) ctx.vars.set(id, value);
+  bindSampleData(root, ctx);
+  collectVars(root, ctx);
+  // Variables the wake-up commands set, then everything that depends on them.
+  if (runWakeCommands(root, ctx)) collectVars(root, ctx);
+  // A page or state picked in the editor (what a swipe or tap switches to on the phone).
+  if (o.overrides) {
+    for (const [name, value] of Object.entries(o.overrides)) ctx.vars.set(name, value);
+    collectVars(root, ctx);
+  }
+  const nodes = renderNodes(root, ctx);
+  const hasWallpaper = lock && root.getElementsByTagName('Wallpaper').length > 0;
+  return { w, h, lock, nodes, unknown: [...ctx.unknown], hasWallpaper, wallpaper: ctx.wallpaper, slot: o.slot, vars: ctx.vars };
+}
 
 /** Manifests of a part, the main one first (the lock screen's advance/manifest.xml). */
 function partManifests(files: FileInfo[], componentId: string) {
@@ -801,30 +855,8 @@ export function useMamlScene(componentId: string, opts: { path?: string | null; 
   const pages = useMemo(() => findPages(good?.doc ?? null), [good]);
   const scene = useMemo(() => {
     if (!good?.doc || !manifest || !('ord' in good) || !good.ord) return null;
-    const root = good.doc.documentElement;
-    const lock = root.tagName === 'Lockscreen';
-    const sw = Number(root.getAttribute('screenWidth')) || 1080;
     const phone = opts.ratio && opts.ratio > 1 ? opts.ratio : screen && screen.width && screen.height ? Math.max(screen.width, screen.height) / Math.min(screen.width, screen.height) : 20 / 9;
-    const w = lock ? sw : Number(root.getAttribute('width')) || Number(root.getAttribute('w')) || sw;
-    const h = lock ? Math.round(sw * phone) : opts.aspect ? Math.round(w * opts.aspect) : Number(root.getAttribute('height')) || Number(root.getAttribute('h')) || Math.round(sw * 0.46);
-    const ctx: Ctx = { vars: systemVars(w, h, now), dir: manifest.path.replace(/manifest\.xml$/i, ''), files, wallpaper: findWallpaper(projectFiles, true), now, t: opts.animate ? t : null, slot, ord: good.ord, unknown: new Set() };
-    if (ctx.wallpaper) {
-      ctx.vars.set('wall.bmp_width', ctx.wallpaper.width ?? w);
-      ctx.vars.set('wall.bmp_height', ctx.wallpaper.height ?? h);
-    }
-    for (const [id, value] of config) ctx.vars.set(id, value);
-    bindSampleData(root, ctx);
-    collectVars(root, ctx);
-    // Variables the wake-up commands set, then everything that depends on them.
-    if (runWakeCommands(root, ctx)) collectVars(root, ctx);
-    // A page or state picked in the editor (what a swipe or tap switches to on the phone).
-    if (overrides) {
-      for (const [name, value] of Object.entries(overrides)) ctx.vars.set(name, value);
-      collectVars(root, ctx);
-    }
-    const nodes = renderNodes(root, ctx);
-    const hasWallpaper = lock && root.getElementsByTagName('Wallpaper').length > 0;
-    return { w, h, lock, nodes, unknown: [...ctx.unknown], hasWallpaper, wallpaper: ctx.wallpaper, slot, vars: ctx.vars };
+    return buildScene(good.doc, good.ord, { phone, aspect: opts.aspect, dir: manifest.path.replace(/manifest\.xml$/i, ''), files, wallpaper: findWallpaper(projectFiles, true), now, t: opts.animate ? t : null, slot, config, overrides });
   }, [good, manifest, files, now, t, screen, projectFiles, opts.animate, opts.ratio, opts.aspect, slot, config, overrideKey]);
 
   /** Write a new manifest text: shown at once, then saved (undoable). */
@@ -834,7 +866,7 @@ export function useMamlScene(componentId: string, opts: { path?: string | null; 
     return A.writeText(manifest.path, next);
   };
 
-  return { manifests, manifest, scene, pages, error: parsed && !parsed.doc && !lastGood.current ? 'The manifest is not valid XML, so it cannot be drawn.' : error, text, elements: good?.elements ?? [], apply };
+  return { manifests, manifest, scene, pages, config, error: parsed && !parsed.doc && !lastGood.current ? 'The manifest is not valid XML, so it cannot be drawn.' : error, text, elements: good?.elements ?? [], apply };
 }
 
 export type Scene = NonNullable<ReturnType<typeof useMamlScene>['scene']>;
@@ -1090,6 +1122,7 @@ export function MamlCanvas({
   onSelect,
   onSelectMany,
   onEdit,
+  onContext,
 }: {
   scene: Scene;
   scale: number;
@@ -1101,6 +1134,8 @@ export function MamlCanvas({
   /** Select several pieces at once; the first one is shown in the inspector. */
   onSelectMany?: (ords: number[]) => void;
   onEdit?: (ord: number, edit: CanvasEdit) => void;
+  /** Right-click: the pieces it is about (the selection, or the piece under the pointer) and where they sit on the screen. */
+  onContext?: (ords: number[], box: { x: number; y: number; w: number; h: number } | null, e: React.MouseEvent) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const drag = useRef<DragState | null>(null);
@@ -1216,6 +1251,24 @@ export function MamlCanvas({
       ref={ref}
       className={`maml-canvas ${editable ? 'is-edit' : ''}`}
       style={{ width: scene.w, height: scene.h, transform: `scale(${scale})`, fontFamily: font }}
+      onContextMenu={
+        onContext
+          ? (e) => {
+              e.preventDefault();
+              const canvas = ref.current;
+              if (!canvas) return;
+              const ranked = piecesRanked(canvas, e.clientX, e.clientY);
+              const under = ranked.map((p) => Number(p.n.dataset.mk));
+              const top = ranked.length && ranked[0].r < 2 ? under[0] : null;
+              let ords = all;
+              if (!under.some((o) => all.includes(o)) && top !== null) {
+                ords = [top];
+                onSelect?.(top);
+              }
+              onContext(ords, measurePieces(canvas, ords, scale), e);
+            }
+          : undefined
+      }
       onPointerDown={
         editable
           ? (e) => {
@@ -1609,7 +1662,10 @@ export function MamlPreview({ componentId }: { componentId: string }) {
   const [playing, setPlaying] = useState(false);
   // The page being edited, for lock screens a swipe or tap switches between.
   const [page, setPage] = useState<{ name: string; value: number } | null>(null);
-  const live = useMamlScene(componentId, { path, animate: playing, overrides: page ? { [page.name]: page.value } : null });
+  // Show the layout as while charging (battery_state 1), for charging rings and the like.
+  const [charging, setCharging] = useState(false);
+  const overrides = page || charging ? { ...(page ? { [page.name]: page.value } : {}), ...(charging ? { battery_state: 1 } : {}) } : null;
+  const live = useMamlScene(componentId, { path, animate: playing, overrides });
   const { manifests, manifest, scene, error, elements, text, pages } = live;
   const pageValue = pages ? (page && page.name === pages.name && pages.values.includes(page.value) ? page.value : pages.values[0]) : null;
   const sel = useMamlSelection();
@@ -1618,6 +1674,33 @@ export function MamlPreview({ componentId }: { componentId: string }) {
   const box = useRef<HTMLDivElement>(null);
   const [fit, setFit] = useState({ w: 0, h: 0 });
   const font = usePackageFont(useMemo(() => themeFontFile(project.files), [project])).family ?? undefined;
+
+  // Another theme opened beside this one, to copy pieces from.
+  const reference = useStore((s) => s.reference);
+  const downloads = useThemeStore((s) => s.downloads);
+  const [beside, setBeside] = useState(false);
+  const [refPage, setRefPage] = useState<{ name: string; value: number } | null>(null);
+  const ref = useMamlScene(componentId, { slot: 'ref', overrides: refPage ? { [refPage.name]: refPage.value } : null });
+  const refPageValue = ref.pages ? (refPage && refPage.name === ref.pages.name && ref.pages.values.includes(refPage.value) ? refPage.value : ref.pages.values[0]) : null;
+  const [refSel, setRefSel] = useState<number[]>([]);
+  useEffect(() => setRefSel([]), [reference?.sourcePath, refPageValue]);
+  const showRef = beside && !!reference && !!ref.scene;
+  const refFont = usePackageFont(useMemo(() => (reference ? themeFontFile(reference.files) : undefined), [reference]), 'ref').family ?? undefined;
+  // The inventory, beside the lock screen.
+  const [invOpen, setInvOpen] = useState(() => {
+    try {
+      return localStorage.getItem('mts.inventory.open') !== '0';
+    } catch {
+      return true;
+    }
+  });
+  const clip = useInventory((s) => s.clip);
+  const keys = useRef<(e: KeyboardEvent) => void>(() => {});
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => keys.current(e);
+    window.addEventListener('keydown', on);
+    return () => window.removeEventListener('keydown', on);
+  }, []);
 
   // The side phone can pick a piece in another layout of this part.
   useEffect(() => {
@@ -1632,6 +1715,17 @@ export function MamlPreview({ componentId }: { componentId: string }) {
     return () => ro.disconnect();
   }, [!!manifest]);
 
+  // A widget sent from the Guide's recipe gallery: add it once the lock screen is drawn.
+  const pending = usePendingBlock((s) => s.block);
+  const addRef = useRef<((block: LockBlock) => void) | null>(null);
+  useEffect(() => {
+    if (!pending || componentId !== 'lockscreen' || !scene?.lock || text === null || !addRef.current) return;
+    const title = usePendingBlock.getState().title || pending.label;
+    usePendingBlock.setState({ block: null, title: '' });
+    addRef.current(pending);
+    toast('success', `Added “${title}” to the lock screen`, 'Drag it into place, or change it in the side panel.');
+  }, [pending, componentId, scene, text]);
+
   if (!manifests.length) {
     return (
       <div className="empty">
@@ -1644,8 +1738,165 @@ export function MamlPreview({ componentId }: { componentId: string }) {
   // The other pages sit beside the one being edited, smaller.
   const others = pages && scene?.lock ? pages.values.filter((v) => v !== pageValue) : [];
   const thumbK = others.length ? Math.min(0.42, 0.94 / others.length) : 0;
-  const scale = scene && fit.w && fit.h ? Math.min((fit.w - 32 - (others.length ? 20 : 0)) / (scene.w * (1 + thumbK)), (fit.h - 32) / scene.h) : 0;
+  const refScene = showRef ? ref.scene : null;
+  const scale =
+    scene && fit.w && fit.h
+      ? refScene
+        ? Math.min((fit.w - 72) / (scene.w + refScene.w), (fit.h - 32) / scene.h, (fit.h - 72) / refScene.h)
+        : Math.min((fit.w - 32 - (others.length ? 20 : 0)) / (scene.w * (1 + thumbK)), (fit.h - 32) / scene.h)
+      : 0;
   const select = (ord: number | null) => useMamlSelection.setState({ path: manifest.path, ord, extra: [] });
+  // Add a working piece (battery, weather, steps, charging) to the page being edited.
+  const addBlock = (block: LockBlock) => {
+    if (text === null || !scene) return;
+    const group = pages && pageValue !== null ? pageGroupOrdinal(elements, pages.name, pageValue) : null;
+    const k = scene.w / 1080;
+    // Below the pieces added before on this page, so they don't land on top of each other.
+    const parent = elements[group ?? 0];
+    const added = elements.filter((el) => el.parentElement === parent && /^[a-z]+_\d+$/.test(el.getAttribute('name') ?? '') && BLOCK_IDS.has((el.getAttribute('name') ?? '').replace(/_\d+$/, '')));
+    const below = Math.max(scene.h * 0.3, ...added.map((el) => Number(el.getAttribute('y')) + Number(el.getAttribute('h')) + 30 * k).filter(Number.isFinite));
+    const y = below + block.h * k > scene.h * 0.9 ? scene.h * 0.3 : below;
+    const done = insertBlock(text, block, group ?? 0, scene.w, y);
+    if (!done) return;
+    let next = done.text;
+    // No group for this page: show the piece only on it.
+    if (pages && pageValue !== null && group === null) {
+      const own = block.id === 'charging' ? 'eq(#battery_state,1)+eq(#battery_state,3)' : null;
+      const only = `eq(#${pages.name},${pageValue})`;
+      next = setAttributes(next, done.ord, { visibility: own ? `(${own})*${only}` : only });
+    }
+    if (block.id === 'charging') setCharging(true);
+    void live.apply(next).then(() => select(done.ord));
+  };
+  addRef.current = addBlock;
+  const dir = manifest.path.replace(/manifest\.xml$/i, '');
+  const pageLabel = pages && pageValue !== null ? `page ${pages.values.indexOf(pageValue) + 1}` : 'the lock screen';
+  const mainFiles = () => slotReader(project.files, 'main', dir);
+  const refDir = ref.manifest ? ref.manifest.path.replace(/manifest\.xml$/i, '') : '';
+  const refFiles = () => slotReader(reference?.files ?? [], 'ref', refDir);
+  const canvasOf = (which: 'main' | 'ref') => box.current?.querySelector<HTMLElement>(`.maml-frame.is-${which} .maml-canvas`) ?? null;
+
+  /** Take pieces (with the code and pictures behind them) out of this theme or the one beside it. */
+  const take = (which: 'main' | 'ref', ords: number[], area?: Snippet['box']): { snippet: Snippet; read: ByteReader; sizes: Map<string, number> } | null => {
+    const src = which === 'main' ? live : ref;
+    if (src.text === null || !src.scene || !ords.length) return null;
+    const files = which === 'main' ? mainFiles() : refFiles();
+    const canvas = canvasOf(which);
+    const snippet = extractSnippet(src.text, src.elements, ords, {
+      files: files.rels,
+      vars: src.scene.vars,
+      config: src.config,
+      pageVar: src.pages?.name ?? null,
+      box: area ?? (canvas ? measurePieces(canvas, ords, scale) : null),
+      source: which === 'main' ? project.title : (reference?.title ?? undefined),
+    });
+    return snippet ? { snippet, read: files.read, sizes: files.sizes } : null;
+  };
+
+  /** Paste pieces into the page being edited (same place on the screen), copying their pictures. */
+  const paste = async (snippet: Snippet, read: ByteReader, sizes: Map<string, number>) => {
+    if (text === null || !scene) return;
+    const group = pages && pageValue !== null ? pageGroupOrdinal(elements, pages.name, pageValue) : null;
+    const done = pasteSnippet(text, snippet, {
+      target: group ?? 0,
+      targetOffset: group !== null ? absOffset(elements[group], scene.vars) : { x: 0, y: 0 },
+      targetFiles: mainFiles().sizes,
+      sourceSizes: sizes,
+      visibility: pages && pageValue !== null && group === null ? `eq(#${pages.name},${pageValue})` : null,
+      targetConfig: new Set((live.config ?? []).map(([id]) => id)),
+    });
+    if (!done) return toast('error', `Could not add “${snippet.name}” here`);
+    if (done.writes.length) {
+      try {
+        const bytes = await Promise.all(done.writes.map((w) => read(w.from)));
+        const ok = await A.writeGenerated(done.writes.map((w, i) => ({ path: dir + w.to, bytes: bytes[i] })), `Copy pictures of ${snippet.name}`);
+        if (!ok) return;
+      } catch (e) {
+        return toast('error', `Could not copy the pictures of “${snippet.name}”`, errorMessage(e));
+      }
+    }
+    await live.apply(done.text);
+    select(done.ord);
+    const notes = [
+      done.writes.length ? `${done.writes.length} picture${done.writes.length === 1 ? '' : 's'} copied${done.writes.some((w) => w.to !== w.from) ? ' into their own folder (names were taken)' : ''}` : '',
+      done.renamed ? `${done.renamed} name${done.renamed === 1 ? '' : 's'} changed so nothing clashes` : '',
+    ].filter(Boolean);
+    toast('success', `Added “${snippet.name}” to ${pageLabel}`, notes.join(' · ') || undefined);
+  };
+  const addItem = async (item: InventoryItem) => {
+    const r = itemReader(item);
+    try {
+      await paste(item, r.read, await r.sizes);
+    } catch (e) {
+      toast('error', `Could not add “${item.name}”`, errorMessage(e));
+    }
+  };
+  const copy = (which: 'main' | 'ref', ords: number[], area?: Snippet['box']) => {
+    const got = take(which, ords, area);
+    if (!got) return;
+    useInventory.setState({ clip: got });
+    toast('info', `Copied “${got.snippet.name}”`, 'Paste it into any lock screen page with Ctrl+V or right-click › Paste.');
+  };
+  const save = (which: 'main' | 'ref', ords: number[], area?: Snippet['box']) => {
+    const got = take(which, ords, area);
+    if (got) void saveToInventory(got.snippet, got.read).then((item) => item && setInvOpen(true));
+  };
+  const toggleInv = (open: boolean) => {
+    setInvOpen(open);
+    try {
+      localStorage.setItem('mts.inventory.open', open ? '1' : '0');
+    } catch {
+      /* per-viewer convenience only */
+    }
+  };
+  const mainContext = (ords: number[], area: Snippet['box'], e: React.MouseEvent) => {
+    openContextMenu(e, [
+      ...(ords.length
+        ? [
+            { label: 'Save to inventory', icon: PackagePlus, onSelect: () => save('main', ords, area) },
+            { label: 'Copy', icon: Copy, shortcut: 'Ctrl+C', onSelect: () => copy('main', ords, area) },
+            { label: 'Duplicate', icon: CopyPlus, onSelect: () => (take('main', ords, area) ? void paste(take('main', ords, area)!.snippet, mainFiles().read, mainFiles().sizes) : undefined) },
+          ]
+        : []),
+      ...(clip ? [{ label: `Paste “${clip.snippet.name}” on ${pageLabel}`, icon: ClipboardPaste, shortcut: 'Ctrl+V', onSelect: () => void paste(clip.snippet, clip.read, clip.sizes) }] : []),
+      ...(ords.length ? ['separator' as const, { label: 'Delete', icon: Trash2, danger: true, shortcut: 'Del', onSelect: () => edit(ords[0], { kind: 'delete', ords }) }] : []),
+    ]);
+  };
+  const refContext = (ords: number[], area: Snippet['box'], e: React.MouseEvent) => {
+    if (!ords.length) return;
+    openContextMenu(e, [
+      { heading: `${ords.length === 1 ? 'This piece' : `${ords.length} pieces`} from ${reference?.title ?? 'the other theme'}` },
+      { label: `Copy over to ${pageLabel} of my theme`, icon: ArrowLeftRight, onSelect: () => (take('ref', ords, area) ? void paste(take('ref', ords, area)!.snippet, refFiles().read, refFiles().sizes) : undefined) },
+      { label: 'Save to inventory', icon: PackagePlus, onSelect: () => save('ref', ords, area) },
+      { label: 'Copy', icon: Copy, shortcut: 'Ctrl+C', onSelect: () => copy('ref', ords, area) },
+    ]);
+  };
+  const openBeside = (e: React.MouseEvent<HTMLButtonElement>) => {
+    void refreshDownloads();
+    const r = e.currentTarget.getBoundingClientRect();
+    const themes = downloads.filter((d) => d.kind === 'theme').slice(0, 14);
+    openContextMenu({ clientX: r.left, clientY: r.bottom + 4, preventDefault: () => {} }, [
+      ...(reference ? [{ heading: 'Open now' }, { label: reference.title, icon: ArrowLeftRight, onSelect: () => setBeside(true) }] : []),
+      ...(themes.length ? [{ heading: 'Your downloaded themes' }, ...themes.filter((t) => t.path !== reference?.sourcePath).map((t) => ({ label: t.name, onSelect: () => void A.openDownloadAsReference(t, false).then((snap) => snap && setBeside(true)) }))] : []),
+      'separator' as const,
+      { label: 'Open a theme file…', icon: FileArchive, onSelect: () => void A.openReference(false).then((snap) => snap && setBeside(true)) },
+    ]);
+  };
+  keys.current = (e: KeyboardEvent) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+    const t = e.target as HTMLElement | null;
+    if (t && t !== document.body && (!t.closest('.maml') || t.closest('input, textarea, select, [contenteditable="true"], .cm-editor'))) return;
+    const key = e.key.toLowerCase();
+    const mine = selected === null ? extra : [selected, ...extra.filter((o) => o !== selected)];
+    if (key === 'c' && (mine.length || refSel.length)) {
+      e.preventDefault();
+      if (mine.length) copy('main', mine);
+      else copy('ref', refSel);
+    } else if (key === 'v' && clip) {
+      e.preventDefault();
+      void paste(clip.snippet, clip.read, clip.sizes);
+    }
+  };
   const selectMany = (ords: number[]) => useMamlSelection.setState({ path: manifest.path, ord: ords[0] ?? null, extra: ords.slice(1) });
   const commit = (ord: number, attrs: Record<string, string | null>) => (text === null ? Promise.resolve(false) : live.apply(setAttributes(text, ord, attrs)));
   const edit = (ord: number, change: CanvasEdit) => {
@@ -1724,10 +1975,23 @@ export function MamlPreview({ componentId }: { componentId: string }) {
             ))}
           </div>
         )}
+        {scene?.lock && (
+          <>
+            <button className="btn btn-sm" aria-pressed={invOpen} onClick={() => toggleInv(!invOpen)} title="Pieces you saved from any theme, and working widgets (battery, weather, steps, charging). Click one to add it to this page.">
+              <Package /> Inventory
+            </button>
+            <button className="btn btn-sm" aria-pressed={showRef} onClick={(e) => (showRef ? setBeside(false) : openBeside(e))} title="Open another theme next to this one. Right-click its pieces to copy them over, code and pictures included.">
+              <ArrowLeftRight /> {showRef ? 'Close theme beside' : 'Open theme beside…'}
+            </button>
+            <button className="btn btn-sm" aria-pressed={charging} onClick={() => setCharging((c) => !c)} title="Show the lock screen as while the phone is charging">
+              <BatteryCharging /> Charging
+            </button>
+          </>
+        )}
         <button className="btn btn-sm" onClick={() => setPlaying((p) => !p)} title={playing ? 'Stop animations to edit in the resting pose' : 'Play the layout’s animations'}>
           {playing ? <Pause /> : <Play />} {playing ? 'Stop animations' : 'Play animations'}
         </button>
-        <span className="muted">Click a piece to edit it, drag to move it (hold Alt to skip snapping). Drag on an empty spot or Shift+click to select several. Delete removes the selection.{scene ? ` ${scene.w} × ${scene.h}` : ''}</span>
+        <span className="muted">Click a piece to edit it, drag to move it (hold Alt to skip snapping). Drag on an empty spot or Shift+click to select several. Right-click to save, copy or paste.{scene ? ` ${scene.w} × ${scene.h}` : ''}</span>
         {scene && scene.unknown.length > 0 && (
           <span className="badge badge-warn" title={`Drawn on the phone but not here: ${scene.unknown.join(', ')}`}>
             <AlertTriangle /> {scene.unknown.join(', ')} not drawn here
@@ -1735,6 +1999,7 @@ export function MamlPreview({ componentId }: { componentId: string }) {
         )}
       </div>
       <div className="maml-body">
+        {scene?.lock && invOpen && <InventoryPanel target={pageLabel} onAdd={(item) => void addItem(item)} onAddBlock={addBlock} onClose={() => toggleInv(false)} />}
         <div className="maml-stage" ref={box}>
           {error ? (
             <div className="banner banner-err">{error}</div>
@@ -1742,10 +2007,44 @@ export function MamlPreview({ componentId }: { componentId: string }) {
             <Loader2 className="spin" />
           ) : (
             <div className="maml-pages">
-              <div className={`maml-frame ${scene.lock ? 'is-phone' : ''}`} style={{ width: scene.w * scale, height: scene.h * scale }}>
-                <MamlCanvas scene={scene} scale={scale} font={font} selected={selected} extra={extra} onSelect={select} onSelectMany={selectMany} onEdit={edit} />
+              <div className={`maml-frame is-main ${scene.lock ? 'is-phone' : ''}`} style={{ width: scene.w * scale, height: scene.h * scale }}>
+                <MamlCanvas scene={scene} scale={scale} font={font} selected={selected} extra={extra} onSelect={select} onSelectMany={selectMany} onEdit={edit} onContext={scene.lock ? mainContext : undefined} />
               </div>
-              {pages && others.length > 0 && (
+              {refScene && reference && (
+                <div className="maml-ref">
+                  <div className="maml-ref-head" title="Right-click a piece to copy it over to your lock screen or save it to the inventory. Shift+click or drag to pick several.">
+                    <ArrowLeftRight />
+                    <strong className="ellipsis" title={reference.title}>
+                      {reference.title}
+                    </strong>
+                    {ref.pages && (
+                      <div className="segmented" role="group" aria-label="Page of the other theme">
+                        {ref.pages.values.map((v, i) => (
+                          <button key={v} aria-pressed={refPageValue === v} onClick={() => setRefPage({ name: ref.pages!.name, value: v })}>
+                            {i + 1}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <button className="tb-icon" aria-label="Close the theme beside" onClick={() => setBeside(false)}>
+                      <X />
+                    </button>
+                  </div>
+                  <div className="maml-frame is-ref is-phone" style={{ width: refScene.w * scale, height: refScene.h * scale }}>
+                    <MamlCanvas
+                      scene={refScene}
+                      scale={scale}
+                      font={refFont}
+                      selected={refSel[0] ?? null}
+                      extra={refSel.slice(1)}
+                      onSelect={(o) => setRefSel(o === null ? [] : [o])}
+                      onSelectMany={setRefSel}
+                      onContext={refContext}
+                    />
+                  </div>
+                </div>
+              )}
+              {!refScene && pages && others.length > 0 && (
                 <div className="maml-page-thumbs">
                   {others.map((v) => (
                     <LockPageThumb
@@ -1763,7 +2062,7 @@ export function MamlPreview({ componentId }: { componentId: string }) {
             </div>
           )}
         </div>
-        <MamlInspector manifest={manifest} text={text} elements={elements} selected={selected} extra={extra} scene={scene} onSelect={select} onSelectMany={selectMany} onCommit={commit} />
+        <MamlInspector manifest={manifest} text={text} elements={elements} selected={selected} extra={extra} scene={scene} onSelect={select} onSelectMany={selectMany} onCommit={commit} onSave={scene?.lock ? (ords) => save('main', ords) : undefined} />
       </div>
     </div>
   );

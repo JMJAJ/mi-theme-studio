@@ -12,6 +12,8 @@ import type { DeviceApp, TryOnResult,
   ThemeManagerSupport,
   PrepareThemeManagerResult,
   KeepAppliedResult,
+  PermanentApplyResult,
+  AodRestoreResult,
   MediaTarget,
   NinePatch,
   NinePatchUpdate,
@@ -131,6 +133,12 @@ export const api = {
   recoveryRestore: () => call<ProjectSnapshot>('recovery_restore'),
   recoveryDiscard: () => call<void>('recovery_discard'),
 
+  inventoryList: () => call<unknown[]>('inventory_list'),
+  inventorySave: (item: object, files: { path: string; data: number[] }[]) => call<unknown>('inventory_save', { item, files }),
+  inventoryUpdate: (id: string, patch: object) => call<unknown>('inventory_update', { id, patch }),
+  inventoryDelete: (id: string) => call<void>('inventory_delete', { id }),
+  inventoryFiles: (id: string) => call<{ path: string; data: number[] }[]>('inventory_files', { id }),
+
   referenceOpen: (path: string) => call<ProjectSnapshot>('reference_open', { path }),
   referenceSnapshot: () => call<ProjectSnapshot | null>('reference_snapshot'),
   referenceClose: () => call<void>('reference_close'),
@@ -179,6 +187,10 @@ export const api = {
   adbOpenStoreItem: (serial: string, moduleId: string) => call<void>('adb_open_store_item', { serial, moduleId }),
   adbOpenThemeSettings: (serial: string) => call<void>('adb_open_theme_settings', { serial }),
   adbApplyTheme: (serial: string, opId: string, force = false) => call<ApplyResult>('adb_apply_theme', { serial, confirmed: true, force, opId }),
+  adbApplyThemePermanent: (serial: string, opId?: string, force = false) =>
+    call<PermanentApplyResult>('adb_apply_theme_permanent', { serial, confirmed: true, force, opId }),
+  adbRestoreAod: (serial: string, opId?: string) =>
+    call<AodRestoreResult>('adb_restore_aod', { serial, confirmed: true, opId }),
   mirrorStatus: () => call<MirrorStatus>('mirror_status'),
   mirrorStart: (serial: string, title?: string) => call<MirrorStatus>('mirror_start', { serial, title }),
   mirrorStop: () => call<MirrorStatus>('mirror_stop'),

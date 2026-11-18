@@ -117,7 +117,7 @@ export function TitleBar() {
 
       <div className="tb-actions">
         <UpdateButton />
-        {device.ready && <TryOnButton className="btn" />}
+        {device.ready && <TryOnButton className="btn" permanentToggle={false} />}
         <button className={`tb-phone tone-${device.tone}`} onClick={() => goTo('phone')} title={device.title}>
           <span className={`dot dot-${device.tone}`} />
           <Smartphone />

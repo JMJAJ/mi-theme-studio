@@ -3,7 +3,7 @@
 // size, rotation, opacity, hide). Each change is written into manifest.xml in
 // place and can be undone. Number labels can be dragged left/right to scrub.
 import { useRef, useState } from 'react';
-import { ArrowLeft, Code2, Eye, EyeOff, Image as ImageIcon, Layers, Repeat, RotateCw, Type, X } from 'lucide-react';
+import { ArrowLeft, Code2, Eye, EyeOff, Image as ImageIcon, Layers, PackagePlus, Repeat, RotateCw, Sigma, Type, X } from 'lucide-react';
 import { resourceUrl } from '../../lib/api';
 import { evalNumber, evalString, type Vars } from '../../lib/maml';
 import { findStartTag, lineOf } from '../../lib/mamlEdit';
@@ -12,6 +12,7 @@ import type { FileInfo } from '../../lib/types';
 import * as A from '../../state/actions';
 import { useStore } from '../../state/store';
 import { openSwap } from './SwapPart';
+import { FormulaField } from './FormulaField';
 import { DRAWABLE, type Scene } from './MamlPreview';
 
 const NAMES: Record<string, string> = {
@@ -33,16 +34,6 @@ const NAMES: Record<string, string> = {
   EndPoint: 'Unlock end area',
   Wallpaper: 'Wallpaper',
 };
-const FORMATS: [string, string][] = [
-  ['HH:mm', '24h time'],
-  ['hh:mm', '12h time'],
-  ['HH', 'Hour'],
-  ['mm', 'Minutes'],
-  ['EEEE', 'Weekday'],
-  ['EEE, d MMM', 'Short date'],
-  ['d MMMM', 'Long date'],
-  ['MM/dd', 'Numeric date'],
-];
 const isNumber = (v: string) => /^-?\d+(\.\d+)?$/.test(v.trim());
 
 function describe(el: Element) {
@@ -189,6 +180,7 @@ export function MamlInspector({
   onSelect,
   onSelectMany,
   onCommit,
+  onSave,
 }: {
   manifest: FileInfo;
   text: string | null;
@@ -199,6 +191,8 @@ export function MamlInspector({
   onSelect: (ord: number | null) => void;
   onSelectMany?: (ords: number[]) => void;
   onCommit: Commit;
+  /** Save these pieces (with their code and pictures) to the inventory. */
+  onSave?: (ords: number[]) => void;
 }) {
   const files = useStore((s) => s.fileIndex);
   const project = useStore((s) => s.project);
@@ -247,6 +241,11 @@ export function MamlInspector({
           })}
         </div>
         <div className="mi-foot">
+          {onSave && (
+            <button className="btn btn-sm btn-primary" onClick={() => onSave(chosen)} title="Keep these pieces with their code and pictures, to add them to any theme later">
+              <PackagePlus /> Save to inventory
+            </button>
+          )}
           <button className="btn btn-sm btn-ghost" onClick={() => onSelect(null)}>
             Clear selection
           </button>
@@ -353,20 +352,26 @@ export function MamlInspector({
       {textual && (
         <Section title="Text">
           {tag === 'DateTime' ? (
-            <>
-              <Field el={el} ord={selected} names={['format']} label="Format" onCommit={onCommit} wide />
-              <div className="mi-chips">
-                {FORMATS.map(([f, name]) => (
-                  <button key={f} className="chip" aria-pressed={el.getAttribute('format') === f} title={f} onClick={() => void onCommit(selected, { format: f })}>
-                    {name}
-                  </button>
-                ))}
-              </div>
-            </>
+            el.hasAttribute('formatExp') ? (
+              <FormulaField key={`${selected}:formatExp`} label="Format formula" kind="text" value={el.getAttribute('formatExp') ?? ''} vars={vars} onCommit={(v) => void onCommit(selected, { formatExp: v || null })} />
+            ) : (
+              <FormulaField key={`${selected}:format`} label="Format" kind="date" value={el.getAttribute('format') ?? ''} vars={vars} onCommit={(v) => void onCommit(selected, { format: v || null })} />
+            )
           ) : el.hasAttribute('textExp') ? (
-            <Field el={el} ord={selected} names={['textExp']} label="Text formula" onCommit={onCommit} wide />
+            <FormulaField key={`${selected}:textExp`} label="Text formula" kind="text" value={el.getAttribute('textExp') ?? ''} vars={vars} onCommit={(v) => void onCommit(selected, { textExp: v || null })} />
           ) : (
-            <Field el={el} ord={selected} names={el.hasAttribute('format') ? ['format'] : ['text']} label="Text" onCommit={onCommit} wide />
+            <>
+              <Field el={el} ord={selected} names={el.hasAttribute('format') ? ['format'] : ['text']} label="Text" onCommit={onCommit} wide />
+              {!el.hasAttribute('format') && (
+                <button
+                  className="btn btn-sm mi-formula-btn"
+                  title="Show weather, battery, time or anything worked out, instead of fixed words"
+                  onClick={() => void onCommit(selected, { textExp: `'${(el.getAttribute('text') ?? '').replace(/'/g, '’')}'`, text: null })}
+                >
+                  <Sigma /> Make it a formula
+                </button>
+              )}
+            </>
           )}
           <div className="mi-grid">
             <Field el={el} ord={selected} names={['size']} label="Size" onCommit={onCommit} vars={vars} numeric placeholder="18" />
@@ -452,14 +457,19 @@ export function MamlInspector({
             />
           </label>
         ) : (
-          <Field el={el} ord={selected} names={['alpha']} label="Opacity formula (0–255)" onCommit={onCommit} vars={vars} numeric wide />
+          <FormulaField key={`${selected}:alpha`} label="Opacity formula (0–255)" kind="number" value={alphaRaw ?? ''} vars={vars} onCommit={(v) => void onCommit(selected, { alpha: v || null })} />
         )}
         {visExpr ? (
-          <Field el={el} ord={selected} names={['visibility']} label="Shown when" onCommit={onCommit} wide />
+          <FormulaField key={`${selected}:visibility`} label="Shown when" kind="visibility" value={vis ?? ''} vars={vars} onCommit={(v) => void onCommit(selected, { visibility: v || null })} />
         ) : (
-          <button className="btn btn-sm" onClick={() => void onCommit(selected, { visibility: vis === 'false' ? null : 'false' })}>
-            {vis === 'false' ? <Eye /> : <EyeOff />} {vis === 'false' ? 'Show it again' : 'Hide it'}
-          </button>
+          <div className="mi-vis-btns">
+            <button className="btn btn-sm" onClick={() => void onCommit(selected, { visibility: vis === 'false' ? null : 'false' })}>
+              {vis === 'false' ? <Eye /> : <EyeOff />} {vis === 'false' ? 'Show it again' : 'Hide it'}
+            </button>
+            <button className="btn btn-sm" title="Show it only while charging, at night, when there are messages…" onClick={() => void onCommit(selected, { visibility: 'eq(#battery_state,1)' })}>
+              <Sigma /> Show only when…
+            </button>
+          </div>
         )}
       </Section>
 
@@ -485,6 +495,13 @@ export function MamlInspector({
         </form>
       </details>
 
+      {onSave && (
+        <div className="mi-save">
+          <button className="btn btn-sm btn-primary" onClick={() => onSave([selected])} title="Keep this piece with its code and pictures, to add it to any theme later">
+            <PackagePlus /> Save to inventory
+          </button>
+        </div>
+      )}
       <div className="mi-foot">
         {parentOrd >= 0 && (
           <button className="btn btn-sm" onClick={() => onSelect(parentOrd)}>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Lockscreen version="1" frameRate="30" screenWidth="1080">
+    <VariableBinders>
+        <ContentProviderBinder name="weather" uri="content://weather/actualWeatherData/1" columns="city_name,description,temperature" countName="has_weather">
+            <Variable name="weather_city" type="string" column="city_name"/>
+            <Variable name="weather_description" type="string" column="description"/>
+            <Variable name="weather_temperature" type="string" column="temperature"/>
+        </ContentProviderBinder>
+    </VariableBinders>
+
+    <Var name="greeting" type="string" expression="ifelse(#hour24{12,'Good morning',#hour24{18,'Good afternoon','Good evening')"/>
+
+    <Wallpaper/>
+    <Rectangle name="dim" x="0" y="0" w="#screen_width" h="#screen_height" fillColor="#40000000"/>
+
+    <DateTime name="clock" x="#screen_width/2" y="420" align="center" size="230" color="#ffffffff" format="HH:mm"/>
+    <DateTime name="date" x="#screen_width/2" y="700" align="center" size="54" color="#ccffffff" format="d/M EE"/>
+    <Text name="weather" x="#screen_width/2" y="790" align="center" size="46" color="#ccffffff" textExp="@weather_description+' '+@weather_temperature" visibility="#has_weather"/>
+    <Text name="hello" x="#screen_width/2" y="1000" align="center" size="60" bold="true" color="#ffffd27a" textExp="@greeting"/>
+
+    <Rectangle name="bar_track" x="120" y="2050" w="840" h="24" cornerRadius="12" fillColor="#40ffffff"/>
+    <Rectangle name="bar_fill" x="120" y="2050" w="840*#battery_level/100" h="24" cornerRadius="12" fillColor="#ffa8e6ff"/>
+    <Text name="battery" x="#screen_width/2" y="2110" align="center" size="40" color="#ffffffff" format="%d%%" paras="#battery_level"/>
+    <Text name="charging" x="#screen_width/2" y="2170" align="center" size="36" color="#ffa8e6ff" text="Charging" visibility="eq(#battery_state,1)"/>
+
+    <Unlocker name="unlocker">
+        <StartPoint x="0" y="1800" w="1080" h="600"/>
+        <EndPoint x="0" y="0" w="1080" h="1200"/>
+    </Unlocker>
+</Lockscreen>

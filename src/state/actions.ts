@@ -788,7 +788,7 @@ function afterChange(undoSteps: number) {
         })();
       },
     },
-    { label: ready ? 'Try on phone' : 'Connect phone', run: () => (ready ? void tryOnPhone() : goTo('phone')) },
+    { label: ready ? 'Try on phone' : 'Connect phone', run: () => (ready ? void tryOnOrPermanent() : goTo('phone')) },
   ];
 }
 
@@ -1320,6 +1320,143 @@ export async function keepThemeApplied(enabled: boolean): Promise<boolean | null
     return result.running;
   } catch (error) {
     toast('error', `Keep applied: ${errorMessage(error)}`);
+    return null;
+  } finally {
+    operations.delete(opId);
+    setState({ busy: null });
+  }
+}
+
+/** The permanent (AOD) apply warning; true when the person accepts it. */
+export async function confirmPermanentApply(): Promise<boolean> {
+  const device = readyDevice();
+  const project = getState().project;
+  const details = device ? getState().deviceDetails[device.serial] : undefined;
+  const name = details?.marketName ?? details?.model ?? device?.model ?? device?.serial ?? 'the phone';
+  const title = project?.title ?? 'the theme';
+  return confirmDialog({
+    title: `Make “${title}” permanent on ${name}?`,
+    message:
+      'This uses the AOD/System UI MAML vulnerability to write the theme and a sticky boot-animation blocker into /data/system/theme. The framework’s 2-hour licence check then hangs instead of restoring the default theme.',
+    detail: [
+      'No root and no APK patching. It needs USB debugging, the AOD provider, and always-on display enabled.',
+      'On builds with the editor entry point, Theme Manager copies the real files first. On 3.0.5.19 the AOD/System UI path copies every real theme file, sets the wallpaper through WallpaperManager, triggers the framework theme reload, restarts System UI/launcher, and installs the sticky blocker.',
+      'The screen turns off and on once to run the AOD manifest. System UI and the launcher restart, so the phone may flicker for a few seconds.',
+      'AOD is left on the maml category. The validation worker may stay stuck, and normal theme cleanup may restore some parts; AOD recreates the blocker on screen off/on.',
+      'Use “Remove AOD blocker” to undo the blocker and restore the AOD category. Your next theme apply is the normal way to change themes.',
+      'This is invasive. Only use it with themes you own or have permission to use.',
+    ],
+    confirmLabel: 'Make permanent',
+    danger: true,
+  });
+}
+
+/** Tick or untick the “Permanent apply (AOD)” box on Try on phone. Ticking asks first. */
+export async function setPermanentApply(on: boolean) {
+  if (on && !(await confirmPermanentApply())) return;
+  setState({ permanentApply: on });
+}
+
+/** Try on phone, honouring the permanent (AOD) box. */
+export async function tryOnOrPermanent() {
+  const device = readyDevice();
+  if (getState().permanentApply && device && !(await phoneIsRooted(device.serial))) return applyThemePermanently(true);
+  return tryOnPhone();
+}
+
+/**
+ * Make the open theme permanent without root.
+ *
+ * On builds with the editor entry point Theme Manager copies the real files
+ * first. On builds without it, the AOD/System UI MAML path copies the real
+ * files from /data/local/tmp, sets the wallpaper, reloads the theme, and
+ * restarts System UI/launcher. Both finish with a sticky boot-animation
+ * symlink that blocks the framework's 2-hour DRM validation.
+ */
+export async function applyThemePermanently(confirmed = false) {
+  const device = readyDevice();
+  const project = getState().project;
+  if (!device || !project) {
+    toast('warning', 'Open a theme and connect an authorized phone first.');
+    return;
+  }
+  if (getState().busy) return;
+  if (!(await applyAllDrafts())) return;
+  if (!confirmed && !(await confirmPermanentApply())) return;
+  const opId = newOpId('permanent-apply');
+  operations.set(opId, 'Making the theme permanent');
+  setState({ busy: 'Applying the theme permanently…' });
+  try {
+    const result = await api.adbApplyThemePermanent(device.serial, opId, true);
+    for (const step of result.steps) log('info', `Permanent: ${step}`);
+    toast(
+      result.blockerVerified ? 'success' : 'warning',
+      result.blockerVerified
+        ? `Permanent blocker verified (${result.mode === 'themeManagerAod' ? 'Theme Manager + AOD' : result.mode === 'aodFull' ? 'AOD full apply' : 'AOD blocker'}).`
+        : 'The theme was written but the blocker could not be verified. Enable always-on display and try again.',
+    );
+    if (result.mode === 'aodFull') {
+      const reboot = await confirmDialog({
+        title: 'Reboot to activate the lock screen?',
+        message:
+          'The theme files, icons, wallpaper, clock and MAML lockscreen are written. The lock wallpaper service only reloads lock.xml at startup, so the themed lockscreen appears after a reboot.',
+        detail: [
+          'The phone will disconnect from ADB while it restarts.',
+          'Reconnect USB after boot; the sticky blocker and applied theme persist.',
+        ],
+        confirmLabel: 'Reboot phone',
+        danger: true,
+      });
+      if (reboot) {
+        try {
+          await api.adbReboot(device.serial);
+          toast('success', 'Rebooting the phone. Reconnect USB after it starts.');
+        } catch (error) {
+          toast('error', `Reboot failed: ${errorMessage(error)}`);
+        }
+      }
+    }
+  } catch (error) {
+    if (errorCode(error) === 'cancelled') log('info', 'Permanent apply cancelled');
+    else toast('error', `Permanent apply: ${errorMessage(error)}`);
+  } finally {
+    operations.delete(opId);
+    setState({ busy: null, exportProgress: null });
+  }
+}
+
+/** Remove the sticky AOD blocker and restore the normal AOD category. */
+export async function restoreAodChanges(): Promise<boolean | null> {
+  const device = readyDevice();
+  if (!device) {
+    toast('warning', 'Connect and authorize a phone first.');
+    return null;
+  }
+  if (getState().busy) return null;
+  const details = getState().deviceDetails[device.serial];
+  const name = details?.marketName ?? details?.model ?? device.model ?? device.serial;
+  const ok = await confirmDialog({
+    title: `Remove the AOD blocker on ${name}?`,
+    message:
+      'This asks AOD to remove the sticky boot-animation blocker and restores the AOD category to sun. The current theme files are left in place; apply another theme normally afterwards.',
+    detail: [
+      'The framework’s next 2-hour check can then run again and may restore the default theme if it has no licence.',
+      'If the blocker path still exists, the same AOD/theme cleanup can be run again or you can re-apply a theme.',
+    ],
+    confirmLabel: 'Remove blocker',
+    danger: true,
+  });
+  if (!ok) return null;
+  const opId = newOpId('restore-aod');
+  operations.set(opId, 'Removing the AOD blocker');
+  setState({ busy: 'Removing the AOD blocker…' });
+  try {
+    const result = await api.adbRestoreAod(device.serial, opId);
+    for (const step of result.steps) log('info', `AOD restore: ${step}`);
+    toast('success', result.blockerRemoved ? 'AOD blocker removed.' : 'AOD settings restored; the blocker may still need cleanup.');
+    return result.blockerRemoved;
+  } catch (error) {
+    toast('error', `Remove AOD blocker: ${errorMessage(error)}`);
     return null;
   } finally {
     operations.delete(opId);

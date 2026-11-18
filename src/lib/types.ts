@@ -492,6 +492,17 @@ export interface KeepAppliedResult {
   steps: string[];
 }
 
+export interface PermanentApplyResult {
+  mode: 'aodBlocker' | 'themeManagerAod' | 'aodFull';
+  blockerVerified: boolean;
+  steps: string[];
+}
+
+export interface AodRestoreResult {
+  blockerRemoved: boolean;
+  steps: string[];
+}
+
 export interface PrepareThemeManagerResult {
   changed: boolean;
   beforeVersion: string | null;

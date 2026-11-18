@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="368" viewBox="0 0 1000 368" role="img" aria-label="ARGB colours">
+<title>ARGB colours</title>
+<rect width="1000" height="368" rx="14" fill="#0f1115"/>
+<text x="32" y="44" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="24" font-weight="700" fill="#e8eaf0">Colours are #AARRGGBB</text>
+<text x="32" y="70" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="14" fill="#8a93a6">AA = opacity (ff solid … 00 invisible), then red, green, blue. #RRGGBB alone means solid.</text>
+<defs><linearGradient id="cg" x1="0" x2="1"><stop offset="0" stop-color="#3a3f8f"/><stop offset="0.5" stop-color="#8c4a7d"/><stop offset="1" stop-color="#e0805a"/></linearGradient></defs>
+<rect x="24" y="96" width="952" height="150" rx="10" fill="url(#cg)"/><rect x="44" y="114" width="110" height="80" rx="10" fill="#ffffff" fill-opacity="1" stroke="#ffffff" stroke-opacity="0.35" stroke-dasharray="0"/>
+<text x="99" y="216" text-anchor="middle" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="13" fill="#fff">#ffffffff</text>
+<text x="99" y="234" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#ffffff" fill-opacity="0.8">solid white</text><rect x="178" y="114" width="110" height="80" rx="10" fill="#ffffff" fill-opacity="0.8" stroke="#ffffff" stroke-opacity="0.35" stroke-dasharray="0"/>
+<text x="233" y="216" text-anchor="middle" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="13" fill="#fff">#ccffffff</text>
+<text x="233" y="234" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#ffffff" fill-opacity="0.8">80% white</text><rect x="312" y="114" width="110" height="80" rx="10" fill="#ffffff" fill-opacity="0.502" stroke="#ffffff" stroke-opacity="0.35" stroke-dasharray="0"/>
+<text x="367" y="216" text-anchor="middle" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="13" fill="#fff">#80ffffff</text>
+<text x="367" y="234" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#ffffff" fill-opacity="0.8">50% white</text><rect x="446" y="114" width="110" height="80" rx="10" fill="#ffffff" fill-opacity="0.251" stroke="#ffffff" stroke-opacity="0.35" stroke-dasharray="0"/>
+<text x="501" y="216" text-anchor="middle" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="13" fill="#fff">#40ffffff</text>
+<text x="501" y="234" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#ffffff" fill-opacity="0.8">25% white</text><rect x="580" y="114" width="110" height="80" rx="10" fill="#ffffff" fill-opacity="0" stroke="#ffffff" stroke-opacity="0.35" stroke-dasharray="4 4"/>
+<text x="635" y="216" text-anchor="middle" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="13" fill="#fff">#00ffffff</text>
+<text x="635" y="234" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#ffffff" fill-opacity="0.8">invisible</text><rect x="714" y="114" width="110" height="80" rx="10" fill="#ff6a1a" fill-opacity="1" stroke="#ffffff" stroke-opacity="0.35" stroke-dasharray="0"/>
+<text x="769" y="216" text-anchor="middle" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="13" fill="#fff">#ffff6a1a</text>
+<text x="769" y="234" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#ffffff" fill-opacity="0.8">solid orange</text><rect x="848" y="114" width="110" height="80" rx="10" fill="#000000" fill-opacity="0.502" stroke="#ffffff" stroke-opacity="0.35" stroke-dasharray="0"/>
+<text x="903" y="216" text-anchor="middle" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="13" fill="#fff">#80000000</text>
+<text x="903" y="234" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#ffffff" fill-opacity="0.8">50% black</text><text x="32" y="284" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="600" fill="#e8eaf0">Opacity pairs</text><rect x="32" y="298" width="76" height="46" rx="8" fill="#171a21"/>
+<text x="70" y="318" text-anchor="middle" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15" fill="#ffb86b">ff</text>
+<text x="70" y="336" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#8a93a6">100%</text><rect x="118" y="298" width="76" height="46" rx="8" fill="#171a21"/>
+<text x="156" y="318" text-anchor="middle" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15" fill="#ffb86b">e6</text>
+<text x="156" y="336" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#8a93a6">90%</text><rect x="204" y="298" width="76" height="46" rx="8" fill="#171a21"/>
+<text x="242" y="318" text-anchor="middle" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15" fill="#ffb86b">cc</text>
+<text x="242" y="336" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#8a93a6">80%</text><rect x="290" y="298" width="76" height="46" rx="8" fill="#171a21"/>
+<text x="328" y="318" text-anchor="middle" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15" fill="#ffb86b">b3</text>
+<text x="328" y="336" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#8a93a6">70%</text><rect x="376" y="298" width="76" height="46" rx="8" fill="#171a21"/>
+<text x="414" y="318" text-anchor="middle" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15" fill="#ffb86b">99</text>
+<text x="414" y="336" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#8a93a6">60%</text><rect x="462" y="298" width="76" height="46" rx="8" fill="#171a21"/>
+<text x="500" y="318" text-anchor="middle" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15" fill="#ffb86b">80</text>
+<text x="500" y="336" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#8a93a6">50%</text><rect x="548" y="298" width="76" height="46" rx="8" fill="#171a21"/>
+<text x="586" y="318" text-anchor="middle" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15" fill="#ffb86b">66</text>
+<text x="586" y="336" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#8a93a6">40%</text><rect x="634" y="298" width="76" height="46" rx="8" fill="#171a21"/>
+<text x="672" y="318" text-anchor="middle" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15" fill="#ffb86b">4d</text>
+<text x="672" y="336" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#8a93a6">30%</text><rect x="720" y="298" width="76" height="46" rx="8" fill="#171a21"/>
+<text x="758" y="318" text-anchor="middle" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15" fill="#ffb86b">33</text>
+<text x="758" y="336" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#8a93a6">20%</text><rect x="806" y="298" width="76" height="46" rx="8" fill="#171a21"/>
+<text x="844" y="318" text-anchor="middle" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15" fill="#ffb86b">1a</text>
+<text x="844" y="336" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#8a93a6">10%</text><rect x="892" y="298" width="76" height="46" rx="8" fill="#171a21"/>
+<text x="930" y="318" text-anchor="middle" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="15" fill="#ffb86b">00</text>
+<text x="930" y="336" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#8a93a6">0%</text>
+</svg>

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="940" height="540" viewBox="0 0 940 540" role="img" aria-label="Inspector fields">
+<title>Inspector fields</title>
+<rect width="940" height="540" rx="14" fill="#0f1115"/>
+<text x="32" y="44" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="24" font-weight="700" fill="#e8eaf0">Where formulas go in the side panel</text>
+<text x="32" y="70" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="14" fill="#8a93a6">Click a piece on the lock screen preview. Fields outlined in orange take the code shown in this guide; press Enter or click away to write it.</text>
+
+<rect x="20" y="96" width="440" height="420" rx="12" fill="#171a21" stroke="#2a2f3a"/>
+<text x="40" y="128" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">←</text>
+<text x="64" y="128" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="700" fill="#e8eaf0">Date / time</text>
+<text x="168.4" y="128" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="13" fill="#8a93a6">date</text>
+<line x1="20" y1="146" x2="460" y2="146" stroke="#2a2f3a"/>
+<text x="40" y="172" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="11" font-weight="700" letter-spacing="1" fill="#8a93a6">TEXT</text>
+
+<text x="40" y="186" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#8a93a6">Format</text>
+<rect x="40" y="192" width="400" height="30" rx="6" fill="#0f1218" stroke="#ff6a1a" stroke-width="2"/>
+<text x="50" y="212" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="13"><tspan fill="#c9d1e0">d</tspan><tspan fill="#c9d1e0">/</tspan><tspan fill="#c9d1e0">M</tspan><tspan fill="#c9d1e0">&#160;</tspan><tspan fill="#c9d1e0">E</tspan><tspan fill="#c9d1e0">E</tspan></text><rect x="40" y="236" width="73.76" height="24" rx="12" fill="#1f2430" stroke="#2a2f3a"/><text x="76.88" y="252" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#e8eaf0">24h time</text><rect x="121.76" y="236" width="73.76" height="24" rx="12" fill="#1f2430" stroke="#2a2f3a"/><text x="158.64000000000001" y="252" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#e8eaf0">12h time</text><rect x="203.52" y="236" width="46.88" height="24" rx="12" fill="#1f2430" stroke="#2a2f3a"/><text x="226.96" y="252" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#e8eaf0">Hour</text><rect x="258.40000000000003" y="236" width="67.04" height="24" rx="12" fill="#1f2430" stroke="#2a2f3a"/><text x="291.92" y="252" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#e8eaf0">Minutes</text><rect x="333.44000000000005" y="236" width="67.04" height="24" rx="12" fill="#1f2430" stroke="#2a2f3a"/><text x="366.96000000000004" y="252" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#e8eaf0">Weekday</text><rect x="40" y="268" width="87.2" height="24" rx="12" fill="#1f2430" stroke="#2a2f3a"/><text x="83.6" y="284" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#e8eaf0">Short date</text><rect x="135.2" y="268" width="80.48" height="24" rx="12" fill="#1f2430" stroke="#2a2f3a"/><text x="175.44" y="284" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#e8eaf0">Long date</text><rect x="223.68" y="268" width="100.64000000000001" height="24" rx="12" fill="#1f2430" stroke="#2a2f3a"/><text x="274" y="284" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#e8eaf0">Numeric date</text>
+<text x="40" y="320" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#8a93a6">Size</text>
+<rect x="40" y="326" width="120" height="30" rx="6" fill="#0f1218" stroke="#2a2f3a" stroke-width="1"/>
+<text x="50" y="346" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="13"><tspan fill="#ffb86b">54</tspan></text><text x="180" y="320" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#8a93a6">Style</text><rect x="180" y="330" width="67.04" height="24" rx="12" fill="#1f2430" stroke="#2a2f3a"/><text x="213.52" y="346" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#e8eaf0">B  Bold</text>
+<text x="40" y="380" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#8a93a6">Colour</text>
+<rect x="40" y="386" width="400" height="30" rx="6" fill="#0f1218" stroke="#2a2f3a" stroke-width="1"/>
+<text x="50" y="406" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="13"><tspan fill="#ffb86b">#ccffffff</tspan></text>
+<line x1="20" y1="470" x2="460" y2="470" stroke="#2a2f3a"/>
+<text x="40" y="498" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="13" fill="#8a93a6">Show in code · Save to inventory</text>
+
+<rect x="480" y="96" width="440" height="420" rx="12" fill="#171a21" stroke="#2a2f3a"/>
+<text x="500" y="128" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" fill="#8a93a6">←</text>
+<text x="524" y="128" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="15" font-weight="700" fill="#e8eaf0">Text</text>
+<text x="569.6" y="128" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="13" fill="#8a93a6">weather</text>
+<line x1="480" y1="146" x2="920" y2="146" stroke="#2a2f3a"/>
+<text x="500" y="172" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="11" font-weight="700" letter-spacing="1" fill="#8a93a6">TEXT</text>
+
+<text x="500" y="186" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#8a93a6">Text formula</text>
+<rect x="500" y="192" width="400" height="30" rx="6" fill="#0f1218" stroke="#ff6a1a" stroke-width="2"/>
+<text x="510" y="212" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="13"><tspan fill="#7ee0a4">@weather_description</tspan><tspan fill="#c9d1e0">+</tspan><tspan fill="#9ecbff">'&#160;'</tspan><tspan fill="#c9d1e0">+</tspan><tspan fill="#7ee0a4">@weather_temperature</tspan></text>
+<text x="500" y="250" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#8a93a6">Size</text>
+<rect x="500" y="256" width="120" height="30" rx="6" fill="#0f1218" stroke="#2a2f3a" stroke-width="1"/>
+<text x="510" y="276" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="13"><tspan fill="#ffb86b">46</tspan></text><text x="640" y="250" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#8a93a6">Style</text><rect x="640" y="260" width="67.04" height="24" rx="12" fill="#1f2430" stroke="#2a2f3a"/><text x="673.52" y="276" text-anchor="middle" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#e8eaf0">B  Bold</text>
+<text x="500" y="310" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#8a93a6">Colour</text>
+<rect x="500" y="316" width="400" height="30" rx="6" fill="#0f1218" stroke="#2a2f3a" stroke-width="1"/>
+<text x="510" y="336" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="13"><tspan fill="#ffb86b">#ccffffff</tspan></text><text x="500" y="384" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="11" font-weight="700" letter-spacing="1" fill="#8a93a6">VISIBILITY</text>
+<text x="500" y="400" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="12" fill="#8a93a6">Shown when</text>
+<rect x="500" y="406" width="400" height="30" rx="6" fill="#0f1218" stroke="#2a2f3a" stroke-width="1"/>
+<text x="510" y="426" font-family="Consolas, Menlo, DejaVu Sans Mono, monospace" font-size="13"><tspan fill="#ffb86b">#has_weather</tspan></text>
+<line x1="480" y1="470" x2="920" y2="470" stroke="#2a2f3a"/>
+<text x="500" y="498" font-family="Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif" font-size="13" fill="#8a93a6">Show in code · Save to inventory</text>
+</svg>

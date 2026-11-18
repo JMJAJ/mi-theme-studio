@@ -64,7 +64,7 @@ export type DockTab = 'problems' | 'output' | 'adb' | 'build' | 'history';
 export type SideTab = 'files' | 'search' | 'reference';
 
 /** Top-level areas of the app (left rail). */
-export type Section = 'design' | 'files' | 'store' | 'library' | 'phone' | 'check';
+export type Section = 'design' | 'files' | 'store' | 'library' | 'phone' | 'check' | 'guide';
 
 /** A text range to select once its file is open in an editor. */
 export interface Reveal {
@@ -191,6 +191,8 @@ export interface StoreState {
   exportProgress: ExportProgress | null;
   builds: BuildRecord[];
   busy: string | null;
+  /** Try on phone does a permanent (AOD) apply instead; confirmed when ticked, reset on restart. */
+  permanentApply: boolean;
   lastAutosave: RecoveryInfo | null;
   recoveryOffer: RecoveryInfo | null;
   dialog: DialogState | null;
@@ -235,6 +237,7 @@ export const useStore = create<StoreState>(() => ({
   exportProgress: null,
   builds: [],
   busy: null,
+  permanentApply: false,
   lastAutosave: null,
   recoveryOffer: null,
   dialog: null,

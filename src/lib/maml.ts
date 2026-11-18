@@ -218,6 +218,40 @@ export function evaluate(expression: string | null | undefined, vars: Vars, fall
 export const evalNumber = (e: string | null | undefined, vars: Vars, fallback = 0) => num(evaluate(e, vars, fallback));
 export const evalString = (e: string | null | undefined, vars: Vars, fallback = '') => str(evaluate(e, vars, fallback));
 
+/** Split at commas that are not inside brackets or quotes: `#a,ifelse(#b,1,2)` → two parts. */
+function splitTopLevel(src: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let quote = '';
+  let start = 0;
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (quote) {
+      if (c === quote) quote = '';
+    } else if (c === "'" || c === '"') quote = c;
+    else if (c === '(' || c === '[') depth++;
+    else if (c === ')' || c === ']') depth--;
+    else if (c === ',' && depth <= 0) {
+      out.push(src.slice(start, i));
+      start = i + 1;
+    }
+  }
+  out.push(src.slice(start));
+  return out;
+}
+
+/** A Text's `format="%d%%"` with `paras="#battery_level"`: printf-style slots filled with comma-separated expressions. */
+export function formatWithParas(format: string, paras: string | null, vars: Vars) {
+  const args = splitTopLevel(paras ?? '').filter((a) => a.trim());
+  let p = 0;
+  return format.replace(/%%|%[-0-9.]*([dsf])/g, (m, kind: string) => {
+    if (m === '%%') return '%';
+    const v = evaluate(args[p++], vars, '');
+    if (kind === 'd') return String(Math.trunc(Number(v) || 0)).padStart(/%0(\d)d/.exec(m)?.[1] ? Number(/%0(\d)d/.exec(m)![1]) : 0, '0');
+    return String(v);
+  });
+}
+
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 

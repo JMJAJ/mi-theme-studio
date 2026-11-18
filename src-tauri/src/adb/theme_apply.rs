@@ -8,14 +8,21 @@
 //! first. When an update removed it, `prepare_theme_manager` can revert Theme
 //! Manager to the factory build through the package manager; nothing here
 //! needs root, patches an APK, or touches Theme Manager's private data.
+//!
+//! The experimental AOD path (`apply_theme_permanent`) uses a separate
+//! vulnerability to write the theme and a sticky validation blocker. It is
+//! deliberately separate from the normal apply path and is guarded by an
+//! explicit confirmation in the UI.
 
 use super::{valid_serial, Adb, THEME_MANAGER_PACKAGE};
 use crate::error::{AppError, AppResult};
 use serde::Serialize;
-use std::path::Path;
+use std::fs::File;
+use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use zip::ZipArchive;
 
 pub const APPLY_ACTIVITY: &str = "com.android.thememanager/com.android.thememanager.ApplyThemeForScreenshot";
 /// Declared by Theme Manager builds that use the two-step (init/apply) flow.
@@ -87,10 +94,52 @@ pub struct KeepAppliedResult {
     pub steps: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PermanentApplyResult {
+    /// `themeManagerAod` when Theme Manager copied the real files first;
+    /// `aodFull` when AOD/System UI wrote real files and set the wallpaper.
+    pub mode: String,
+    pub blocker_verified: bool,
+    pub steps: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AodRestoreResult {
+    pub blocker_removed: bool,
+    pub steps: Vec<String>,
+}
+
+const AOD_PACKAGE: &str = "com.miui.aod";
+const AOD_PROVIDER_URI: &str = "content://com.miui.aod.settings";
+const AOD_MAML_DIR: &str = "/sdcard/Download/mts_aod_maml";
+const AOD_MAML_MANIFEST: &str = "/sdcard/Download/mts_aod_maml/content/manifest.xml";
+const AOD_MAML_DRAWABLE: &str = "/sdcard/Download/mts_aod_maml/drawable";
+const AOD_PARAM_PATH: &str = "/data/local/tmp/mts_aod_param.json";
+/// The `theme_dir_name` is concatenated without canonicalisation; the extra
+/// `..` segments escape the AOD app directory to shell-writable storage.
+const AOD_PARAM_JSON: &str = r#"{"theme_style_info":{"theme_dir_name":"../../../../../../../../sdcard/Download/mts_aod_maml","theme_name":"Mi Theme Studio","theme_description":"Mi Theme Studio","theme_type":"maml","theme_identity":"mts"}}"#;
+const AOD_BLOCKER_LINK: &str = "/data/system/theme/boots/bootanimation.zip";
+const AOD_BLOCKER_DIR: &str = "/data/system/theme/boots";
+const AOD_THEME_STAGING: &str = "/data/local/tmp/mts_theme";
+const LOCK_XML_PATH: &str = "/data/system/theme_magic/users/0/wallpaper/data/lock.xml";
+const LOCK_XML_STAGING: &str = "/data/local/tmp/mts_lock.xml";
+const LOCK_MAML_DIR: &str = "/data/system/theme_magic/users/0/wallpaper/maml";
+const LOCK_MAML_WALLPAPER: &str = "/data/system/theme_magic/users/0/wallpaper/maml/lock_wallpaper.jpg";
+const AOD_KEEPALIVE_SCRIPT_PATH: &str = "/data/local/tmp/mts_aod_keep.sh";
+
 /// Reapplies the staged package when the framework's periodic DRM reset
 /// changes `/data/system/theme`. Runs as the adb shell user; no root.
 pub fn keepalive_script() -> &'static str {
     include_str!("keepalive.sh")
+}
+
+/// Keep-alive for builds without the Theme Manager editor activity. It
+/// re-runs the staged AOD full-apply manifest after a reset instead of trying
+/// the missing ApplyThemeForScreenshot activity.
+pub fn aod_keepalive_script() -> &'static str {
+    include_str!("aod_keepalive.sh")
 }
 
 /// `pm uninstall-system-updates` prints `Success` on its own line.
@@ -458,6 +507,58 @@ impl Adb {
         Ok(())
     }
 
+    pub fn start_aod_keepalive(
+        &self,
+        serial: &str,
+        script_local: &Path,
+        cancel: Option<Arc<AtomicBool>>,
+    ) -> AppResult<()> {
+        self.push_to(serial, script_local, AOD_KEEPALIVE_SCRIPT_PATH, cancel.clone())?;
+        let _ = self.shell(
+            serial,
+            &["chmod", "755", AOD_KEEPALIVE_SCRIPT_PATH],
+            Duration::from_secs(10),
+            cancel.clone(),
+        );
+        self.kill_aod_keepalive(serial);
+        let command = format!("nohup sh {AOD_KEEPALIVE_SCRIPT_PATH} >/dev/null 2>&1 &");
+        self.shell(serial, &[&command], Duration::from_secs(20), cancel)?;
+        std::thread::sleep(Duration::from_millis(1500));
+        if !self.aod_keepalive_running(serial) {
+            return Err(AppError::new(
+                "keepalive",
+                "The AOD keep-alive loop did not stay running. Apply the theme permanently first and keep USB debugging authorized.",
+            ));
+        }
+        Ok(())
+    }
+
+    fn kill_aod_keepalive(&self, serial: &str) {
+        if let Ok(out) = self.shell(
+            serial,
+            &["pgrep", "-f", "[m]ts_aod_keep.sh"],
+            Duration::from_secs(10),
+            None,
+        ) {
+            for pid in out.stdout_text().split_whitespace() {
+                if pid.chars().all(|c| c.is_ascii_digit()) {
+                    let _ = self.shell(serial, &["kill", "-9", pid], Duration::from_secs(10), None);
+                }
+            }
+        }
+    }
+
+    pub fn aod_keepalive_running(&self, serial: &str) -> bool {
+        self.shell(
+            serial,
+            &["pgrep", "-f", "[m]ts_aod_keep.sh"],
+            Duration::from_secs(10),
+            None,
+        )
+        .map(|out| !out.stdout_text().trim().is_empty())
+        .unwrap_or(false)
+    }
+
     fn kill_keepalive(&self, serial: &str) {
         if let Ok(out) = self.shell(
             serial,
@@ -475,6 +576,7 @@ impl Adb {
 
     pub fn stop_keepalive(&self, serial: &str) -> AppResult<()> {
         self.kill_keepalive(serial);
+        self.kill_aod_keepalive(serial);
         Ok(())
     }
 
@@ -487,6 +589,303 @@ impl Adb {
         )
         .map(|out| !out.stdout_text().trim().is_empty())
         .unwrap_or(false)
+            || self.aod_keepalive_running(serial)
+    }
+
+    // ----- AOD permanent apply ------------------------------------------------
+
+    /// The AOD MAML exploit needs a package that exposes `getAodThumbnail`
+    /// and a shell that can write secure settings. Both are checked before
+    /// anything on the phone is changed.
+    fn aod_available(&self, serial: &str) -> AppResult<bool> {
+        valid_serial(serial)?;
+        let packages = self
+            .shell(serial, &["pm", "list", "packages", AOD_PACKAGE], Duration::from_secs(15), None)?
+            .stdout_text();
+        if !packages.lines().any(|line| line.trim() == format!("package:{AOD_PACKAGE}")) {
+            return Ok(false);
+        }
+        let call = self.shell(
+            serial,
+            &["content", "call", "--uri", AOD_PROVIDER_URI, "--method", "getAodThumbnail"],
+            Duration::from_secs(25),
+            None,
+        );
+        Ok(call.map(|out| out.stdout_text().contains("Result:")).unwrap_or(false))
+    }
+
+    fn remote_mkdir(&self, serial: &str, dir: &str, cancel: Option<Arc<AtomicBool>>) -> AppResult<()> {
+        let command = format!("mkdir -p '{dir}'");
+        self.shell(serial, &[&command], Duration::from_secs(15), cancel).map(|_| ())
+    }
+
+    fn push_bytes(
+        &self,
+        serial: &str,
+        bytes: &[u8],
+        remote: &str,
+        staging: &Path,
+        cancel: Option<Arc<AtomicBool>>,
+    ) -> AppResult<u64> {
+        let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        std::fs::create_dir_all(staging).map_err(|e| AppError::io("Could not create the AOD staging folder", e))?;
+        let local = staging.join(format!("aod-push-{stamp}.tmp"));
+        std::fs::write(&local, bytes).map_err(|e| AppError::io("Could not write a staging file", e))?;
+        let result = self.push_to(serial, &local, remote, cancel);
+        let _ = std::fs::remove_file(&local);
+        result
+    }
+
+    fn set_aod_style(
+        &self,
+        serial: &str,
+        manifest: &str,
+        staging: &Path,
+        cancel: Option<Arc<AtomicBool>>,
+    ) -> AppResult<()> {
+        self.remote_mkdir(serial, AOD_MAML_DIR, cancel.clone())?;
+        self.push_bytes(serial, manifest.as_bytes(), AOD_MAML_MANIFEST, staging, cancel.clone())?;
+        self.push_bytes(serial, &one_pixel_png()?, AOD_MAML_DRAWABLE, staging, cancel.clone())?;
+        self.push_bytes(serial, AOD_PARAM_JSON.as_bytes(), AOD_PARAM_PATH, staging, cancel.clone())?;
+        let set_param = format!("settings put secure maml \"$(cat {AOD_PARAM_PATH})\"");
+        self.shell(serial, &[&set_param], Duration::from_secs(20), cancel.clone())?;
+        self.shell(
+            serial,
+            &["settings", "put", "secure", "aod_category_name", "maml"],
+            Duration::from_secs(15),
+            cancel.clone(),
+        )?;
+        let category = self
+            .shell(serial, &["settings", "get", "secure", "aod_category_name"], Duration::from_secs(15), cancel)?;
+        if category.stdout_text().trim() != "maml" {
+            return Err(AppError::new(
+                "unsupported",
+                "The phone did not accept the AOD category setting. Enable always-on display and try again.",
+            ));
+        }
+        Ok(())
+    }
+
+    fn trigger_aod(&self, serial: &str) -> AppResult<()> {
+        self.shell(
+            serial,
+            &["input keyevent KEYCODE_WAKEUP; sleep 1; input keyevent KEYCODE_SLEEP; sleep 4"],
+            Duration::from_secs(20),
+            None,
+        )
+        .map(|_| ())
+    }
+
+    fn aod_blocker_verified(&self, serial: &str) -> bool {
+        let dir = self
+            .shell(serial, &["ls", "-ld", AOD_BLOCKER_DIR], Duration::from_secs(15), None)
+            .map(|out| out.stdout_text())
+            .unwrap_or_default();
+        let link = self
+            .shell(serial, &["ls", "-l", AOD_BLOCKER_LINK], Duration::from_secs(15), None)
+            .map(|out| out.stdout_text())
+            .unwrap_or_default();
+        dir.contains('t') && link.contains("-> /dev/input/event0")
+    }
+
+    fn install_aod_blocker(
+        &self,
+        serial: &str,
+        staging: &Path,
+        cancel: Option<Arc<AtomicBool>>,
+    ) -> AppResult<PermanentApplyResult> {
+        if !self.aod_available(serial)? {
+            return Err(AppError::new(
+                "unsupported",
+                "This phone's AOD provider does not expose the MAML preview method. The permanent blocker is not available.",
+            ));
+        }
+        let mut steps = vec!["AOD provider is available".to_string()];
+        self.set_aod_style(serial, &aod_blocker_manifest(), staging, cancel.clone())?;
+        steps.push("Wrote the sticky boot-animation blocker manifest".into());
+        self.trigger_aod(serial)?;
+        steps.push("Asked AOD to run the manifest".into());
+        let verified = self.aod_blocker_verified(serial);
+        steps.push(if verified {
+            "Verified: /data/system/theme/boots is sticky and bootanimation.zip points at /dev/input/event0".into()
+        } else {
+            "The blocker could not be verified; check that always-on display is enabled".into()
+        });
+        if !verified {
+            return Err(AppError::new(
+                "verify",
+                "The permanent blocker could not be verified on the phone. Enable always-on display, keep the screen off for a few seconds, then try again.",
+            ));
+        }
+        Ok(PermanentApplyResult { mode: "aodBlocker".into(), blocker_verified: true, steps })
+    }
+
+    /// Apply the built package through Theme Manager when it has the editor
+    /// entry point. Otherwise apply every real file through AOD/System UI,
+    /// set the system wallpaper through the same MAML context, trigger the
+    /// framework theme reload, and finish with the sticky validation blocker.
+    pub fn apply_theme_permanent(
+        &self,
+        serial: &str,
+        local: &Path,
+        support: &ThemeManagerSupport,
+        staging: &Path,
+        cancel: Option<Arc<AtomicBool>>,
+    ) -> AppResult<PermanentApplyResult> {
+        valid_serial(serial)?;
+        if !self.aod_available(serial)? {
+            return Err(AppError::new(
+                "unsupported",
+                "This phone does not expose the AOD MAML path needed for a permanent apply.",
+            ));
+        }
+        if support.can_apply {
+            let applied = self.apply_theme(serial, local, support, cancel.clone())?;
+            let mut steps = applied.steps;
+            steps.push("Theme Manager copied the theme files".into());
+            let blocker = self.install_aod_blocker(serial, staging, cancel)?;
+            steps.extend(blocker.steps);
+            return Ok(PermanentApplyResult {
+                mode: "themeManagerAod".into(),
+                blocker_verified: blocker.blocker_verified,
+                steps,
+            });
+        }
+        self.apply_theme_aod(serial, local, staging, cancel)
+    }
+
+    /// Write the real theme files from /data/local/tmp through AOD/System UI,
+    /// set the wallpaper through WallpaperManager from the MAML context, and
+    /// make the framework reload the theme. This is the no-designer path.
+    fn apply_theme_aod(
+        &self,
+        serial: &str,
+        local: &Path,
+        staging: &Path,
+        cancel: Option<Arc<AtomicBool>>,
+    ) -> AppResult<PermanentApplyResult> {
+        let (temp, entries, wallpaper) = extract_aod_theme(local, staging)?;
+        let result = (|| {
+            let mut steps = vec!["Theme Manager has no editor entry point; using the AOD full-apply path".to_string()];
+            self.shell(
+                serial,
+                &[&format!("rm -rf '{AOD_THEME_STAGING}'")],
+                Duration::from_secs(20),
+                cancel.clone(),
+            )?;
+            let local_string = temp.to_string_lossy().into_owned();
+            let push = self.exec(
+                &["-s", serial, "push", &local_string, AOD_THEME_STAGING],
+                Duration::from_secs(240),
+                cancel.clone(),
+                false,
+            )?;
+            self.expect_ok(push, "adb push theme")?;
+            self.shell(
+                serial,
+                &[&format!(
+                    "find '{AOD_THEME_STAGING}' -type d -exec chmod 755 {{}} \\; ; \
+                     find '{AOD_THEME_STAGING}' -type f -exec chmod 644 {{}} \\;"
+                )],
+                Duration::from_secs(60),
+                cancel.clone(),
+            )?;
+            steps.push(format!(
+                "Copied {} real theme components to {AOD_THEME_STAGING}",
+                entries.len()
+            ));
+            let has_lockscreen = entries.iter().any(|(_, destination)| destination == "lockscreen");
+            let mut lock_xml = false;
+            if has_lockscreen {
+                let current = self.shell(
+                    serial,
+                    &["cat", LOCK_XML_PATH],
+                    Duration::from_secs(20),
+                    cancel.clone(),
+                )?;
+                let current = current.stdout_text();
+                if !current.trim().is_empty() {
+                    let updated = current
+                        .replace("type=\"image\"", "type=\"maml\"")
+                        .replace(
+                            "com.miui.miwallpaper/com.miui.miwallpaper.wallpaperservice.ImageWallpaper",
+                            "com.miui.miwallpaper/com.miui.miwallpaper.MiWallpaper",
+                        )
+                        .replace(
+                            "/wallpaper/image/lock_wallpaper.jpg",
+                            "/wallpaper/maml/lock_wallpaper.jpg",
+                        );
+                    self.push_bytes(serial, updated.as_bytes(), LOCK_XML_STAGING, staging, cancel.clone())?;
+                    lock_xml = true;
+                    steps.push("Prepared the MAML lock-screen metadata and wallpaper".into());
+                }
+            }
+            let has_lock_wallpaper = temp.join("wallpaper/default_lock_wallpaper.jpg").is_file();
+            let manifest = aod_full_manifest(&entries, wallpaper.as_deref(), lock_xml, has_lock_wallpaper);
+            self.set_aod_style(serial, &manifest, staging, cancel.clone())?;
+            steps.push("Wrote the AOD full-apply manifest and category".into());
+            self.trigger_aod(serial)?;
+            steps.push("Asked AOD to copy the files, set wallpaper and reload the theme".into());
+            let _ = self.shell(
+                serial,
+                &["sleep 15; am force-stop com.android.systemui; am force-stop com.miui.home; am force-stop com.mi.android.globallauncher; am force-stop com.android.settings; am force-stop com.android.contacts; am force-stop com.android.mms; am force-stop com.android.deskclock; am start -a android.intent.action.MAIN -c android.intent.category.HOME; sleep 5; settings put system clock_changed_time_2x4 \"$(date +%s%3N)\"; sleep 2"],
+                Duration::from_secs(30),
+                cancel.clone(),
+            );
+            steps.push("Restarted System UI and cold-started the launcher after the theme copy".into());
+            if lock_xml {
+                steps.push("Reboot the phone once to make the wallpaper service load the MAML lock screen".into());
+            }
+            let verified = self.aod_blocker_verified(serial);
+            steps.push(if verified {
+                "Verified: /data/system/theme/boots is sticky and bootanimation.zip points at /dev/input/event0".into()
+            } else {
+                "The sticky blocker could not be verified; enable always-on display and try again".into()
+            });
+            if !verified {
+                return Err(AppError::new(
+                    "verify",
+                    "The AOD full apply ran, but the sticky blocker could not be verified. Enable always-on display, keep the screen off for a few seconds, then try again.",
+                ));
+            }
+            Ok(PermanentApplyResult { mode: "aodFull".into(), blocker_verified: true, steps })
+        })();
+        let _ = std::fs::remove_dir_all(&temp);
+        result
+    }
+
+    /// Undo the AOD category and remove the sticky blocker. The theme files
+    /// themselves are not reverted; apply another theme afterwards.
+    pub fn restore_aod(&self, serial: &str, staging: &Path) -> AppResult<AodRestoreResult> {
+        valid_serial(serial)?;
+        let mut steps = Vec::new();
+        if self.aod_available(serial)? {
+            self.set_aod_style(serial, &aod_cleanup_manifest(), staging, None)?;
+            self.trigger_aod(serial)?;
+            steps.push("Asked AOD to remove the sticky blocker".into());
+        } else {
+            steps.push("AOD provider is unavailable; skipping the manifest cleanup".into());
+        }
+        self.shell(
+            serial,
+            &["settings", "put", "secure", "aod_category_name", "sun"],
+            Duration::from_secs(15),
+            None,
+        )?;
+        let _ = self.shell(
+            serial,
+            &["settings", "delete", "secure", "maml"],
+            Duration::from_secs(15),
+            None,
+        );
+        steps.push("Restored the AOD category to sun".into());
+        let remaining = self
+            .shell(serial, &["ls", "-l", AOD_BLOCKER_LINK], Duration::from_secs(15), None)
+            .map(|out| out.stdout_text())
+            .unwrap_or_default();
+        let removed = !remaining.contains("-> /dev/input/event0");
+        steps.push(if removed { "Blocker is no longer present".into() } else { "The blocker path still exists; remove it from the AOD manifest or re-apply a theme".into() });
+        Ok(AodRestoreResult { blocker_removed: removed, steps })
     }
 
     /// Theme Manager runs under a shared uid that must own its external files
@@ -520,6 +919,317 @@ impl Adb {
     }
 }
 
+fn xml_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+/// Extract an .mtz locally and return the theme components that Theme Manager
+/// applies: top-level files plus the two wallpaper images. `source` is relative
+/// to the staging directory; `destination` is relative to /data/system/theme.
+fn extract_aod_theme(
+    local: &Path,
+    staging: &Path,
+) -> AppResult<(PathBuf, Vec<(String, String)>, Option<String>)> {
+    let file = File::open(local).map_err(|e| AppError::io("Could not open the theme package", e))?;
+    let mut archive = ZipArchive::new(file)
+        .map_err(|e| AppError::new("package", format!("Could not read the theme package: {e}")))?;
+    std::fs::create_dir_all(staging).map_err(|e| AppError::io("Could not create the AOD staging folder", e))?;
+    let stamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let dir = staging.join(format!("aod-full-{stamp}"));
+    std::fs::create_dir_all(&dir).map_err(|e| AppError::io("Could not create the AOD staging folder", e))?;
+    for index in 0..archive.len() {
+        let mut entry = archive
+            .by_index(index)
+            .map_err(|e| AppError::new("package", format!("Could not read a theme entry: {e}")))?;
+        let name = entry
+            .name()
+            .map_err(|e| AppError::new("package", format!("Could not read a theme entry name: {e}")))?
+            .to_string();
+        let relative = Path::new(&name);
+        if relative.is_absolute()
+            || relative
+                .components()
+                .any(|part| matches!(part, Component::ParentDir | Component::RootDir | Component::Prefix(_)))
+        {
+            return Err(AppError::new("package", format!("The theme contains an unsafe path: {name}")));
+        }
+        let output = dir.join(relative);
+        if entry.is_dir() {
+            std::fs::create_dir_all(&output).map_err(|e| AppError::io("Could not create a theme folder", e))?;
+            continue;
+        }
+        if let Some(parent) = output.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| AppError::io("Could not create a theme folder", e))?;
+        }
+        let mut handle = File::create(&output).map_err(|e| AppError::io("Could not write a theme file", e))?;
+        std::io::copy(&mut entry, &mut handle).map_err(|e| AppError::io("Could not extract a theme file", e))?;
+    }
+    let mut entries = Vec::new();
+    for item in std::fs::read_dir(&dir).map_err(|e| AppError::io("Could not list the extracted theme", e))? {
+        let item = item.map_err(|e| AppError::io("Could not list the extracted theme", e))?;
+        let name = item.file_name().to_string_lossy().into_owned();
+        if matches!(name.as_str(), "description.xml" | "rights" | "preview" | "aod" | "boots") {
+            continue;
+        }
+        let path = item.path();
+        if path.is_file() {
+            if name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '+' | '-'))
+            {
+                entries.push((name.clone(), name));
+            }
+            continue;
+        }
+        if name == "wallpaper" {
+            for (file, destination) in [
+                ("default_wallpaper.jpg", "wallpaper"),
+                ("default_lock_wallpaper.jpg", "lock_wallpaper"),
+            ] {
+                if path.join(file).is_file() {
+                    entries.push((format!("wallpaper/{file}"), destination.to_string()));
+                }
+            }
+        }
+    }
+    entries.sort();
+    if entries.is_empty() {
+        return Err(AppError::new(
+            "package",
+            "The theme has no applicable top-level files (icons, lockscreen, wallpaper, etc.).",
+        ));
+    }
+    let wallpaper = entries
+        .iter()
+        .find(|(_, destination)| destination == "wallpaper")
+        .map(|(source, _)| source.clone());
+    Ok((dir, entries, wallpaper))
+}
+
+/// Build the AOD manifest. The first block gets a Context through the MAML
+/// object variable `__objContext`, sets the wallpaper, and triggers the same
+/// configuration-change + broadcast sequence Theme Manager uses after an apply.
+/// The rest copies every real theme file and installs the sticky blocker.
+fn aod_full_manifest(
+    entries: &[(String, String)],
+    wallpaper: Option<&str>,
+    lock_xml: bool,
+    lock_wallpaper: bool,
+) -> String {
+    let mut commands = Vec::new();
+    commands.push(
+        "<FieldCommand targetType=\"var\" target=\"__objContext\" field=\"mContext\" method=\"get\" return=\"mts_ctx\" returnType=\"string\"/>".to_string(),
+    );
+    commands.push(
+        "<MethodCommand targetType=\"var\" target=\"mts_ctx\" method=\"getSystemService\" params=\"'wallpaper'\" paramTypes=\"java.lang.String\" return=\"mts_wm\" returnType=\"string\"/>".to_string(),
+    );
+    if let Some(wallpaper) = wallpaper {
+        commands.push(format!(
+            "<MethodCommand class=\"android.graphics.BitmapFactory\" method=\"decodeFile\" params=\"'{}/{wallpaper}'\" paramTypes=\"java.lang.String\" return=\"mts_bmp\" returnType=\"string\"/>",
+            AOD_THEME_STAGING
+        ));
+        commands.push(
+            "<MethodCommand targetType=\"var\" target=\"mts_wm\" method=\"setBitmap\" params=\"'mts_bmp'\" paramTypes=\"android.graphics.Bitmap\"/>".to_string(),
+        );
+    }
+    for (index, (source, destination)) in entries.iter().enumerate() {
+        let source = format!("{AOD_THEME_STAGING}/{source}");
+        let destination = format!("/data/system/theme/{destination}");
+        let backup = format!("/data/system/theme/.mts_bak_{}", destination.rsplit('/').next().unwrap_or("part"));
+        let variable = format!("mts_{index}");
+        commands.push(os_cmd("unlink", &[(backup.as_str(), false)]));
+        commands.push(os_cmd(
+            "rename",
+            &[(destination.as_str(), false), (backup.as_str(), false)],
+        ));
+        commands.push(format!(
+            "<MethodCommand class=\"android.system.Os\" method=\"open\" params=\"'{}',0,0\" paramTypes=\"java.lang.String,int,int\" return=\"mts_in_{variable}\" returnType=\"string\"/>",
+            xml_escape(&source)
+        ));
+        commands.push(format!(
+            "<MethodCommand class=\"android.system.Os\" method=\"open\" params=\"'{}',577,420\" paramTypes=\"java.lang.String,int,int\" return=\"mts_out_{variable}\" returnType=\"string\"/>",
+            xml_escape(&destination)
+        ));
+        commands.push(format!(
+            "<MethodCommand class=\"android.os.FileUtils\" method=\"copy\" params=\"'mts_in_{variable}','mts_out_{variable}'\" paramTypes=\"java.io.FileDescriptor,java.io.FileDescriptor\"/>"
+        ));
+        commands.push(format!(
+            "<MethodCommand class=\"android.system.Os\" method=\"close\" params=\"'mts_in_{variable}'\" paramTypes=\"java.io.FileDescriptor\"/>"
+        ));
+        commands.push(format!(
+            "<MethodCommand class=\"android.system.Os\" method=\"close\" params=\"'mts_out_{variable}'\" paramTypes=\"java.io.FileDescriptor\"/>"
+        ));
+    }
+    if lock_xml {
+        commands.push(os_cmd("mkdir", &[(LOCK_MAML_DIR, false), ("511", true)]));
+        commands.push(os_cmd("unlink", &[("/data/system/theme_magic/users/0/wallpaper/data/.mts_bak_lock.xml", false)]));
+        commands.push(os_cmd(
+            "rename",
+            &[
+                (LOCK_XML_PATH, false),
+                ("/data/system/theme_magic/users/0/wallpaper/data/.mts_bak_lock.xml", false),
+            ],
+        ));
+        commands.push(format!(
+            "<MethodCommand class=\"android.system.Os\" method=\"open\" params=\"'{}',0,0\" paramTypes=\"java.lang.String,int,int\" return=\"mts_lock_in\" returnType=\"string\"/>",
+            LOCK_XML_STAGING
+        ));
+        commands.push(format!(
+            "<MethodCommand class=\"android.system.Os\" method=\"open\" params=\"'{}',577,438\" paramTypes=\"java.lang.String,int,int\" return=\"mts_lock_out\" returnType=\"string\"/>",
+            LOCK_XML_PATH
+        ));
+        commands.push(
+            "<MethodCommand class=\"android.os.FileUtils\" method=\"copy\" params=\"'mts_lock_in','mts_lock_out'\" paramTypes=\"java.io.FileDescriptor,java.io.FileDescriptor\"/>".to_string(),
+        );
+        commands.push(
+            "<MethodCommand class=\"android.system.Os\" method=\"close\" params=\"'mts_lock_in'\" paramTypes=\"java.io.FileDescriptor\"/>".to_string(),
+        );
+        commands.push(
+            "<MethodCommand class=\"android.system.Os\" method=\"close\" params=\"'mts_lock_out'\" paramTypes=\"java.io.FileDescriptor\"/>".to_string(),
+        );
+        commands.push(os_cmd("chmod", &[(LOCK_XML_PATH, false), ("438", true)]));
+    }
+    if lock_wallpaper {
+        commands.push(format!(
+            "<MethodCommand class=\"android.system.Os\" method=\"open\" params=\"'{}/wallpaper/default_lock_wallpaper.jpg',0,0\" paramTypes=\"java.lang.String,int,int\" return=\"mts_lockwp_in\" returnType=\"string\"/>",
+            AOD_THEME_STAGING
+        ));
+        commands.push(format!(
+            "<MethodCommand class=\"android.system.Os\" method=\"open\" params=\"'{}',577,436\" paramTypes=\"java.lang.String,int,int\" return=\"mts_lockwp_out\" returnType=\"string\"/>",
+            LOCK_MAML_WALLPAPER
+        ));
+        commands.push(
+            "<MethodCommand class=\"android.os.FileUtils\" method=\"copy\" params=\"'mts_lockwp_in','mts_lockwp_out'\" paramTypes=\"java.io.FileDescriptor,java.io.FileDescriptor\"/>".to_string(),
+        );
+        commands.push(
+            "<MethodCommand class=\"android.system.Os\" method=\"close\" params=\"'mts_lockwp_in'\" paramTypes=\"java.io.FileDescriptor\"/>".to_string(),
+        );
+        commands.push(
+            "<MethodCommand class=\"android.system.Os\" method=\"close\" params=\"'mts_lockwp_out'\" paramTypes=\"java.io.FileDescriptor\"/>".to_string(),
+        );
+        commands.push(os_cmd("chmod", &[(LOCK_MAML_WALLPAPER, false), ("436", true)]));
+    }
+    commands.push(
+        "<MethodCommand class=\"miui.content.res.IconCustomizer\" method=\"clearCustomizedIcons\" params=\"''\" paramTypes=\"java.lang.String\"/>".to_string(),
+    );
+    commands.push(
+        "<MethodCommand class=\"miui.content.res.IconCustomizer\" method=\"prepareCustomizedIcons\" params=\"'mts_ctx','mts_null'\" paramTypes=\"android.content.Context,miui.content.res.IconCustomizer$CustomizedIconsListener\"/>".to_string(),
+    );
+    commands.push(
+        "<MethodCommand targetType=\"ctor\" class=\"miui.content.res.ThemeRuntimeManager\" params=\"'mts_ctx'\" paramTypes=\"android.content.Context\" return=\"mts_rt\" returnType=\"string\"/>".to_string(),
+    );
+    commands.push(
+        "<MethodCommand targetType=\"var\" target=\"mts_rt\" method=\"markGadgetUpdated\"/>".to_string(),
+    );
+    commands.push(
+        "<MethodCommand class=\"android.content.res.MiuiConfiguration\" method=\"sendThemeConfigurationChangeMsg\" params=\"268466329\" paramTypes=\"long\"/>".to_string(),
+    );
+    commands.push(
+        "<IntentCommand type=\"broadcast\" action=\"miui.intent.action.ACTION_THEME_CHANGED\"/>".to_string(),
+    );
+    commands.extend(aod_blocker_commands());
+    let body = commands
+        .iter()
+        .map(|command| format!("        {command}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\
+<Aod frameRate=\"30\" screenWidth=\"1080\" version=\"1\">\n\
+  <Image name=\"mts_img\" x=\"0\" y=\"0\" w=\"1\" h=\"1\" src=\"drawable\">\n\
+    <Triggers>\n\
+      <Trigger action=\"init\">\n{body}\n      </Trigger>\n\
+    </Triggers>\n\
+  </Image>\n\
+</Aod>\n"
+    )
+}
+
+fn os_cmd(method: &str, params: &[(&str, bool)]) -> String {
+    let mut values = Vec::with_capacity(params.len());
+    let mut types = Vec::with_capacity(params.len());
+    for (value, is_int) in params {
+        if *is_int {
+            values.push((*value).to_string());
+            types.push("int");
+        } else {
+            values.push(format!("'{}'", xml_escape(value)));
+            types.push("java.lang.String");
+        }
+    }
+    format!(
+        "<MethodCommand class=\"android.system.Os\" method=\"{}\" params=\"{}\" paramTypes=\"{}\"/>",
+        xml_escape(method),
+        values.join(","),
+        types.join(",")
+    )
+}
+
+fn maml_manifest(commands: &[String]) -> String {
+    let body = commands
+        .iter()
+        .map(|command| format!("        {command}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n\
+<Aod frameRate=\"30\" screenWidth=\"1080\" version=\"1\">\n\
+  <Image x=\"0\" y=\"0\" w=\"1\" h=\"1\" src=\"drawable\">\n\
+    <Triggers>\n\
+      <Trigger action=\"init\">\n{body}\n      </Trigger>\n\
+      <Trigger action=\"resume\">\n{body}\n      </Trigger>\n\
+    </Triggers>\n\
+  </Image>\n\
+</Aod>\n"
+    )
+}
+
+fn aod_blocker_commands() -> Vec<String> {
+    vec![
+        os_cmd("umask", &[("0", true)]),
+        os_cmd("unlink", &[(AOD_BLOCKER_LINK, false)]),
+        os_cmd("mkdir", &[(AOD_BLOCKER_DIR, false), ("1023", true)]),
+        os_cmd("chmod", &[(AOD_BLOCKER_DIR, false), ("1023", true)]),
+        os_cmd("symlink", &[("/dev/input/event0", false), (AOD_BLOCKER_LINK, false)]),
+    ]
+}
+
+fn aod_blocker_manifest() -> String {
+    maml_manifest(&aod_blocker_commands())
+}
+
+fn aod_cleanup_manifest() -> String {
+    maml_manifest(&vec![
+        os_cmd("unlink", &[(AOD_BLOCKER_LINK, false)]),
+        os_cmd("chmod", &[(AOD_BLOCKER_DIR, false), ("493", true)]),
+        os_cmd("rmdir", &[(AOD_BLOCKER_DIR, false)]),
+    ])
+}
+
+fn one_pixel_png() -> AppResult<Vec<u8>> {
+    let mut bytes = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut bytes, 1, 1);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder
+            .write_header()
+            .map_err(|e| AppError::new("png", format!("Could not create the AOD drawable: {e}")))?;
+        writer
+            .write_image_data(&[0, 0, 0, 255])
+            .map_err(|e| AppError::new("png", format!("Could not encode the AOD drawable: {e}")))?;
+    }
+    Ok(bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -537,6 +1247,14 @@ mod tests {
         assert!(!is_updated_system_app("    codePath=/product/app/MIUIThemeManagerGlobal\n"));
         assert!(picker_in_front("  topResumedActivity=ActivityRecord{1 u0 com.google.android.documentsui/com.android.documentsui.picker.PickActivity t9}"));
         assert!(!picker_in_front("  topResumedActivity=ActivityRecord{1 u0 com.mi.android.globallauncher/com.miui.home.launcher.Launcher t2}"));
+    }
+
+    #[test]
+    fn cleanup_manifest_removes_blocker() {
+        let manifest = aod_cleanup_manifest();
+        assert!(manifest.contains("unlink"));
+        assert!(manifest.contains("rmdir"));
+        assert!(manifest.contains("boots/bootanimation.zip"));
     }
 
     #[test]
@@ -588,6 +1306,24 @@ mod live {
         adb.stop_keepalive(&serial).unwrap();
         assert!(!adb.keepalive_running(&serial));
         let _ = std::fs::remove_file(script);
+    }
+
+    #[test]
+    #[ignore]
+    fn applies_theme_permanently_on_device() {
+        let (Ok(path), Ok(serial), Ok(mtz)) =
+            (std::env::var("MTS_ADB"), std::env::var("MTS_SERIAL"), std::env::var("MTS_MTZ"))
+        else {
+            return;
+        };
+        let adb = Adb { path: path.into(), log: Arc::new(|_| {}) };
+        let support = adb.theme_manager_support(&serial).unwrap();
+        let staging = std::env::current_dir().unwrap().join("target").join("aod-live");
+        let result = adb
+            .apply_theme_permanent(&serial, Path::new(&mtz), &support, &staging, None)
+            .unwrap();
+        println!("{result:?}");
+        assert!(result.blocker_verified);
     }
 
     #[test]

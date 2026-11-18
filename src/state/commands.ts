@@ -10,6 +10,7 @@ import {
   FileDown,
   FilePlus2,
   FileText,
+  FlaskConical,
   FolderOpen,
   Globe,
   Info,
@@ -38,6 +39,7 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import * as A from './actions';
+import { openGuide } from './guide';
 import { DEFAULT_LAYOUT, getState, setState, updateLayout, type StoreState } from './store';
 import { parentOf } from '../lib/paths';
 import { resetZoom, zoomIn, zoomOut } from './zoom';
@@ -107,6 +109,7 @@ export const COMMANDS: Command[] = [
   { id: 'go.phone', group: 'Go', label: 'Phone', shortcut: 'Ctrl+4', run: () => A.goTo('phone'), global: true },
   { id: 'go.check', group: 'Go', label: 'Check & export', shortcut: 'Ctrl+5', run: () => A.goTo('check'), global: true },
   { id: 'go.library', group: 'Go', label: 'Library', shortcut: 'Ctrl+6', run: () => A.goTo('library'), global: true },
+  { id: 'go.guide', group: 'Go', label: 'Guide', shortcut: 'Ctrl+7', icon: BookOpen, run: () => A.goTo('guide'), global: true },
   { id: 'view.phone', group: 'View', label: 'Toggle phone preview', shortcut: 'Ctrl+Alt+P', run: () => updateLayout({ phone: !getState().layout.phone }), global: true },
 
   // View
@@ -137,7 +140,7 @@ export const COMMANDS: Command[] = [
   { id: 'device.manager', group: 'Device', label: 'Device manager', icon: Smartphone, run: () => A.openSingleton('device') },
   { id: 'device.refresh', group: 'Device', label: 'Refresh devices', icon: RefreshCw, run: () => A.refreshAdb(false, true) },
   { id: 'device.screenshot', group: 'Device', label: 'Capture device screenshot', shortcut: 'Ctrl+Alt+S', icon: Camera, enabled: deviceReady, run: async () => { const shot = await A.captureScreenshot(); if (shot) A.openSingleton('preview'); } },
-  { id: 'device.tryOn', group: 'Device', label: 'Try on phone', shortcut: 'Ctrl+Shift+T', icon: Play, enabled: (s) => hasProject(s) && deviceReady(s) && !s.busy, run: A.tryOnPhone, global: true },
+  { id: 'device.tryOn', group: 'Device', label: 'Try on phone', shortcut: 'Ctrl+Shift+T', icon: Play, enabled: (s) => hasProject(s) && deviceReady(s) && !s.busy, run: () => void A.tryOnOrPermanent(), global: true },
   { id: 'device.addToThemeManager', group: 'Device', label: 'Add to Theme Manager on phone (don’t apply)', icon: Send, enabled: (s) => hasProject(s) && deviceReady(s) && !s.busy, run: A.addToThemeManager },
   { id: 'device.send', group: 'Device', label: 'Copy package to device…', icon: Send, enabled: (s) => hasProject(s) && deviceReady(s), run: A.sendToDevice },
   { id: 'device.mirror', group: 'Device', label: 'Mirror screen (live)', icon: Smartphone, enabled: deviceReady, run: () => (useMirrorStream.getState().status === 'live' ? void stopStream() : startInAppMirror()) },
@@ -154,6 +157,8 @@ export const COMMANDS: Command[] = [
   { id: 'window.prevTab', group: 'Window', label: 'Previous tab', shortcut: 'Ctrl+Shift+Tab', run: () => A.cycleTab(-1), global: true },
 
   // Help
+  { id: 'help.guide', group: 'Help', label: 'Lock screen & widget guide', icon: BookOpen, run: () => A.goTo('guide') },
+  { id: 'help.tryFormula', group: 'Help', label: 'Try a formula…', icon: FlaskConical, run: () => openGuide('try') },
   { id: 'help.shortcuts', group: 'Help', label: 'Keyboard shortcuts', shortcut: 'Ctrl+/', icon: Keyboard, run: () => setState({ dialog: { type: 'shortcuts' } }), global: true },
   { id: 'help.roadmap', group: 'Help', label: 'Roadmap & limitations', icon: BookOpen, run: () => A.openSingleton('roadmap') },
   { id: 'help.about', group: 'Help', label: 'About Mi Theme Studio', icon: Info, run: () => setState({ dialog: { type: 'about' } }) },
@@ -176,11 +181,11 @@ export type MenuEntry = string | '-' | { heading: string };
 export const MENUS: { label: string; items: MenuEntry[] }[] = [
   { label: 'File', items: ['file.new', 'file.open', 'file.openPhone', 'file.openDownloaded', 'recent', '-', 'file.save', 'file.saveAs', 'file.exportCopy', 'file.report', '-', 'file.openReference', '-', 'file.close'] },
   { label: 'Edit', items: ['edit.undo', 'edit.redo', '-', 'edit.rename', 'edit.duplicate', 'edit.move', 'edit.delete', '-', 'edit.findInFiles', 'edit.goToFile', 'edit.palette'] },
-  { label: 'Go', items: ['go.design', 'go.files', 'go.store', 'go.phone', 'go.check'] },
+  { label: 'Go', items: ['go.design', 'go.files', 'go.store', 'go.phone', 'go.check', 'go.library', 'go.guide'] },
   { label: 'View', items: ['view.phone', 'view.sidebar', 'view.inspector', 'view.dock', '-', 'view.problems', 'view.output', 'view.adbLog', 'view.history', '-', 'view.zoomIn', 'view.zoomOut', 'view.zoomReset', '-', 'view.resetLayout'] },
   { label: 'Project', items: ['project.details', 'project.addFiles', 'project.newComponent', '-', 'project.validate', 'project.build'] },
   { label: 'Tools', items: ['tools.catalog', '-', 'tools.settings'] },
   { label: 'Device', items: ['device.manager', 'device.refresh', '-', 'device.screenshot', 'device.mirror', 'device.send', '-', 'device.restart', 'device.locate'] },
   { label: 'Window', items: ['window.dashboard', 'window.preview', 'device.manager', 'project.build', '-', 'window.nextTab', 'window.prevTab', 'window.closeTab', 'window.closeAll'] },
-  { label: 'Help', items: ['help.shortcuts', 'help.roadmap', '-', 'help.about'] },
+  { label: 'Help', items: ['help.guide', 'help.tryFormula', '-', 'help.shortcuts', 'help.roadmap', '-', 'help.about'] },
 ];

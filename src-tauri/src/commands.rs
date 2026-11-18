@@ -1311,6 +1311,68 @@ pub async fn adb_apply_theme(
     .await
 }
 
+/// Apply the open project and install the non-root AOD validation blocker.
+/// On builds with the editor entry point Theme Manager copies the files first;
+/// otherwise the AOD/System UI path symlinks the extracted theme parts. This
+/// is an experimental, explicitly confirmed operation.
+#[tauri::command]
+pub async fn adb_apply_theme_permanent(
+    app: AppHandle,
+    serial: String,
+    confirmed: bool,
+    force: bool,
+    op_id: Option<String>,
+) -> AppResult<adb::theme_apply::PermanentApplyResult> {
+    blocking(app, move |state, app| {
+        if !confirmed {
+            return Err(AppError::new(
+                "unconfirmed",
+                "Making a theme permanent on the phone requires confirmation.",
+            ));
+        }
+        let adb = adb_for(state, app)?;
+        let support = adb.theme_manager_support(&serial)?;
+        let force_version = force.then(|| force_ui_version_for(&adb, &serial));
+        let built = build_package_with_ui_version(state, Some(app), force_version)?;
+        let staging = state.paths.staging_dir();
+        let local = staging.join("permanent-temp.mtz");
+        storage::atomic_write(&local, &built.data)?;
+        let cancel = register_op(state, &op_id);
+        let result = adb.apply_theme_permanent(&serial, &local, &support, &staging, cancel);
+        finish_op(state, &op_id);
+        let _ = std::fs::remove_file(&local);
+        result
+    })
+    .await
+}
+
+/// Remove the sticky AOD validation blocker and restore the normal AOD
+/// category. Theme files are left in place; apply another theme afterwards.
+#[tauri::command]
+pub async fn adb_restore_aod(
+    app: AppHandle,
+    serial: String,
+    confirmed: bool,
+    op_id: Option<String>,
+) -> AppResult<adb::theme_apply::AodRestoreResult> {
+    blocking(app, move |state, app| {
+        if !confirmed {
+            return Err(AppError::new(
+                "unconfirmed",
+                "Removing the AOD blocker requires confirmation.",
+            ));
+        }
+        let adb = adb_for(state, app)?;
+        let staging = state.paths.staging_dir();
+        let cancel = register_op(state, &op_id);
+        let result = adb.restore_aod(&serial, &staging);
+        finish_op(state, &op_id);
+        drop(cancel);
+        result
+    })
+    .await
+}
+
 /// Install a Xiaomi-signed Theme Manager APK (normally the factory 3.0.5.16
 /// build) as an update. Needed when a phone has no update to remove, e.g. a
 /// preinstalled 3.0.5.19 build without the editor entry point.
@@ -1354,10 +1416,20 @@ pub async fn adb_keep_theme_applied(
         let result = if enabled {
             let support = adb.theme_manager_support(&serial)?;
             if !support.can_apply {
-                Err(AppError::new(
-                    "unsupported",
-                    "One-click apply is not available on this Theme Manager build. Prepare Theme Manager first.",
-                ))
+                let staging = state.paths.staging_dir();
+                let script = staging.join("mts_aod_keep.sh");
+                std::fs::write(&script, adb::theme_apply::aod_keepalive_script())
+                    .map_err(|e| AppError::io("Could not write the AOD keep-alive script", e))?;
+                let result = adb.start_aod_keepalive(&serial, &script, cancel);
+                let _ = std::fs::remove_file(&script);
+                result.map(|_| adb::theme_apply::KeepAppliedResult {
+                    running: true,
+                    bytes: 0,
+                    steps: vec![
+                        "Using the AOD keep-alive because this Theme Manager build has no editor entry point".into(),
+                        "Re-runs the staged AOD full apply when the 2-hour check changes /data/system/theme".into(),
+                    ],
+                })
             } else {
                 let built = build_package(state, Some(app))?;
                 let staging = state.paths.staging_dir();
@@ -1997,4 +2069,32 @@ mod force_ui_version_tests {
         }];
         assert!(force_ui_version_in_entries(&mut entries, 999).is_err());
     }
+}
+
+// ---------------------------------------------------------------------------
+// inventory (saved lock screen pieces)
+
+#[tauri::command]
+pub async fn inventory_list(app: AppHandle) -> AppResult<Vec<serde_json::Value>> {
+    blocking(app, |state, _| crate::inventory::list(&state.paths)).await
+}
+
+#[tauri::command]
+pub async fn inventory_save(app: AppHandle, item: serde_json::Value, files: Vec<crate::inventory::InventoryFile>) -> AppResult<serde_json::Value> {
+    blocking(app, move |state, _| crate::inventory::save(&state.paths, item, files)).await
+}
+
+#[tauri::command]
+pub async fn inventory_update(app: AppHandle, id: String, patch: serde_json::Value) -> AppResult<serde_json::Value> {
+    blocking(app, move |state, _| crate::inventory::update(&state.paths, &id, patch)).await
+}
+
+#[tauri::command]
+pub async fn inventory_delete(app: AppHandle, id: String) -> AppResult<()> {
+    blocking(app, move |state, _| crate::inventory::delete(&state.paths, &id)).await
+}
+
+#[tauri::command]
+pub async fn inventory_files(app: AppHandle, id: String) -> AppResult<Vec<crate::inventory::InventoryFile>> {
+    blocking(app, move |state, _| crate::inventory::files(&state.paths, &id)).await
 }

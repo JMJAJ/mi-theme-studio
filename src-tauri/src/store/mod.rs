@@ -141,7 +141,6 @@ pub enum StorePart {
     Contacts,
     Messages,
     BootAnimation,
-    SuperWallpaper,
     Aod,
 }
 
@@ -156,7 +155,6 @@ impl StorePart {
             StorePart::Contacts => "Contact",
             StorePart::Messages => "Mms",
             StorePart::BootAnimation => "BootAnimation",
-            StorePart::SuperWallpaper => "MiWallpaper",
             StorePart::Aod => "Aod",
         }
     }

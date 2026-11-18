@@ -836,7 +836,8 @@ button.catalog-card:hover, button.icon-link:hover { border-color: var(--line-str
 /* Store: "Looking for" + recent shortcuts; layout follows the store's own width */
 .store-root { container: store / inline-size; }
 .store-toolbar { flex-wrap: wrap; row-gap: 8px; }
-.store-search { flex: 1 1 240px; min-width: 180px; max-width: 520px; }
+.store-search { flex: 1 1 240px; min-width: 180px; max-width: none; }
+.store-free { margin-left: auto; }
 .store-region { width: auto; max-width: 210px; }
 .scope-row { display: flex; align-items: center; gap: 6px; padding: 7px 14px; border-bottom: 1px solid var(--line); background: var(--bg-1); flex: none; position: relative; z-index: 6; min-width: 0; }
 .scope-row .store-context { margin-left: auto; flex: none; }

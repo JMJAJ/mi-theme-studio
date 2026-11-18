@@ -310,7 +310,7 @@ export interface CachedDeviceTheme {
 export type ProductKind = 'theme' | 'icon' | 'font' | 'wallpaper' | 'ringtone';
 
 /** A theme part the store can list themes by (themes only). */
-export type StorePart = 'lockscreen' | 'statusBar' | 'homeScreen' | 'clock' | 'contacts' | 'messages' | 'bootAnimation' | 'superWallpaper' | 'aod';
+export type StorePart = 'lockscreen' | 'statusBar' | 'homeScreen' | 'clock' | 'contacts' | 'messages' | 'bootAnimation' | 'aod';
 
 export type StoreQuery =
   | { kind: 'home'; product?: ProductKind; part?: StorePart }

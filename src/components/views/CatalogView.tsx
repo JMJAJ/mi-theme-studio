@@ -30,7 +30,6 @@ import {
   Contact,
   MessageSquare,
   Power,
-  Wand2,
   Moon,
   Bell,
   AlarmClock,
@@ -93,7 +92,6 @@ const PARTS: { part: StorePart; short: string; desc: string; label: string; plur
   { part: 'contacts', desc: 'Dialer, contacts and the call screen', short: 'Contacts', label: 'Contacts & calls', plural: 'Contacts & calls', component: 'apps', icon: Contact },
   { part: 'messages', desc: 'The look of the Messages app', short: 'Messages', label: 'Messages', plural: 'Messages', component: 'apps', icon: MessageSquare },
   { part: 'bootAnimation', desc: 'The animation when the phone starts', short: 'Boot animation', label: 'Boot animation', plural: 'Boot animations', component: 'boot', icon: Power, note: 'A boot animation only changes on a rooted phone.' },
-  { part: 'superWallpaper', desc: 'Animated, live wallpapers', short: 'Super wallpaper', label: 'Super wallpaper', plural: 'Super wallpapers', component: 'wallpapers', icon: Wand2 },
   { part: 'aod', desc: 'What shows while the screen is off', short: 'Always-on', label: 'Always-on display', plural: 'Always-on displays', component: 'other', icon: Moon, note: 'Always-on display styles come as small packages with only that part; the store shows no pictures of them.' },
 ];
 export const partInfo = (part: StorePart | null | undefined) => PARTS.find((p) => p.part === part) ?? null;
@@ -115,7 +113,6 @@ const SCOPES: { id: ScopeId; label: string; plural: string; desc: string; icon: 
   { id: 'contacts', label: 'Contacts & calls', plural: 'Contacts & calls', desc: 'Dialer, contacts and call screen', icon: Contact, group: 'Apps', own: false },
   { id: 'messages', label: 'Messages', plural: 'Messages', desc: 'The Messages app', icon: MessageSquare, group: 'Apps', own: false },
   { id: 'wallpaper', label: 'Wallpapers', plural: 'Wallpapers', desc: 'Home and lock screen pictures', icon: ImageIcon, group: 'Wallpapers & sound', own: true },
-  { id: 'superWallpaper', label: 'Super wallpapers', plural: 'Super wallpapers', desc: 'Animated, live wallpapers', icon: Wand2, group: 'Wallpapers & sound', own: false },
   { id: 'ringtone', label: 'Ringtones', plural: 'Ringtones', desc: 'Ringtone, notification and alarm', icon: Music, group: 'Wallpapers & sound', own: true },
 ];
 const SCOPE_GROUPS: ScopeGroup[] = ['Look', 'Screens', 'Apps', 'Wallpapers & sound'];

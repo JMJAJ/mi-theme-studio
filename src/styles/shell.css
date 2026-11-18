@@ -649,3 +649,6 @@ button.mock-clock.pp-click { color: #fff; text-align: center; }
 .mi-row-multi { display: flex; align-items: center; gap: 2px; padding: 0 4px 0 0; }
 .mi-row-multi .mi-row-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .pm-icon.pp-click:hover img, .pm-status.pp-click:hover { outline: 2px dashed color-mix(in srgb, var(--accent) 75%, transparent); outline-offset: 2px; border-radius: 8px; }
+/* Inspector picture: always the whole image, letterboxed (a % max-height inside a grid cell does not resolve) */
+.mi-pic { position: relative; height: 150px; }
+.mi-pic img { position: absolute; inset: 8px; width: calc(100% - 16px); height: calc(100% - 16px); max-width: none; max-height: none; object-fit: contain; }

@@ -767,13 +767,15 @@ export interface Box {
 /** What a drag on the canvas did, in manifest pixels. */
 export type CanvasEdit =
   | { kind: 'move'; dx: number; dy: number; ords?: number[] }
-  | { kind: 'resize'; sx: number; sy: number; fixed: { x: number; y: number }; box: Box }
+  | { kind: 'resize'; sx: number; sy: number; fixed: { x: number; y: number }; box: Box; items?: { ord: number; box: Box }[] }
   | { kind: 'rotate'; delta: number; pivot: { x: number; y: number } }
   | { kind: 'delete'; ords: number[] };
 
 /** Pieces whose size can be dragged (groups take their size from what is inside them). */
 const RESIZABLE = new Set(['Image', 'Rectangle', 'Ellipse', 'Arc', 'Circle', 'Video', 'Text', 'DateTime', 'Time', 'ImageNumber']);
 const UNIFORM = new Set(['Text', 'DateTime', 'Circle', 'Time', 'ImageNumber']);
+/** Whether several selected pieces can be resized together, and if only proportionally. */
+type GroupResize = 'none' | 'uniform' | 'free';
 /** Drawn from fixed-size digit pictures: resized with MAML's `scale`, not w / h. */
 const SCALED = new Set(['Time', 'ImageNumber']);
 
@@ -982,10 +984,12 @@ function guidesFor(b: Box, s: Snaps) {
   return { x: on([b.l, b.l + b.w / 2, b.l + b.w], s.xs), y: on([b.t, b.t + b.h / 2, b.t + b.h], s.ys) };
 }
 
+type ResizePart = { ord: number; node: HTMLElement; origin: { x: number; y: number }; oldOrigin: string };
+
 type DragState =
   | { kind: 'move'; ord: number; ords: number[]; nodes: HTMLElement[]; x: number; y: number; moved: boolean; box: Box | null; snaps: Snaps; dx: number; dy: number; click?: () => void }
   | { kind: 'marquee'; x: number; y: number; additive: boolean; base: number[]; moved: boolean; hits: number[]; click: () => void }
-  | { kind: 'resize'; ord: number; node: HTMLElement; handle: Handle; x: number; y: number; box: Box; origin: { x: number; y: number }; uniform: boolean; sx: number; sy: number; fixed: { x: number; y: number }; oldOrigin: string; snaps: Snaps }
+  | { kind: 'resize'; ord: number; parts: ResizePart[]; handle: Handle; x: number; y: number; box: Box; uniform: boolean; sx: number; sy: number; fixed: { x: number; y: number }; snaps: Snaps }
   | { kind: 'rotate'; ord: number; node: HTMLElement; cx: number; cy: number; start: number; delta: number; origin: { x: number; y: number }; oldOrigin: string };
 
 /**
@@ -1018,7 +1022,7 @@ export function MamlCanvas({
   // Clicking the same spot again goes one piece deeper (what is underneath).
   const lastClick = useRef<{ x: number; y: number; ords: number[] } | null>(null);
   const [hover, setHover] = useState<number | null>(null);
-  const [boxes, setBoxes] = useState<{ sel: Box | null; hover: Box | null; tag: string; items: Box[] }>({ sel: null, hover: null, tag: '', items: [] });
+  const [boxes, setBoxes] = useState<{ sel: Box | null; hover: Box | null; tag: string; items: Box[]; groupResize: GroupResize }>({ sel: null, hover: null, tag: '', items: [], groupResize: 'none' });
   const [marquee, setMarquee] = useState<{ box: Box; hits: Box[] } | null>(null);
   const all = selected === null ? extra : [selected, ...extra.filter((o) => o !== selected)];
   const multi = all.length > 1;
@@ -1049,9 +1053,12 @@ export function MamlCanvas({
     const hov = hover !== null && !all.includes(hover) ? find(hover) : null;
     const hb = hov ? visibleBox(hov, canvas, scale) : null;
     const tag = multi ? '' : (selNode?.dataset.mt ?? '');
+    // Several pieces resize together when every one of them can be resized.
+    const tags = multi ? all.map((o) => find(o)?.dataset.mt ?? '') : [];
+    const groupResize: GroupResize = !multi || !tags.every((t) => RESIZABLE.has(t)) ? 'none' : tags.some((t) => UNIFORM.has(t) || t === 'Image' || t === 'Video') ? 'uniform' : 'free';
     const same = (a: Box | null, b: Box | null) => (!a && !b) || (!!a && !!b && Math.abs(a.l - b.l) + Math.abs(a.t - b.t) + Math.abs(a.w - b.w) + Math.abs(a.h - b.h) < 0.5);
     const sameItems = items.length === boxes.items.length && items.every((b, i) => same(b, boxes.items[i]));
-    if (!same(sel, boxes.sel) || !same(hb, boxes.hover) || tag !== boxes.tag || !sameItems) setBoxes({ sel, hover: hb, tag, items });
+    if (!same(sel, boxes.sel) || !same(hb, boxes.hover) || tag !== boxes.tag || !sameItems || groupResize !== boxes.groupResize) setBoxes({ sel, hover: hb, tag, items, groupResize });
   });
 
   const nodeOf = (ord: number) => ref.current?.querySelector<HTMLElement>(`[data-mk="${ord}"]`) ?? null;
@@ -1084,10 +1091,19 @@ export function MamlCanvas({
     e.stopPropagation();
     const canvas = ref.current;
     if (selected === null || !canvas || !boxes.sel) return;
-    const node = nodeOf(selected);
-    if (!node) return;
-    const uniform = UNIFORM.has(node.dataset.mt ?? '') || (handle.length === 2 && !e.shiftKey && !!srcOf(node));
-    drag.current = { kind: 'resize', ord: selected, node, handle, x: e.clientX, y: e.clientY, box: boxes.sel, origin: layoutOrigin(node, canvas), uniform, sx: 1, sy: 1, fixed: { x: 0, y: 0 }, oldOrigin: node.style.transformOrigin, snaps: snapTargets(canvas, node, scale, scene.w, scene.h) };
+    const parts: ResizePart[] = [];
+    for (const ord of all) {
+      const node = nodeOf(ord);
+      if (node) parts.push({ ord, node, origin: layoutOrigin(node, canvas), oldOrigin: node.style.transformOrigin });
+    }
+    if (!parts.length) return;
+    const first = parts[0].node;
+    // Corner handles keep the proportions (Shift: free); text, circles, pictures and digit clocks always do.
+    const uniform = multi
+      ? boxes.groupResize === 'uniform' || (handle.length === 2 && !e.shiftKey)
+      : UNIFORM.has(first.dataset.mt ?? '') || (handle.length === 2 && !e.shiftKey && !!srcOf(first));
+    const nodes = parts.map((p) => p.node);
+    drag.current = { kind: 'resize', ord: selected, parts, handle, x: e.clientX, y: e.clientY, box: boxes.sel, uniform, sx: 1, sy: 1, fixed: { x: 0, y: 0 }, snaps: snapTargets(canvas, nodes.length > 1 ? nodes : first, scale, scene.w, scene.h) };
     canvas.setPointerCapture(e.pointerId);
   };
   const startRotate = (e: React.PointerEvent) => {
@@ -1107,7 +1123,8 @@ export function MamlCanvas({
   const hoverFrame = useRef(0);
   const sel = boxes.sel;
   const inv = 1 / scale;
-  const canResize = RESIZABLE.has(boxes.tag);
+  const canResize = multi ? boxes.groupResize !== 'none' : RESIZABLE.has(boxes.tag);
+  const edgeHandles = multi ? boxes.groupResize === 'free' : !UNIFORM.has(boxes.tag);
 
   return (
     <div
@@ -1266,8 +1283,10 @@ export function MamlCanvas({
           d.sx = sx;
           d.sy = sy;
           d.fixed = { x: fx, y: fy };
-          d.node.style.transformOrigin = `${fx - d.origin.x}px ${fy - d.origin.y}px`;
-          d.node.style.scale = `${sx} ${sy}`;
+          for (const part of d.parts) {
+            part.node.style.transformOrigin = `${fx - part.origin.x}px ${fy - part.origin.y}px`;
+            part.node.style.scale = `${sx} ${sy}`;
+          }
           const nb = { l: fx + (b.l - fx) * sx, t: fy + (b.t - fy) * sy, w: b.w * sx, h: b.h * sy };
           setLive(nb);
           setGuides(thr ? guidesFor(nb, d.snaps) : null);
@@ -1296,11 +1315,14 @@ export function MamlCanvas({
           if (!d.moved) d.click?.();
           else if (Math.round(d.dx) || Math.round(d.dy)) onEdit!(d.ord, { kind: 'move', dx: Math.round(d.dx), dy: Math.round(d.dy), ords: d.ords });
         } else if (d.kind === 'resize') {
-          d.node.style.scale = '';
-          d.node.style.transformOrigin = d.oldOrigin;
+          for (const part of d.parts) {
+            part.node.style.scale = '';
+            part.node.style.transformOrigin = part.oldOrigin;
+          }
           if (Math.abs(d.sx - 1) > 0.002 || Math.abs(d.sy - 1) > 0.002) {
             const canvas = ref.current!;
-            onEdit!(d.ord, { kind: 'resize', sx: d.sx, sy: d.sy, fixed: d.fixed, box: visibleBox(d.node, canvas, scale, false) ?? d.box });
+            const items = d.parts.map((part) => ({ ord: part.ord, box: visibleBox(part.node, canvas, scale, false) ?? d.box }));
+            onEdit!(d.ord, { kind: 'resize', sx: d.sx, sy: d.sy, fixed: d.fixed, box: items[0].box, items: items.length > 1 ? items : undefined });
           }
         } else {
           d.node.style.rotate = '';
@@ -1323,10 +1345,10 @@ export function MamlCanvas({
       {editable && (live ?? sel) && (
         <div className={`maml-sel ${multi ? 'is-group' : ''}`} style={{ left: (live ?? sel)!.l, top: (live ?? sel)!.t, width: (live ?? sel)!.w, height: (live ?? sel)!.h, borderWidth: (multi ? 1 : 2) * inv, ['--inv' as string]: inv }}>
           {multi && !live && <span className="maml-count">{all.length}</span>}
-          {onEdit && !live && !multi && (
+          {onEdit && !live && (
             <>
-              {canResize && HANDLES.filter((h) => !UNIFORM.has(boxes.tag) || h.length === 2).map((h) => <span key={h} className={`maml-h h-${h}`} onPointerDown={(e) => startResize(h, e)} />)}
-              <span className="maml-rot" title="Rotate (Shift: 15° steps)" onPointerDown={startRotate} />
+              {canResize && HANDLES.filter((h) => edgeHandles || h.length === 2).map((h) => <span key={h} className={`maml-h h-${h}`} onPointerDown={(e) => startResize(h, e)} />)}
+              {!multi && <span className="maml-rot" title="Rotate (Shift: 15° steps)" onPointerDown={startRotate} />}
             </>
           )}
         </div>
@@ -1385,6 +1407,35 @@ export function MamlFit({ componentId, slot = 'main' }: { componentId: string; s
 /** True when the theme has a lock screen layout the phone mock-ups can draw. */
 export function useHasLockLayout() {
   return useStore((s) => !!s.project?.files.some((f) => f.component === 'lockscreen' && /(^|\/|!\/)manifest\.xml$/i.test(f.path)));
+}
+
+/** New attributes for one piece scaled by sx / sy about the point p; e is its box before. */
+function resizeAttrs(el: Element, vars: Vars, sx: number, sy: number, p: { x: number; y: number }, e: Box): Record<string, string | null> {
+  const tag = el.tagName;
+  const next = { l: p.x + (e.l - p.x) * sx, t: p.y + (e.t - p.y) * sy, w: e.w * sx, h: e.h * sy };
+  if (SCALED.has(tag)) return scaleAttrs(el, vars, sx, e, next);
+  const centered = tag === 'Circle';
+  const align = centered ? 'center' : (el.getAttribute('align') ?? 'left');
+  const alignV = centered ? 'center' : (el.getAttribute('alignV') ?? 'top');
+  const ax = (b: Box) => (align === 'center' ? b.l + b.w / 2 : align === 'right' ? b.l + b.w : b.l);
+  const ay = (b: Box) => (alignV === 'center' ? b.t + b.h / 2 : alignV === 'bottom' ? b.t + b.h : b.t);
+  const dx = Math.round(ax(next) - ax(e));
+  const dy = Math.round(ay(next) - ay(e));
+  const attrs: Record<string, string | null> = {};
+  if (dx) attrs.x = nudge(el.getAttribute('x'), dx);
+  if (dy) attrs.y = nudge(el.getAttribute('y'), dy);
+  const scaled = (name: string, alt: string | null, f: number, fallback: number) => {
+    const n = alt && el.hasAttribute(alt) && !el.hasAttribute(name) ? alt : name;
+    const cur = el.getAttribute(n)?.trim() ?? '';
+    attrs[n] = !cur ? String(Math.round(fallback * f)) : /^-?\d+(\.\d+)?$/.test(cur) ? String(Math.round(Number(cur) * f)) : `(${cur})*${+f.toFixed(4)}`;
+  };
+  if (tag === 'Text' || tag === 'DateTime') scaled('size', null, sy, 18);
+  else if (tag === 'Circle') scaled('r', null, sx, e.w / 2);
+  else {
+    if (Math.abs(sx - 1) > 0.002) scaled('w', 'width', sx, e.w);
+    if (Math.abs(sy - 1) > 0.002) scaled('h', 'height', sy, e.h);
+  }
+  return attrs;
 }
 
 /**
@@ -1514,36 +1565,21 @@ export function MamlPreview({ componentId }: { componentId: string }) {
       void commit(ord, attrs);
       return;
     }
-    // Resize: scale the piece about the handle opposite the one dragged.
-    const { sx, sy, fixed: p, box: e } = change;
-    const tag = el.tagName;
-    const next = { l: p.x + (e.l - p.x) * sx, t: p.y + (e.t - p.y) * sy, w: e.w * sx, h: e.h * sy };
-    if (SCALED.has(tag)) {
-      void commit(ord, scaleAttrs(el, vars, sx, e, next));
-      return;
-    }
-    const centered = tag === 'Circle';
-    const align = centered ? 'center' : (el.getAttribute('align') ?? 'left');
-    const alignV = centered ? 'center' : (el.getAttribute('alignV') ?? 'top');
-    const ax = (b: Box) => (align === 'center' ? b.l + b.w / 2 : align === 'right' ? b.l + b.w : b.l);
-    const ay = (b: Box) => (alignV === 'center' ? b.t + b.h / 2 : alignV === 'bottom' ? b.t + b.h : b.t);
-    const dx = Math.round(ax(next) - ax(e));
-    const dy = Math.round(ay(next) - ay(e));
-    const attrs: Record<string, string | null> = {};
-    if (dx) attrs.x = nudge(el.getAttribute('x'), dx);
-    if (dy) attrs.y = nudge(el.getAttribute('y'), dy);
-    const scaled = (name: string, alt: string | null, f: number, fallback: number) => {
-      const n = alt && el.hasAttribute(alt) && !el.hasAttribute(name) ? alt : name;
-      const cur = el.getAttribute(n)?.trim() ?? '';
-      attrs[n] = !cur ? String(Math.round(fallback * f)) : /^-?\d+(\.\d+)?$/.test(cur) ? String(Math.round(Number(cur) * f)) : `(${cur})*${+f.toFixed(4)}`;
+    // Resize: scale every piece about the handle opposite the one dragged, in one undoable write.
+    if (text === null) return;
+    const items = change.items ?? [{ ord, box: change.box }];
+    const ords = items.map((it) => it.ord);
+    const inside = (o: number) => {
+      for (let p = elements[o]?.parentElement; p; p = p.parentElement) if (ords.includes(elements.indexOf(p))) return true;
+      return false;
     };
-    if (tag === 'Text' || tag === 'DateTime') scaled('size', null, sy, 18);
-    else if (tag === 'Circle') scaled('r', null, sx, e.w / 2);
-    else {
-      if (Math.abs(sx - 1) > 0.002) scaled('w', 'width', sx, e.w);
-      if (Math.abs(sy - 1) > 0.002) scaled('h', 'height', sy, e.h);
+    let next = text;
+    for (const it of items) {
+      const piece = elements[it.ord];
+      if (!piece || inside(it.ord)) continue;
+      next = setAttributes(next, it.ord, resizeAttrs(piece, vars, change.sx, change.sy, change.fixed, it.box));
     }
-    void commit(ord, attrs);
+    if (next !== text) void live.apply(next);
   };
 
   return (

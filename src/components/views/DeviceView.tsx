@@ -66,6 +66,7 @@ function ThemeManagerActions({ serial, hasProject, busy }: { serial: string; has
   const [support, setSupport] = useState<ThemeManagerSupport | null>(null);
   const [checking, setChecking] = useState(false);
   const [preparing, setPreparing] = useState(false);
+  const [keepAlive, setKeepAlive] = useState(false);
   useEffect(() => {
     let cancelled = false;
     setChecking(true);
@@ -78,6 +79,17 @@ function ThemeManagerActions({ serial, hasProject, busy }: { serial: string; has
       cancelled = true;
     };
   }, [serial]);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .adbKeepaliveStatus(serial)
+      .then((running) => !cancelled && setKeepAlive(running))
+      .catch(() => !cancelled && setKeepAlive(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [serial]);
+
   async function prepare() {
     setPreparing(true);
     try {
@@ -86,6 +98,11 @@ function ThemeManagerActions({ serial, hasProject, busy }: { serial: string; has
     } finally {
       setPreparing(false);
     }
+  }
+
+  async function toggleKeepAlive() {
+    const next = await A.keepThemeApplied(!keepAlive);
+    if (next !== null) setKeepAlive(next);
   }
 
   if (checking && !support) {
@@ -116,6 +133,16 @@ function ThemeManagerActions({ serial, hasProject, busy }: { serial: string; has
           title="Mark the staged copy as the newest theme format so Theme Manager copies every part, even parts built for another format. Risky on older builds."
         >
           <AlertTriangle /> Force apply (all parts)
+        </button>
+      )}
+      {hasProject && support.canApply && !support.rooted && (
+        <button
+          className="btn"
+          disabled={busy}
+          onClick={() => void toggleKeepAlive()}
+          title="Keep reapplying this theme after the framework’s periodic licence check. No root; a reboot stops it."
+        >
+          <ShieldCheck /> {keepAlive ? 'Stop keep-alive' : 'Keep applied'}
         </button>
       )}
       {hasProject && (

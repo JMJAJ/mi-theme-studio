@@ -153,10 +153,28 @@ export function PhoneView() {
   const compat = useThemeCompatibility();
   const [advanced, setAdvanced] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [keepAlive, setKeepAlive] = useState(false);
+
+  useEffect(() => {
+    if (!serial || !device.ready) return;
+    let cancelled = false;
+    api
+      .adbKeepaliveStatus(serial)
+      .then((running) => !cancelled && setKeepAlive(running))
+      .catch(() => !cancelled && setKeepAlive(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [serial, device.ready]);
 
   async function prepareThemeManager() {
     const next = await A.prepareThemeManager();
     if (next) setSupportNonce((n) => n + 1);
+  }
+
+  async function toggleKeepAlive() {
+    const next = await A.keepThemeApplied(!keepAlive);
+    if (next !== null) setKeepAlive(next);
   }
 
   const system = details
@@ -212,6 +230,16 @@ export function PhoneView() {
                     title="Mark the staged copy as the newest theme format so Theme Manager copies every part, even parts built for another format. Risky on older builds."
                   >
                     <AlertTriangle /> Force apply
+                  </button>
+                )}
+                {project && support?.canApply && !support.rooted && (
+                  <button
+                    className="btn"
+                    disabled={!!busy}
+                    onClick={() => void toggleKeepAlive()}
+                    title="Keep reapplying this theme after the framework’s periodic licence check. No root; a reboot stops it."
+                  >
+                    <ShieldCheck /> {keepAlive ? 'Stop keep-alive' : 'Keep applied'}
                   </button>
                 )}
                 <MirrorButton className="btn" />

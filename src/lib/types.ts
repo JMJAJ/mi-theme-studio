@@ -307,14 +307,17 @@ export interface CachedDeviceTheme {
 
 // ----- Online theme store -----
 
-export type ProductKind = 'theme' | 'font' | 'wallpaper' | 'ringtone';
+export type ProductKind = 'theme' | 'icon' | 'font' | 'wallpaper' | 'ringtone';
+
+/** A theme part the store can list themes by (themes only). */
+export type StorePart = 'lockscreen' | 'statusBar' | 'homeScreen' | 'clock' | 'contacts' | 'messages' | 'bootAnimation' | 'superWallpaper' | 'aod';
 
 export type StoreQuery =
-  | { kind: 'home'; product?: ProductKind }
+  | { kind: 'home'; product?: ProductKind; part?: StorePart }
   | { kind: 'categories' }
   | { kind: 'page'; id: string }
   | { kind: 'subject'; id: string }
-  | { kind: 'search'; keywords: string; product?: ProductKind };
+  | { kind: 'search'; keywords: string; product?: ProductKind; part?: StorePart };
 
 export type MediaTarget = 'homeWallpaper' | 'lockWallpaper' | 'ringtone' | 'notification' | 'alarm';
 
@@ -327,6 +330,8 @@ export interface StoreProduct {
   secondImageUrl: string | null;
   /** Animated preview (GIF) for themes that have one. */
   gifUrl?: string | null;
+  /** From a part listing: the cover shows that part. */
+  part?: StorePart;
   priceCents: number;
   currency: string | null;
   sizeBytes: number | null;
@@ -375,6 +380,8 @@ export interface ThemeDetail {
   sizeBytes: number | null;
   version: string | null;
   uiVersion: number | null;
+  /** Icon packs: how many app icons it draws. */
+  iconCount?: number | null;
   downloads: number | null;
   score: number | null;
   priceCents: number;
@@ -477,6 +484,12 @@ export interface ThemeManagerSupport {
   twoStep: boolean;
   canOpenStore: boolean;
   rooted: boolean;
+}
+
+export interface KeepAppliedResult {
+  running: boolean;
+  bytes: number;
+  steps: string[];
 }
 
 export interface PrepareThemeManagerResult {

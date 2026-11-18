@@ -143,16 +143,16 @@ fn download_ticket_checks_host_and_hash() {
 #[test]
 fn urls_validate_input() {
     assert!(query_url(&StoreQuery::Page { id: "../x".into() }, 0, "US").is_err());
-    assert!(query_url(&StoreQuery::Search { keywords: "  ".into(), product: ProductKind::Theme }, 0, "US").is_err());
-    let search = query_url(&StoreQuery::Search { keywords: "cat & dog".into(), product: ProductKind::Theme }, 1, "US").unwrap();
+    assert!(query_url(&StoreQuery::Search { keywords: "  ".into(), product: ProductKind::Theme, part: None }, 0, "US").is_err());
+    let search = query_url(&StoreQuery::Search { keywords: "cat & dog".into(), product: ProductKind::Theme, part: None }, 1, "US").unwrap();
     assert!(search.starts_with("https://thm.market.intl.xiaomi.com/thm/search/v2/npage?keywords=cat%20%26%20dog&"));
-    let home = query_url(&StoreQuery::Home { product: ProductKind::Theme }, 20, region_of(Some("XX"))).unwrap();
-    let fonts = query_url(&StoreQuery::Home { product: ProductKind::Font }, 0, "IN").unwrap();
+    let home = query_url(&StoreQuery::Home { product: ProductKind::Theme, part: None }, 20, region_of(Some("XX"))).unwrap();
+    let fonts = query_url(&StoreQuery::Home { product: ProductKind::Font, part: None }, 0, "IN").unwrap();
     assert!(fonts.contains("pageCategory=FONT"));
-    let rings = query_url(&StoreQuery::Search { keywords: "piano".into(), product: ProductKind::Ringtone }, 0, "IN").unwrap();
+    let rings = query_url(&StoreQuery::Search { keywords: "piano".into(), product: ProductKind::Ringtone, part: None }, 0, "IN").unwrap();
     assert!(rings.contains("category=RingtoneUnion"));
     let q: StoreQuery = serde_json::from_str(r#"{"kind":"home"}"#).unwrap();
-    assert_eq!(q, StoreQuery::Home { product: ProductKind::Theme }, "product defaults to themes");
+    assert_eq!(q, StoreQuery::Home { product: ProductKind::Theme, part: None }, "product defaults to themes");
     assert!(home.contains("cardStart=20") && home.contains("region=PR") && home.contains("miuiUIVersion=V160"));
 }
 
@@ -215,14 +215,14 @@ fn live() {
         return;
     }
     let ua = "MiThemeStudio/test";
-    let home = fetch_page(&StoreQuery::Home { product: ProductKind::Theme }, 0, None, ua).unwrap();
+    let home = fetch_page(&StoreQuery::Home { product: ProductKind::Theme, part: None }, 0, None, ua).unwrap();
     let products: Vec<_> = home.sections.iter().flat_map(|s| &s.products).collect();
     println!("home: {} sections, {} products", home.sections.len(), products.len());
     assert!(!products.is_empty());
     let subject = home.sections.iter().find_map(|s| s.subject_id.clone()).unwrap();
     let shelf = fetch_page(&StoreQuery::Subject { id: subject }, 0, None, ua).unwrap();
     println!("shelf: {} products", shelf.sections.iter().map(|s| s.products.len()).sum::<usize>());
-    let search = fetch_page(&StoreQuery::Search { keywords: "cat".into(), product: ProductKind::Theme }, 0, None, ua).unwrap();
+    let search = fetch_page(&StoreQuery::Search { keywords: "cat".into(), product: ProductKind::Theme, part: None }, 0, None, ua).unwrap();
     println!("search: {} products", search.sections.iter().map(|s| s.products.len()).sum::<usize>());
     let cats = fetch_page(&StoreQuery::Categories, 0, None, ua).unwrap();
     println!("categories: {} links", cats.sections.iter().map(|s| s.links.len()).sum::<usize>());
@@ -231,7 +231,7 @@ fn live() {
     assert!(!detail.screenshots.is_empty());
     let dir = std::env::temp_dir().join("mts-store-live");
     let mut ticks = 0;
-    let record = download(&detail.module_id, None, &dir, ua, |_, _| ticks += 1).unwrap();
+    let record = download(&detail.module_id, None, &dir, ua, None, |_, _| ticks += 1).unwrap();
     println!("downloaded {} bytes to {} (sha1 {}, {ticks} progress events)", record.size_bytes, record.path, record.sha1);
     assert_eq!(verify_file(Path::new(&record.path)).unwrap(), record.sha1);
     assert_eq!(existing(&dir, &detail.module_id), Some(record.clone()), "cached copy is reused");
@@ -243,10 +243,10 @@ fn live() {
     remove_download(&dir, &detail.module_id).unwrap();
 
     for (kind, word) in [(ProductKind::Font, "bold"), (ProductKind::Ringtone, "piano"), (ProductKind::Wallpaper, "flower")] {
-        let home = fetch_page(&StoreQuery::Home { product: kind }, 0, Some("IN"), ua).unwrap();
+        let home = fetch_page(&StoreQuery::Home { product: kind, part: None }, 0, Some("IN"), ua).unwrap();
         let home_products = home.sections.iter().map(|s| s.products.len()).sum::<usize>();
         let home_links = home.sections.iter().map(|s| s.links.len()).sum::<usize>();
-        let found = fetch_page(&StoreQuery::Search { keywords: word.into(), product: kind }, 0, Some("IN"), ua).unwrap();
+        let found = fetch_page(&StoreQuery::Search { keywords: word.into(), product: kind, part: None }, 0, Some("IN"), ua).unwrap();
         let items: Vec<_> = found.sections.iter().flat_map(|s| s.products.clone()).collect();
         println!("{kind:?}: home {home_products} products / {home_links} links, search {} items", items.len());
         assert!(items.iter().all(|p| p.kind == kind), "{kind:?} search returns only that kind");
@@ -259,7 +259,7 @@ fn live() {
         if kind == ProductKind::Ringtone {
             assert!(d.audio_url.is_some(), "free ringtone has a preview");
         }
-        let record = download(&free.module_id, Some("IN"), &dir, ua, |_, _| {}).unwrap();
+        let record = download(&free.module_id, Some("IN"), &dir, ua, None, |_, _| {}).unwrap();
         println!("  downloaded {} ({} bytes) as {}", record.name, record.size_bytes, record.path);
         assert!(kind.allowed_extensions().contains(&crate::package::paths::extension(&record.path).as_str()));
         remove_download(&dir, &record.module_id).unwrap();
@@ -273,11 +273,43 @@ fn live() {
 fn export_store_fixture() {
     let (Ok(_), Ok(out)) = (std::env::var("MTS_STORE_LIVE"), std::env::var("MTS_FIXTURE_OUT")) else { return };
     let ua = "MiThemeStudio/test";
-    let home = fetch_page(&StoreQuery::Home { product: ProductKind::Theme }, 0, Some("IN"), ua).unwrap();
+    let home = fetch_page(&StoreQuery::Home { product: ProductKind::Theme, part: None }, 0, Some("IN"), ua).unwrap();
     std::fs::write(std::path::Path::new(&out).join("store-home.json"), serde_json::to_string(&home).unwrap()).unwrap();
     let cats = fetch_page(&StoreQuery::Categories, 0, Some("IN"), ua).unwrap();
     std::fs::write(std::path::Path::new(&out).join("store-categories.json"), serde_json::to_string(&cats).unwrap()).unwrap();
     let id = home.sections.iter().flat_map(|s| &s.products).next().unwrap().module_id.clone();
     let detail = fetch_detail(&id, Some("IN"), ua).unwrap();
     std::fs::write(std::path::Path::new(&out).join("store-detail.json"), serde_json::to_string(&detail).unwrap()).unwrap();
+}
+
+#[test]
+fn icon_packs_are_their_own_kind() {
+    let home = query_url(&StoreQuery::Home { product: ProductKind::Icon, part: None }, 2, "IN").unwrap();
+    assert!(home.starts_with("https://thm.market.intl.xiaomi.com/thm/search/v2/npage?keywords=&category=Icon&page=2&"));
+    let search = query_url(&StoreQuery::Search { keywords: "cat".into(), product: ProductKind::Icon, part: None }, 0, "IN").unwrap();
+    assert!(search.contains("keywords=cat&category=Icon"));
+    // Search results carry no productType: they take the searched kind.
+    let page = r#"{"apiCode":0,"apiData":{"cards":[{"products":[{"uuid":"i-1","name":"Kitty","imageUrl":"https://t17.market.mi-img.com/thumbnail/x"}]}]}}"#;
+    assert_eq!(parse_page_as(page, 0, ProductKind::Icon).unwrap().sections[0].products[0].kind, ProductKind::Icon);
+    assert_eq!(parse_page(page, 0).unwrap().sections[0].products[0].kind, ProductKind::Theme);
+    let detail = r#"{"apiCode":"0","apiData":{"cards":[],"extraInfo":{"themeDetail":{"name":"Kitty","moduleId":"i-1","productType":9,"productPrice":0,"iconCount":120}}}}"#;
+    let d = parse_detail(detail, "i-1").unwrap();
+    assert_eq!((d.kind, d.icon_count), (ProductKind::Icon, Some(120)));
+    assert_eq!(ProductKind::Icon.allowed_extensions(), &["mtz", "zip"]);
+}
+
+#[test]
+fn part_listings_search_that_category() {
+    let lock = StoreQuery::Home { product: ProductKind::Theme, part: Some(StorePart::Lockscreen) };
+    assert!(query_url(&lock, 1, "IN").unwrap().starts_with("https://thm.market.intl.xiaomi.com/thm/search/v2/npage?keywords=&category=LockStyle&page=1&"));
+    let boot = StoreQuery::Search { keywords: "dark sky".into(), product: ProductKind::Theme, part: Some(StorePart::BootAnimation) };
+    assert!(query_url(&boot, 0, "IN").unwrap().contains("keywords=dark%20sky&category=BootAnimation"));
+    // A part only filters themes.
+    let fonts = StoreQuery::Home { product: ProductKind::Font, part: Some(StorePart::Aod) };
+    assert!(query_url(&fonts, 0, "IN").unwrap().contains("pageCategory=FONT"));
+    let q: StoreQuery = serde_json::from_str(r#"{"kind":"search","keywords":"x","product":"theme","part":"statusBar"}"#).unwrap();
+    assert_eq!(q.part(), Some(StorePart::StatusBar));
+    // No picture: the store sends just the folder.
+    let page = r#"{"apiCode":0,"apiData":{"cards":[{"products":[{"uuid":"c-1","name":"Clock","imageUrl":"https://t17.market.mi-img.com/thumbnail/webp/w212q80/"}]}]}}"#;
+    assert_eq!(parse_page(page, 0).unwrap().sections[0].products[0].image_url, None);
 }

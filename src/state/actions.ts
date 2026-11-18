@@ -953,7 +953,7 @@ export async function closeReference() {
  * wallpaper or ringtone starts a new theme that already uses it.
  */
 export async function startFromDownload(item: DownloadedTheme) {
-  if (item.kind === 'theme' || item.kind === 'font') {
+  if (item.kind === 'theme' || item.kind === 'font' || item.kind === 'icon') {
     if (!(await openDownloadAsProject(item))) return false;
   } else {
     const snapshot = await guard('New theme', () => api.projectNew(item.name));
@@ -1283,6 +1283,50 @@ export async function prepareThemeManager(): Promise<ThemeManagerSupport | null>
   }
 }
 
+/**
+ * Non-root keep-alive: a detached shell loop on the phone reapplies the staged
+ * theme when the framework's 2-hour DRM check changes /data/system/theme.
+ * True permanence would need the system check disabled (root/framework patch).
+ */
+export async function keepThemeApplied(enabled: boolean): Promise<boolean | null> {
+  const device = readyDevice();
+  if (!device) {
+    toast('warning', 'Connect and authorize a phone first.');
+    return null;
+  }
+  if (getState().busy) return null;
+  if (enabled) {
+    const ok = await confirmDialog({
+      title: 'Keep the theme applied without root?',
+      message: 'Android’s theme framework re-checks the theme about every two hours and restores the default when the package has no Xiaomi-signed licence. This starts a small shell loop on the phone that reapplies the theme after each reset.',
+      detail: [
+        'The loop runs as the adb shell user; it needs no root and survives an adb disconnect.',
+        'A reboot stops the loop, and the theme can be reset once after boot until you enable it again.',
+        'Reapply happens within about 30 seconds of the check, so the default theme may show briefly.',
+        'It also reapplies after you intentionally change themes; stop it first when switching.',
+      ],
+      confirmLabel: 'Keep applied',
+      danger: true,
+    });
+    if (!ok) return null;
+  }
+  const opId = newOpId('keep-alive');
+  operations.set(opId, enabled ? 'Starting keep-alive' : 'Stopping keep-alive');
+  setState({ busy: enabled ? 'Staging the theme and starting the keep-alive loop…' : 'Stopping the keep-alive loop…' });
+  try {
+    const result = await api.adbKeepThemeApplied(device.serial, enabled, opId);
+    for (const step of result.steps) log('info', `Keep applied: ${step}`);
+    toast('success', enabled ? 'Keep-alive started. The theme will be reapplied after the periodic check.' : 'Keep-alive stopped.');
+    return result.running;
+  } catch (error) {
+    toast('error', `Keep applied: ${errorMessage(error)}`);
+    return null;
+  } finally {
+    operations.delete(opId);
+    setState({ busy: null });
+  }
+}
+
 export async function tryOnPhone(force = false) {
   const device = readyDevice();
   const project = getState().project;
@@ -1453,7 +1497,7 @@ export async function licenseDownloadsOnPhone() {
     toast('error', `Downloads: ${errorMessage(error)}`);
     return;
   }
-  items = items.filter((d) => d.kind === 'theme' || d.kind === 'font');
+  items = items.filter((d) => d.kind === 'theme' || d.kind === 'font' || d.kind === 'icon');
   if (!items.length) {
     toast('warning', 'Download some themes or fonts in the Store first.');
     return;
@@ -1464,7 +1508,7 @@ export async function licenseDownloadsOnPhone() {
     title: `License ${items.length} downloaded item${items.length === 1 ? '' : 's'} on ${name}?`,
     message: 'Each item is opened in Theme Manager and applied once, so Theme Manager stores a Xiaomi licence for its parts. Afterwards those parts can be mixed into any theme. Your active theme changes while this runs.',
     detail: [
-      ...items.slice(0, 8).map((d) => `${d.kind === 'font' ? 'Font' : 'Theme'}: ${d.name}`),
+      ...items.slice(0, 8).map((d) => `${d.kind === 'font' ? 'Font' : d.kind === 'icon' ? 'Icons' : 'Theme'}: ${d.name}`),
       ...(items.length > 8 ? [`…and ${items.length - 8} more`] : []),
       'Keep the phone unlocked and on the home screen.',
     ],

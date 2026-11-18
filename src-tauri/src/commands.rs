@@ -1311,6 +1311,68 @@ pub async fn adb_apply_theme(
     .await
 }
 
+/// Stage the open project and keep reapplying it after the framework's
+/// periodic theme DRM reset. The loop runs on the phone as the adb shell user;
+/// it is not permanent (a reboot stops it) but needs no root.
+#[tauri::command]
+pub async fn adb_keep_theme_applied(
+    app: AppHandle,
+    serial: String,
+    enabled: bool,
+    op_id: Option<String>,
+) -> AppResult<adb::theme_apply::KeepAppliedResult> {
+    blocking(app, move |state, app| {
+        let adb = adb_for(state, app)?;
+        let cancel = register_op(state, &op_id);
+        let result = if enabled {
+            let support = adb.theme_manager_support(&serial)?;
+            if !support.can_apply {
+                Err(AppError::new(
+                    "unsupported",
+                    "One-click apply is not available on this Theme Manager build. Prepare Theme Manager first.",
+                ))
+            } else {
+                let built = build_package(state, Some(app))?;
+                let staging = state.paths.staging_dir();
+                let local = staging.join("keep-temp.mtz");
+                storage::atomic_write(&local, &built.data)?;
+                let bytes = adb.stage_keepalive_theme(&serial, &local, cancel.clone())?;
+                let _ = adb.apply_keepalive_now(&serial, cancel.clone());
+                let script = staging.join("mts_keep_theme.sh");
+                std::fs::write(&script, adb::theme_apply::keepalive_script())
+                    .map_err(|e| AppError::io("Could not write the keep-alive script", e))?;
+                let result = adb.start_keepalive(&serial, &script, cancel);
+                let _ = std::fs::remove_file(&local);
+                let _ = std::fs::remove_file(&script);
+                result.map(|_| adb::theme_apply::KeepAppliedResult {
+                    running: true,
+                    bytes,
+                    steps: vec![
+                        format!("Staged {bytes} bytes at the keep-alive path"),
+                        "Applied the theme once".into(),
+                        "Started the keep-alive loop; it reapplies when the 2-hour check resets the theme".into(),
+                    ],
+                })
+            }
+        } else {
+            adb.stop_keepalive(&serial)?;
+            Ok(adb::theme_apply::KeepAppliedResult {
+                running: false,
+                bytes: 0,
+                steps: vec!["Stopped the keep-alive loop".into()],
+            })
+        };
+        finish_op(state, &op_id);
+        result
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn adb_keepalive_status(app: AppHandle, serial: String) -> AppResult<bool> {
+    blocking(app, move |state, app| Ok(adb_for(state, app)?.keepalive_running(&serial))).await
+}
+
 /// "Try on phone": export the project, add it to Theme Manager's library on the
 /// phone and press Apply there. Earlier try-ons are replaced.
 /// Apps installed on the phone (name + package), listed by the bundled scrcpy
@@ -1469,7 +1531,7 @@ pub async fn adb_license_downloads(
         let adb = adb_for(state, app)?;
         let items: Vec<(String, String, Option<String>)> = store::list_downloads(&downloads_dir(state))
             .into_iter()
-            .filter(|d| matches!(d.kind, store::ProductKind::Theme | store::ProductKind::Font))
+            .filter(|d| matches!(d.kind, store::ProductKind::Theme | store::ProductKind::Font | store::ProductKind::Icon))
             .map(|d| (d.module_id, d.name, d.product_id))
             .collect();
         if items.is_empty() {
@@ -1752,11 +1814,12 @@ pub async fn store_download(
     app: AppHandle,
     module_id: String,
     region: Option<String>,
+    listing: Option<store::PartListing>,
 ) -> AppResult<DownloadedTheme> {
     blocking(app, move |state, app| {
         let dir = downloads_dir(state);
         let id = module_id.clone();
-        store::download(&module_id, region.as_deref(), &dir, &user_agent(app), |received, total| {
+        store::download(&module_id, region.as_deref(), &dir, &user_agent(app), listing, |received, total| {
             let _ = app.emit(
                 "store-download",
                 DownloadProgress { module_id: id.clone(), received, total },
@@ -1844,8 +1907,8 @@ pub async fn store_open_project(app: AppHandle, module_id: String) -> AppResult<
     blocking(app, move |state, _| {
         let record = store::existing(&downloads_dir(state), &module_id)
             .ok_or_else(|| AppError::not_found("That theme is not downloaded."))?;
-        if !matches!(record.kind, store::ProductKind::Theme | store::ProductKind::Font) {
-            return Err(AppError::invalid("Only theme and font packages can be opened as a project."));
+        if !matches!(record.kind, store::ProductKind::Theme | store::ProductKind::Font | store::ProductKind::Icon) {
+            return Err(AppError::invalid("Only theme, font and icon packages can be opened as a project."));
         }
         let path = PathBuf::from(&record.path);
         let data = read_limited(&path, MAX_PACKAGE_BYTES, "The package")?;

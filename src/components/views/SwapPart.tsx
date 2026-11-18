@@ -59,13 +59,14 @@ export function SwapHost() {
 function SwapPartDialog({ request, onClose }: { request: SwapRequest; onClose: () => void }) {
   const multi = !!request.theme;
   const initialPart = request.part ?? (request.media ? (request.media.kind === 'ringtone' ? 'sounds' : 'wallpapers') : request.theme?.kind === 'font' ? 'fonts' : 'icons');
+  // An icon pack only has icons: start with just that part picked.
   const project = useStore((s) => s.project)!;
   const reference = useStore((s) => s.reference);
   const serial = useStore((s) => (s.adb?.devices.some((d) => d.serial === s.selectedSerial && d.state === 'device') ? s.selectedSerial : null));
   const downloads = useThemeStore((s) => s.downloads);
   const [part, setPart] = useState(initialPart);
   const [selected, setSelected] = useState<string | null>(request.media ? `media:${request.media.moduleId}` : null);
-  const [picked, setPicked] = useState<Set<string>>(() => new Set(request.part || !multi ? [initialPart] : []));
+  const [picked, setPicked] = useState<Set<string>>(() => new Set(request.part || !multi || request.theme?.kind === 'icon' ? [initialPart] : []));
   const [opening, setOpening] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [phoneThemes, setPhoneThemes] = useState<CachedDeviceTheme[] | null>(null);
@@ -97,7 +98,7 @@ function SwapPartDialog({ request, onClose }: { request: SwapRequest; onClose: (
   const label = def?.label ?? part;
   const media = MEDIA_FOR[part];
 
-  const packages = downloads.filter((d) => d.kind === 'theme' || (d.kind === 'font' && part === 'fonts'));
+  const packages = downloads.filter((d) => d.kind === 'theme' || (d.kind === 'font' && part === 'fonts') || (d.kind === 'icon' && part === 'icons'));
   const mediaItems = media ? downloads.filter((d) => d.kind === media.kind) : [];
   const sources: Source[] = [
     ...packages.map((theme) => ({ kind: 'download' as const, key: `dl:${theme.moduleId}`, theme })),
@@ -229,7 +230,7 @@ function SwapPartDialog({ request, onClose }: { request: SwapRequest; onClose: (
       <span className="swap-source-text">
         <span className="ellipsis">{sourceName(s)}</span>
         <span className="faint ellipsis">
-          {s.kind === 'download' ? (s.theme.designer ?? (s.theme.kind === 'font' ? 'Font' : 'Store theme')) : s.kind === 'phone' ? (s.theme.designer ?? s.theme.author ?? 'On the phone') : 'Open reference'}
+          {s.kind === 'download' ? (s.theme.designer ?? (s.theme.kind === 'font' ? 'Font' : s.theme.kind === 'icon' ? 'Icon pack' : 'Store theme')) : s.kind === 'phone' ? (s.theme.designer ?? s.theme.author ?? 'On the phone') : 'Open reference'}
         </span>
       </span>
       {opening === s.key ? <Loader2 className="spin" /> : selected === s.key ? <Check className="swap-check" /> : null}

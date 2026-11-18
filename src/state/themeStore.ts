@@ -3,7 +3,7 @@
 import { create } from 'zustand';
 import { listen } from '@tauri-apps/api/event';
 import { api, errorCode, errorMessage } from '../lib/api';
-import type { DownloadedTheme, DownloadProgress } from '../lib/types';
+import type { DownloadedTheme, DownloadProgress, StoreProduct } from '../lib/types';
 import { log, toast } from './store';
 
 // Keep in sync with REGIONS in src-tauri/src/store/mod.rs.
@@ -121,12 +121,27 @@ export function downloadFor(moduleId: string): DownloadedTheme | undefined {
   return useThemeStore.getState().downloads.find((d) => d.moduleId === moduleId);
 }
 
+/**
+ * Items seen in a part listing (lock screens, status bars…), by module ID. Their
+ * IDs often have no store page; the download falls back to what the listing said,
+ * and "use" starts on that part.
+ */
+export const partListings = new Map<string, StoreProduct>();
+export function rememberPartListing(product: StoreProduct, alsoAs?: string) {
+  if (!product.part) return;
+  partListings.set(product.moduleId, product);
+  if (alsoAs) partListings.set(alsoAs, product);
+}
+
 export async function downloadTheme(moduleId: string, name: string): Promise<DownloadedTheme | null> {
   if (useThemeStore.getState().progress[moduleId]) return null;
   await ensureListener();
   useThemeStore.setState((s) => ({ progress: { ...s.progress, [moduleId]: { received: 0, total: 0 } } }));
   try {
-    const record = await api.storeDownload(moduleId, useThemeStore.getState().region);
+    const listed = partListings.get(moduleId);
+    const listing = listed?.part ? { part: listed.part, name: listed.name, cover: listed.imageUrl } : undefined;
+    const record = await api.storeDownload(moduleId, useThemeStore.getState().region, listing);
+    if (listed && record.moduleId !== moduleId) partListings.set(record.moduleId, listed);
     useThemeStore.setState((s) => ({ downloads: [record, ...s.downloads.filter((d) => d.moduleId !== record.moduleId)] }));
     log('success', `Downloaded “${record.name}” (SHA-1 ${record.sha1.slice(0, 12)}…) to ${record.path}`);
     toast('success', `Downloaded “${record.name}”`);

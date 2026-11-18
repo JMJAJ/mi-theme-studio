@@ -146,7 +146,7 @@ function DownloadCard({ d }: { d: DownloadedTheme }) {
 function Downloaded({ query, limit }: { query: string; limit?: number }) {
   const downloads = useThemeStore((s) => s.downloads);
   const loaded = useThemeStore((s) => s.loaded);
-  const themes = useMemo(() => downloads.filter((d) => d.kind === 'theme' || d.kind === 'font').sort((a, b) => b.downloadedAtMs - a.downloadedAtMs), [downloads]);
+  const themes = useMemo(() => downloads.filter((d) => d.kind === 'theme' || d.kind === 'font' || d.kind === 'icon').sort((a, b) => b.downloadedAtMs - a.downloadedAtMs), [downloads]);
   const items = themes.filter((d) => matches(query, d.name, d.designer));
   const shown = limit ? items.slice(0, limit) : items;
   const media = downloads.length - themes.length;
@@ -207,7 +207,7 @@ export function LibraryView() {
   const [query, setQuery] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
   const recentCount = useStore((s) => s.settings?.recent.length ?? 0);
-  const downloadCount = useThemeStore((s) => s.downloads.filter((d) => d.kind === 'theme' || d.kind === 'font').length);
+  const downloadCount = useThemeStore((s) => s.downloads.filter((d) => d.kind === 'theme' || d.kind === 'font' || d.kind === 'icon').length);
 
   useEffect(() => {
     void refreshDownloads();

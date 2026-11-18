@@ -115,6 +115,8 @@ pub fn run() {
             commands::adb_open_store_item,
             commands::adb_open_theme_settings,
             commands::adb_apply_theme,
+            commands::adb_keep_theme_applied,
+            commands::adb_keepalive_status,
             commands::mirror_start,
             commands::mirror_stop,
             commands::mirror_status,

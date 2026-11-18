@@ -25,6 +25,10 @@ pub const SUPPORT_MARKER: &str = "com.android.thememanager.support3.0";
 /// so the single-step flow must use this one too.
 const NEW_FLOW_PATH: &str = "/sdcard/Android/data/com.android.thememanager/files/temp.mtz";
 const FILES_DIR: &str = "/sdcard/Android/data/com.android.thememanager/files";
+/// Stable copy used by the keep-alive loop; unlike temp.mtz it is not
+/// overwritten by the next apply.
+const KEEPALIVE_PATH: &str = "/sdcard/Android/data/com.android.thememanager/files/keep.mtz";
+const KEEPALIVE_SCRIPT_PATH: &str = "/data/local/tmp/mts_keep_theme.sh";
 
 /// `pm uninstall-system-updates` only has something to remove when the
 /// running build was installed over the system one (its code lives in /data).
@@ -73,6 +77,20 @@ pub struct PrepareThemeManagerResult {
     pub before_version: Option<String>,
     pub support: ThemeManagerSupport,
     pub steps: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KeepAppliedResult {
+    pub running: bool,
+    pub bytes: u64,
+    pub steps: Vec<String>,
+}
+
+/// Reapplies the staged package when the framework's periodic DRM reset
+/// changes `/data/system/theme`. Runs as the adb shell user; no root.
+pub fn keepalive_script() -> &'static str {
+    include_str!("keepalive.sh")
 }
 
 /// `pm uninstall-system-updates` prints `Success` on its own line.
@@ -345,6 +363,88 @@ impl Adb {
         Ok(ApplyResult { remote_path: NEW_FLOW_PATH.into(), bytes, steps })
     }
 
+    /// Copy the built package to the stable keep-alive path.
+    pub fn stage_keepalive_theme(
+        &self,
+        serial: &str,
+        local: &Path,
+        cancel: Option<Arc<AtomicBool>>,
+    ) -> AppResult<u64> {
+        self.ensure_files_dir(serial)?;
+        self.push_to(serial, local, KEEPALIVE_PATH, cancel)
+    }
+
+    /// Start the editor activity with the keep-alive copy.
+    pub fn apply_keepalive_now(&self, serial: &str, cancel: Option<Arc<AtomicBool>>) -> AppResult<()> {
+        let args = [
+            "-n",
+            APPLY_ACTIVITY,
+            "-e",
+            "api_called_from",
+            "ThemeEditor",
+            "-e",
+            "theme_file_path",
+            KEEPALIVE_PATH,
+        ];
+        let _ = cancel;
+        self.start(serial, &args, "Apply theme").map(|_| ())
+    }
+
+    /// Install and start a detached shell loop that reapplies the staged theme
+    /// after the framework's periodic DRM reset. The loop runs as the adb shell
+    /// user, so it needs no root and survives adb disconnects (but not reboot).
+    pub fn start_keepalive(
+        &self,
+        serial: &str,
+        script_local: &Path,
+        cancel: Option<Arc<AtomicBool>>,
+    ) -> AppResult<()> {
+        self.push_to(serial, script_local, KEEPALIVE_SCRIPT_PATH, cancel.clone())?;
+        let _ = self.shell(serial, &["chmod", "755", KEEPALIVE_SCRIPT_PATH], Duration::from_secs(10), cancel.clone());
+        self.kill_keepalive(serial);
+        let command = format!("nohup sh {KEEPALIVE_SCRIPT_PATH} >/dev/null 2>&1 &");
+        self.shell(serial, &[&command], Duration::from_secs(20), cancel)?;
+        std::thread::sleep(Duration::from_millis(1200));
+        if !self.keepalive_running(serial) {
+            return Err(AppError::new(
+                "keepalive",
+                "The keep-alive loop did not stay running. Make sure USB debugging is still authorized and try again.",
+            ));
+        }
+        Ok(())
+    }
+
+    fn kill_keepalive(&self, serial: &str) {
+        if let Ok(out) = self.shell(
+            serial,
+            &["pgrep", "-f", "[m]ts_keep_theme.sh"],
+            Duration::from_secs(10),
+            None,
+        ) {
+            for pid in out.stdout_text().split_whitespace() {
+                if pid.chars().all(|c| c.is_ascii_digit()) {
+                    let _ = self.shell(serial, &["kill", "-9", pid], Duration::from_secs(10), None);
+                }
+            }
+        }
+    }
+
+    pub fn stop_keepalive(&self, serial: &str) -> AppResult<()> {
+        self.kill_keepalive(serial);
+        Ok(())
+    }
+
+    pub fn keepalive_running(&self, serial: &str) -> bool {
+        self.shell(
+            serial,
+            &["pgrep", "-f", "[m]ts_keep_theme.sh"],
+            Duration::from_secs(10),
+            None,
+        )
+        .map(|out| !out.stdout_text().trim().is_empty())
+        .unwrap_or(false)
+    }
+
     /// Theme Manager runs under a shared uid that must own its external files
     /// folder. A folder created by adb's shell user may not be readable by it,
     /// so let Theme Manager create the folder itself when it is missing.
@@ -423,6 +523,27 @@ mod live {
         let support = adb.theme_manager_support(&serial).unwrap();
         println!("{support:?}");
         assert!(support.installed);
+    }
+
+    #[test]
+    #[ignore]
+    fn starts_and_stops_keepalive_on_device() {
+        let (Ok(path), Ok(serial), Ok(mtz)) =
+            (std::env::var("MTS_ADB"), std::env::var("MTS_SERIAL"), std::env::var("MTS_MTZ"))
+        else {
+            return;
+        };
+        let adb = Adb { path: path.into(), log: Arc::new(|_| {}) };
+        let bytes = adb.stage_keepalive_theme(&serial, Path::new(&mtz), None).unwrap();
+        assert!(bytes > 0);
+        adb.apply_keepalive_now(&serial, None).unwrap();
+        let script = std::env::current_dir().unwrap().join("mts_keep_theme.sh");
+        std::fs::write(&script, keepalive_script()).unwrap();
+        adb.start_keepalive(&serial, &script, None).unwrap();
+        assert!(adb.keepalive_running(&serial));
+        adb.stop_keepalive(&serial).unwrap();
+        assert!(!adb.keepalive_running(&serial));
+        let _ = std::fs::remove_file(script);
     }
 
     #[test]

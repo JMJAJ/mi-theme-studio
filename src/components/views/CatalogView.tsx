@@ -22,6 +22,14 @@ import {
   Image as ImageIcon,
   Type,
   Palette,
+  BatteryMedium,
+  House,
+  Clock,
+  Contact,
+  MessageSquare,
+  Power,
+  Wand2,
+  Moon,
   Bell,
   AlarmClock,
   Phone,
@@ -33,13 +41,14 @@ import {
   Repeat,
   Search,
   Smartphone,
+  Shapes,
   Sparkles,
   Star,
   Trash2,
 } from 'lucide-react';
 import { api, errorMessage } from '../../lib/api';
 import { formatBytes, formatDateTime, plural } from '../../lib/format';
-import type { DownloadedTheme, ProductKind, StoreLink, StorePage, StoreProduct, StoreQuery, ThemeDetail } from '../../lib/types';
+import type { DownloadedTheme, ProductKind, StoreLink, StorePage, StorePart, StoreProduct, StoreQuery, ThemeDetail } from '../../lib/types';
 import * as A from '../../state/actions';
 import { getState, useStore } from '../../state/store';
 import {
@@ -53,6 +62,8 @@ import {
   removeDownload,
   setRegion,
   useThemeStore,
+  partListings,
+  rememberPartListing,
 } from '../../state/themeStore';
 import { DeviceThemes } from './DeviceThemes';
 import { openSwap } from './SwapPart';
@@ -66,12 +77,27 @@ type Tab = StoreTab;
 
 const KINDS: { kind: ProductKind; label: string; noun: string; icon: typeof Palette }[] = [
   { kind: 'theme', label: 'Themes', noun: 'theme', icon: Palette },
+  { kind: 'icon', label: 'Icons', noun: 'icon pack', icon: Shapes },
   { kind: 'font', label: 'Fonts', noun: 'font', icon: Type },
   { kind: 'wallpaper', label: 'Wallpapers', noun: 'wallpaper', icon: ImageIcon },
   { kind: 'ringtone', label: 'Ringtones', noun: 'ringtone', icon: Music },
 ];
+// Theme parts the store can list themes by. `component` is the part of your theme it swaps into.
+const PARTS: { part: StorePart; label: string; plural: string; component: string; icon: typeof Palette; note?: string }[] = [
+  { part: 'lockscreen', label: 'Lock screen', plural: 'Lock screens', component: 'lockscreen', icon: Lock },
+  { part: 'statusBar', label: 'Status bar', plural: 'Status bars', component: 'systemui', icon: BatteryMedium },
+  { part: 'homeScreen', label: 'Home screen', plural: 'Home screens', component: 'home', icon: House },
+  { part: 'clock', label: 'Clock widget', plural: 'Clock widgets', component: 'widgets', icon: Clock, note: 'The store has no pictures of clock widgets; the cover is empty until you open it.' },
+  { part: 'contacts', label: 'Contacts & calls', plural: 'Contacts & calls', component: 'apps', icon: Contact },
+  { part: 'messages', label: 'Messages', plural: 'Messages', component: 'apps', icon: MessageSquare },
+  { part: 'bootAnimation', label: 'Boot animation', plural: 'Boot animations', component: 'boot', icon: Power, note: 'A boot animation only changes on a rooted phone.' },
+  { part: 'superWallpaper', label: 'Super wallpaper', plural: 'Super wallpapers', component: 'wallpapers', icon: Wand2 },
+  { part: 'aod', label: 'Always-on display', plural: 'Always-on displays', component: 'other', icon: Moon, note: 'Always-on display styles come as small packages with only that part; the store shows no pictures of them.' },
+];
+export const partInfo = (part: StorePart | null | undefined) => PARTS.find((p) => p.part === part) ?? null;
+
 const nounOf = (kind: ProductKind) => KINDS.find((k) => k.kind === kind)?.noun ?? 'item';
-const isPackage = (kind: ProductKind) => kind === 'theme' || kind === 'font';
+const isPackage = (kind: ProductKind) => kind === 'theme' || kind === 'font' || kind === 'icon';
 type Route = { type: 'list'; query: StoreQuery; title: string } | { type: 'detail'; moduleId: string; name: string };
 
 function readConsent() {
@@ -167,7 +193,9 @@ function GifCover({ product, playing }: { product: StoreProduct; playing: boolea
 export function putToUse(item: DownloadedTheme) {
   // Nothing open yet: this download becomes the theme you work on.
   if (!getState().project) return void A.startFromDownload(item);
-  return isPackage(item.kind) ? openSwap({ theme: item }) : openSwap({ media: item });
+  const part = partInfo(partListings.get(item.moduleId)?.part);
+  if (isPackage(item.kind)) return openSwap(part ? { theme: item, part: part.component } : { theme: item });
+  return openSwap({ media: item });
 }
 
 // Heart on a card or detail page: keep the item in the Saved tab to come back to.
@@ -266,11 +294,18 @@ function ProductCard({ product, onOpen }: { product: StoreProduct; onOpen: () =>
   const progress = useThemeStore((s) => s.progress[product.moduleId]);
   const [hover, setHover] = useState(false);
   if (product.gifUrl) knownGifs.set(product.moduleId, product.gifUrl);
+  rememberPartListing(product);
+  const part = partInfo(product.part);
   return (
     <button className={`product-card kind-${product.kind}`} onClick={onOpen} title={product.name} onPointerEnter={() => setHover(true)} onPointerLeave={() => setHover(false)} onFocus={() => setHover(true)} onBlur={() => setHover(false)}>
       <div className="cover">
         <RemoteImage src={product.imageUrl} alt={product.name} />
         <GifCover product={product} playing={hover} />
+        {part && (
+          <span className="cover-part" title={`Listed for its ${part.label.toLowerCase()}`}>
+            <part.icon /> {part.label}
+          </span>
+        )}
         {downloaded && (
           <span className="cover-badge" title="Downloaded">
             <Check />
@@ -676,7 +711,7 @@ function StoreList({
       {empty && (
         <div className="empty">
           <Globe />
-          <h3>{query.kind === 'search' ? `No themes match “${query.keywords}”` : 'Nothing here yet'}</h3>
+          <h3>{query.kind === 'search' ? `No ${KINDS.find((k) => k.kind === (query.product ?? 'theme'))?.label.toLowerCase() ?? 'themes'} match “${query.keywords}”` : 'Nothing here yet'}</h3>
           <p>
             {hiddenPaid
               ? `${plural(hiddenPaid, 'paid theme')} hidden by “Free only”.`
@@ -809,6 +844,37 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/** What a part listing tells about an item, as a detail page. */
+function listingDetail(p: StoreProduct): ThemeDetail {
+  const big = p.imageUrl ? p.imageUrl.replace('/w212q80/', '/w1080q70/') : null;
+  return {
+    moduleId: p.moduleId,
+    productId: p.productId,
+    kind: 'theme',
+    name: p.name,
+    designer: null,
+    author: null,
+    designerIcon: null,
+    designerThemes: null,
+    description: null,
+    tags: p.tags,
+    cover: big,
+    screenshots: big ? [big] : [],
+    sizeBytes: p.sizeBytes,
+    version: null,
+    uiVersion: null,
+    downloads: null,
+    score: null,
+    priceCents: p.priceCents,
+    currency: p.currency,
+    bought: false,
+    priceKnown: true,
+    free: p.priceCents === 0,
+    audioUrl: null,
+    webUrl: `https://zhuti.xiaomi.com/detail/${p.moduleId}`,
+  };
+}
+
 function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; refreshKey: number; navigate: (route: Route) => void }) {
   const phone = usePhoneThemeFormat();
   const region = useThemeStore((s) => s.region);
@@ -820,13 +886,28 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
   const hasProject = useStore((s) => !!s.project);
   const phoneReady = useStore((s) => !!s.adb?.devices.some((d) => d.serial === s.selectedSerial && d.state === 'device'));
 
+  const listed = partListings.get(moduleId);
+  const listedPart = partInfo(listed?.part);
+  const [lite, setLite] = useState(false);
   useEffect(() => {
     let cancelled = false;
     setError(null);
+    setLite(false);
     api
       .storeDetail(moduleId, region)
-      .then((d) => !cancelled && setDetail(d))
-      .catch((e) => !cancelled && setError(errorMessage(e)));
+      .then((d) => {
+        if (cancelled) return;
+        if (listed) rememberPartListing(listed, d.moduleId);
+        setDetail(d);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        // Part listings: the store often has no page for the ID; show what the listing said.
+        if (listed) {
+          setDetail(listingDetail(listed));
+          setLite(true);
+        } else setError(errorMessage(e));
+      });
     return () => {
       cancelled = true;
     };
@@ -888,6 +969,16 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
 
       <div className="detail-body">
         <div className="detail-main">
+          {listedPart && (
+            <div className="banner banner-info" style={{ marginBottom: 12 }}>
+              <listedPart.icon />
+              <span className="grow">
+                Listed for its {listedPart.label.toLowerCase()}. {hasProject ? `“Get & use” takes just the ${listedPart.label.toLowerCase()} into your theme; you can tick more parts there.` : 'Open it, or open a theme first to take just this part.'}
+                {lite ? ' The store has no full page for this item, so only its picture is shown; the download is the whole package it comes from, checked by SHA-1.' : ''}
+                {listedPart.note ? ` ${listedPart.note}` : ''}
+              </span>
+            </div>
+          )}
           <h1 className="selectable">
             {detail.name}
             <SaveToggle
@@ -951,6 +1042,7 @@ function StoreDetail({ moduleId, refreshKey, navigate }: { moduleId: string; ref
             </Fact>
             {detail.sizeBytes ? <Fact label="Size">{formatBytes(detail.sizeBytes)}</Fact> : null}
             {detail.version ? <Fact label="Version">{detail.version}</Fact> : null}
+            {detail.iconCount ? <Fact label="Icons">{detail.iconCount.toLocaleString()} app icons</Fact> : null}
             {detail.uiVersion ? <Fact label="Theme format">{detail.uiVersion}{phone.format !== null ? ` (your phone: up to ${formatVersion(phone.format)})` : ''}</Fact> : null}
             {detail.downloads ? <Fact label="Downloads">{detail.downloads.toLocaleString()}</Fact> : null}
             {detail.score ? (
@@ -1201,10 +1293,31 @@ function loadProduct(): ProductKind {
   return 'theme';
 }
 
-function rootFor(tab: 'discover' | 'categories', product: ProductKind): Route {
-  return tab === 'categories'
-    ? { type: 'list', query: { kind: 'categories' }, title: 'Categories' }
-    : { type: 'list', query: { kind: 'home', product }, title: KINDS.find((k) => k.kind === product)?.label ?? 'Discover' };
+function rootFor(tab: 'discover' | 'categories', product: ProductKind, part: StorePart | null): Route {
+  if (tab === 'categories') return { type: 'list', query: { kind: 'categories' }, title: 'Categories' };
+  const p = product === 'theme' ? partInfo(part) : null;
+  if (p) return { type: 'list', query: { kind: 'home', product, part: p.part }, title: p.plural };
+  return { type: 'list', query: { kind: 'home', product }, title: KINDS.find((k) => k.kind === product)?.label ?? 'Discover' };
+}
+
+const PART_KEY = 'mts.store.part.v1';
+function loadPart(): StorePart | null {
+  try {
+    const v = localStorage.getItem(PART_KEY);
+    return PARTS.some((p) => p.part === v) ? (v as StorePart) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A search for these words in this kind (and part, for themes). */
+function searchRoute(product: ProductKind, part: StorePart | null, keywords: string): Route {
+  const p = product === 'theme' ? partInfo(part) : null;
+  return {
+    type: 'list',
+    query: p ? { kind: 'search', keywords, product, part: p.part } : { kind: 'search', keywords, product },
+    title: `${p ? p.plural : (KINDS.find((k) => k.kind === product)?.label ?? 'Themes')} matching “${keywords}”`,
+  };
 }
 
 export function CatalogView() {
@@ -1221,7 +1334,25 @@ export function CatalogView() {
     }
   }, [tabRequest]);
   const [product, setProductState] = useState<ProductKind>(loadProduct);
+  const [part, setPartState] = useState<StorePart | null>(loadPart);
   const [stack, setStack] = useState<Route[]>([]);
+  // Searching? Switching kind or part looks for the same words there instead of dropping the search.
+  const reroute = (nextProduct: ProductKind, nextPart: StorePart | null) => {
+    const current = stack[stack.length - 1];
+    if (current?.type === 'list' && current.query.kind === 'search') setStack([searchRoute(nextProduct, nextPart, current.query.keywords)]);
+    else setStack([]);
+  };
+  const setPart = (next: StorePart | null) => {
+    setPartState(next);
+    try {
+      if (next) localStorage.setItem(PART_KEY, next);
+      else localStorage.removeItem(PART_KEY);
+    } catch {
+      /* ignore */
+    }
+    if (tab !== 'discover') setTab('discover');
+    reroute('theme', next);
+  };
   const setProduct = (next: ProductKind) => {
     setProductState(next);
     try {
@@ -1231,7 +1362,7 @@ export function CatalogView() {
     }
     if (tab === 'categories' && next !== 'theme') setTab('discover');
     if (tab === 'device') setTab('discover');
-    setStack([]);
+    reroute(next, part);
   };
   const [consent, setConsent] = useState(readConsent);
   const [search, setSearch] = useState('');
@@ -1243,7 +1374,7 @@ export function CatalogView() {
     void refreshDownloads();
   }, []);
 
-  const route: Route | null = stack.length ? stack[stack.length - 1] : tab === 'discover' || tab === 'categories' ? rootFor(tab, product) : null;
+  const route: Route | null = stack.length ? stack[stack.length - 1] : tab === 'discover' || tab === 'categories' ? rootFor(tab, product, part) : null;
   useEffect(() => {
     scroller?.scrollTo({ top: 0 });
   }, [route && JSON.stringify(route), tab]);
@@ -1261,7 +1392,7 @@ export function CatalogView() {
     const keywords = search.trim();
     if (!keywords) return;
     if (tab !== 'discover' && tab !== 'categories') setTab('discover');
-    setStack((s) => [...s.filter((r) => !(r.type === 'list' && r.query.kind === 'search')), { type: 'list', query: { kind: 'search', keywords, product }, title: `Search ${KINDS.find((k) => k.kind === product)?.label.toLowerCase()} “${keywords}”` }]);
+    setStack((s) => [...s.filter((r) => !(r.type === 'list' && r.query.kind === 'search')), searchRoute(product, part, keywords)]);
   };
   const allow = () => {
     try {
@@ -1309,7 +1440,7 @@ export function CatalogView() {
           }}
         >
           <Search />
-          <input className="input" placeholder={`Search ${KINDS.find((k) => k.kind === product)?.label.toLowerCase()}…`} value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search the store" />
+          <input className="input" placeholder={`Search ${(product === 'theme' && partInfo(part)?.plural) || KINDS.find((k) => k.kind === product)?.label}…`.replace(/^Search (\w)/, (_m, c: string) => `Search ${c.toLowerCase()}`)} value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search the store" />
         </form>
         <span className="grow" />
         {tab !== 'device' && (
@@ -1354,6 +1485,19 @@ export function CatalogView() {
               </button>
             </span>
           )}
+        </div>
+      )}
+      {tab !== 'device' && tab !== 'categories' && product === 'theme' && (
+        <div className="part-bar" role="group" aria-label="Look for one part of a theme">
+          <span className="faint">Part</span>
+          <button className={!part ? 'is-on' : ''} aria-pressed={!part} onClick={() => setPart(null)}>
+            Whole theme
+          </button>
+          {PARTS.map((p) => (
+            <button key={p.part} className={part === p.part ? 'is-on' : ''} aria-pressed={part === p.part} onClick={() => setPart(p.part)} title={`Themes listed for their ${p.label.toLowerCase()}. Use takes just that part into your theme.${p.note ? ` ${p.note}` : ''}`}>
+              <p.icon /> {p.plural}
+            </button>
+          ))}
         </div>
       )}
       {stack.length > 0 && (

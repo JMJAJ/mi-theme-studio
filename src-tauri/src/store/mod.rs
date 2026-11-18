@@ -68,23 +68,28 @@ pub enum ProductKind {
     Font,
     Wallpaper,
     Ringtone,
+    /// An icon pack: a package with only the `icons` part (plus a preview and wallpaper).
+    Icon,
 }
 
 impl ProductKind {
     pub fn from_code(value: &Value) -> Option<ProductKind> {
         match value {
             Value::Number(n) => match n.as_u64()? {
-                1 => Some(ProductKind::Theme),
+                // 3: super (live) wallpapers, which come as theme packages.
+                1 | 3 => Some(ProductKind::Theme),
                 2 => Some(ProductKind::Wallpaper),
                 6 => Some(ProductKind::Ringtone),
                 7 => Some(ProductKind::Font),
+                9 => Some(ProductKind::Icon),
                 _ => None,
             },
             Value::String(s) => match s.to_ascii_uppercase().as_str() {
-                "1" | "THEME" | "COMPOUND" => Some(ProductKind::Theme),
+                "1" | "3" | "THEME" | "COMPOUND" | "MIWALLPAPER" => Some(ProductKind::Theme),
                 "2" | "WALLPAPER" | "WALLPAPERUNION" => Some(ProductKind::Wallpaper),
                 "6" | "RINGTONE" | "RINGTONEUNION" => Some(ProductKind::Ringtone),
                 "7" | "FONT" => Some(ProductKind::Font),
+                "9" | "ICON" | "ICONS" => Some(ProductKind::Icon),
                 _ => None,
             },
             _ => None,
@@ -98,6 +103,7 @@ impl ProductKind {
             ProductKind::Font => "Font",
             ProductKind::Wallpaper => "WallpaperUnion",
             ProductKind::Ringtone => "RingtoneUnion",
+            ProductKind::Icon => "Icon",
         }
     }
 
@@ -108,15 +114,50 @@ impl ProductKind {
             ProductKind::Font => "FONT",
             ProductKind::Wallpaper => "WALLPAPER",
             ProductKind::Ringtone => "RINGTONE",
+            ProductKind::Icon => "ICON",
         }
     }
 
     /// File types a download of this kind may have.
     pub fn allowed_extensions(self) -> &'static [&'static str] {
         match self {
-            ProductKind::Theme | ProductKind::Font => &["mtz", "zip"],
+            ProductKind::Theme | ProductKind::Font | ProductKind::Icon => &["mtz", "zip"],
             ProductKind::Wallpaper => &["jpg", "jpeg", "png", "webp"],
             ProductKind::Ringtone => &["mp3", "ogg", "m4a", "wav", "flac"],
+        }
+    }
+}
+
+/// One part of a theme the store can search by. Results are themes that have a
+/// notable version of it, shown with a preview of that part (the always-on
+/// display results are packages with only that part).
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum StorePart {
+    Lockscreen,
+    StatusBar,
+    HomeScreen,
+    Clock,
+    Contacts,
+    Messages,
+    BootAnimation,
+    SuperWallpaper,
+    Aod,
+}
+
+impl StorePart {
+    /// `category` for search and download routes.
+    pub fn category(self) -> &'static str {
+        match self {
+            StorePart::Lockscreen => "LockStyle",
+            StorePart::StatusBar => "StatusBar",
+            StorePart::HomeScreen => "Launcher",
+            StorePart::Clock => "Clock_2x4",
+            StorePart::Contacts => "Contact",
+            StorePart::Messages => "Mms",
+            StorePart::BootAnimation => "BootAnimation",
+            StorePart::SuperWallpaper => "MiWallpaper",
+            StorePart::Aod => "Aod",
         }
     }
 }
@@ -127,6 +168,9 @@ pub enum StoreQuery {
     Home {
         #[serde(default)]
         product: ProductKind,
+        /// Themes only: list the ones with a notable version of this part.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        part: Option<StorePart>,
     },
     Categories,
     Page { id: String },
@@ -135,7 +179,19 @@ pub enum StoreQuery {
         keywords: String,
         #[serde(default)]
         product: ProductKind,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        part: Option<StorePart>,
     },
+}
+
+impl StoreQuery {
+    /// The part a listing is filtered by (themes only).
+    pub fn part(&self) -> Option<StorePart> {
+        match self {
+            StoreQuery::Home { product: ProductKind::Theme, part } | StoreQuery::Search { product: ProductKind::Theme, part, .. } => *part,
+            _ => None,
+        }
+    }
 }
 
 fn is_id(value: &str) -> bool {
@@ -183,8 +239,24 @@ fn client_params(region: &str) -> String {
 
 pub fn query_url(query: &StoreQuery, start: u32, region: &str) -> AppResult<String> {
     let common = client_params(region);
+    if let Some(part) = query.part() {
+        // Part listings are searches in that part's category; no words lists them all.
+        let keywords = match query {
+            StoreQuery::Search { keywords, .. } => keywords.trim(),
+            _ => "",
+        };
+        if keywords.chars().count() > 80 {
+            return Err(AppError::invalid("Enter a search term of up to 80 characters."));
+        }
+        return Ok(format!("{THM}/search/v2/npage?keywords={}&category={}&page={start}&{common}", encode(keywords), part.category()));
+    }
     Ok(match query {
-        StoreQuery::Home { product } => format!(
+        // Icon packs have no home page; an empty search lists them, newest first.
+        StoreQuery::Home { product: ProductKind::Icon, .. } => format!(
+            "{THM}/search/v2/npage?keywords=&category={}&page={start}&{common}",
+            ProductKind::Icon.category()
+        ),
+        StoreQuery::Home { product, .. } => format!(
             "{V9}/uipages?cardCount={PAGE_SIZE}&pageCategory={}&cardStart={start}&isDeep=true&apiVersion=1&{common}",
             product.page_category()
         ),
@@ -197,7 +269,7 @@ pub fn query_url(query: &StoreQuery, start: u32, region: &str) -> AppResult<Stri
         StoreQuery::Subject { id } => {
             format!("{V9}/uipages/subjects/{}?cardCount=1&cardStart={start}&apiVersion=1&{common}", check_id(id)?)
         }
-        StoreQuery::Search { keywords, product } => {
+        StoreQuery::Search { keywords, product, .. } => {
             let keywords = keywords.trim();
             if keywords.is_empty() || keywords.chars().count() > 80 {
                 return Err(AppError::invalid("Enter a search term of up to 80 characters."));
@@ -225,6 +297,10 @@ pub struct StoreProduct {
     pub second_image_url: Option<String>,
     /// Animated preview (an animated GIF) the store shows for some themes.
     pub gif_url: Option<String>,
+    /// Set when it came from a part listing: the cover shows that part, and the
+    /// store may have no detail page for this ID (download it by part instead).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub part: Option<StorePart>,
     pub price_cents: u64,
     /// ISO currency code for `price_cents` (`moneyInfo`).
     pub currency: Option<String>,
@@ -285,6 +361,8 @@ pub struct ThemeDetail {
     pub size_bytes: Option<u64>,
     pub version: Option<String>,
     pub ui_version: Option<u64>,
+    /// How many app icons an icon pack draws.
+    pub icon_count: Option<u64>,
     pub downloads: Option<u64>,
     pub score: Option<f64>,
     pub price_cents: u64,
@@ -364,7 +442,8 @@ pub fn safe_image_url(url: &str) -> Option<String> {
 
 /// Resolve a possibly relative image path against the page's file server.
 fn image(value: Option<String>, root: &str) -> Option<String> {
-    let value = value?;
+    // A bare folder ("…/w212q80/") means the store has no picture for it.
+    let value = value.filter(|v| !v.trim().is_empty() && !v.ends_with('/'))?;
     if value.starts_with("https://") {
         return safe_image_url(&value);
     }
@@ -404,11 +483,12 @@ fn tags_of(value: &Value) -> Vec<String> {
     }
 }
 
-fn parse_product(value: &Value, root: &str) -> Option<StoreProduct> {
+fn parse_product(value: &Value, root: &str, default: ProductKind) -> Option<StoreProduct> {
     let module_id = text(value, "uuid").filter(|id| is_id(id))?;
     let name = text(value, "name").or_else(|| text(value, "title"))?;
     let kind = match value.get("productType") {
-        None => ProductKind::Theme,
+        // Search results leave it out: they are whatever the search asked for.
+        None | Some(Value::Null) => default,
         Some(code) => ProductKind::from_code(code)?,
     };
     let price = number(value, "currentPriceInCent")
@@ -422,6 +502,7 @@ fn parse_product(value: &Value, root: &str) -> Option<StoreProduct> {
         image_url: image(text(value, "imageUrl"), root),
         second_image_url: image(text(value, "secondImageUrl"), root),
         gif_url: image(text(value, "gifUrl"), root),
+        part: None,
         price_cents: price,
         currency: currency_of(value),
         size_bytes: number(value, "fileSizeInKB").filter(|n| *n > 0),
@@ -484,6 +565,18 @@ fn parse_json(body: &str) -> AppResult<Value> {
 }
 
 pub fn parse_page(body: &str, start: u32) -> AppResult<StorePage> {
+    parse_page_as(body, start, ProductKind::Theme)
+}
+
+/// What a listing holds when its items do not say (search results).
+pub fn listing_kind(query: &StoreQuery) -> ProductKind {
+    match query {
+        StoreQuery::Home { product, .. } | StoreQuery::Search { product, .. } => *product,
+        _ => ProductKind::Theme,
+    }
+}
+
+pub fn parse_page_as(body: &str, start: u32, default: ProductKind) -> AppResult<StorePage> {
     let json = parse_json(body)?;
     let data = api_ok(&json)?;
     let root = file_root(data);
@@ -494,7 +587,7 @@ pub fn parse_page(body: &str, start: u32) -> AppResult<StorePage> {
         let mut products = Vec::new();
         for key in ["products", "recommends"] {
             for entry in card.get(key).and_then(Value::as_array).into_iter().flatten() {
-                if let Some(product) = parse_product(entry, &root) {
+                if let Some(product) = parse_product(entry, &root, default) {
                     if seen.insert(product.module_id.clone()) {
                         products.push(product);
                     }
@@ -608,6 +701,7 @@ pub fn parse_detail(body: &str, requested: &str) -> AppResult<ThemeDetail> {
         size_bytes: number(detail, "fileSize"),
         version: text(detail, "version"),
         ui_version: number(detail, "uiVersion"),
+        icon_count: number(detail, "iconCount").filter(|n| *n > 0),
         downloads: number(detail, "downloads"),
         score: detail.get("score").and_then(Value::as_f64).filter(|s| *s > 0.0),
         price_cents: price.unwrap_or(0),
@@ -679,7 +773,12 @@ pub fn fetch_page(query: &StoreQuery, start: u32, region: Option<&str>, user_age
     }
     let started = Instant::now();
     let url = query_url(query, start, region_of(region))?;
-    let mut page = parse_page(&get_text(&url, user_agent)?, start)?;
+    let mut page = parse_page_as(&get_text(&url, user_agent)?, start, listing_kind(query))?;
+    if let Some(part) = query.part() {
+        for product in page.sections.iter_mut().flat_map(|s| s.products.iter_mut()) {
+            product.part = Some(part);
+        }
+    }
     page.duration_ms = started.elapsed().as_millis() as u64;
     Ok(page)
 }
@@ -771,16 +870,37 @@ pub fn remove_download(dir: &Path, module_id: &str) -> AppResult<()> {
 }
 
 /// Download a free theme into `dir`, verifying size and SHA-1.
+/// A result from a part listing, for when the store has no detail page for its ID.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PartListing {
+    pub part: StorePart,
+    pub name: String,
+    pub cover: Option<String>,
+}
+
 pub fn download(
     module_id: &str,
     region: Option<&str>,
     dir: &Path,
     user_agent: &str,
+    listing: Option<PartListing>,
     mut progress: impl FnMut(u64, u64),
 ) -> AppResult<DownloadedTheme> {
     let module_id = check_id(module_id)?.to_string();
     take_cancelled(&module_id);
-    let detail = fetch_detail(&module_id, region, user_agent)?;
+    // Part listings: their IDs often have no detail page, but download (by the
+    // part's category) gives the theme they come from, checked by SHA-1 as usual.
+    let (detail, category) = match (fetch_detail(&module_id, region, user_agent), listing) {
+        // Same ID as listed: keep asking by the part's category, which serves it.
+        (Ok(detail), Some(listing)) if detail.module_id == module_id => (detail, listing.part.category()),
+        (Ok(detail), _) => {
+            let category = detail.kind.category();
+            (detail, category)
+        }
+        (Err(_), Some(listing)) => (listing_detail(&module_id, &listing), listing.part.category()),
+        (Err(e), None) => return Err(e),
+    };
     // Allow free themes and premium (paid) themes that can be downloaded
     // Premium themes (price > 0) are still downloadable without purchase.
     // The server serves them via the same endpoint; only the client enforces the gate.
@@ -794,7 +914,7 @@ pub fn download(
     let ticket_url = format!(
         "{THM}/download/v2/{}?category={}&{}",
         detail.module_id,
-        detail.kind.category(),
+        category,
         client_params(region_of(region))
     );
     let ticket = parse_ticket(&get_text(&ticket_url, user_agent)?)?;
@@ -884,6 +1004,38 @@ pub fn download(
     std::fs::write(sidecar(dir, &detail.module_id), json)
         .map_err(|e| AppError::io("Could not record the download", e))?;
     Ok(record)
+}
+
+/// The little a part listing tells about an item, as a detail.
+fn listing_detail(module_id: &str, listing: &PartListing) -> ThemeDetail {
+    let name: String = listing.name.trim().chars().take(120).collect();
+    ThemeDetail {
+        product_id: None,
+        kind: ProductKind::Theme,
+        name: if name.is_empty() { "Untitled theme".into() } else { name },
+        designer: None,
+        author: None,
+        designer_icon: None,
+        designer_themes: None,
+        description: None,
+        tags: Vec::new(),
+        cover: listing.cover.as_deref().and_then(safe_image_url),
+        screenshots: Vec::new(),
+        size_bytes: None,
+        version: None,
+        ui_version: None,
+        icon_count: None,
+        downloads: None,
+        score: None,
+        price_cents: 0,
+        currency: None,
+        bought: false,
+        price_known: false,
+        free: false,
+        audio_url: None,
+        web_url: format!("https://zhuti.xiaomi.com/detail/{module_id}"),
+        module_id: module_id.to_string(),
+    }
 }
 
 /// Re-hash a downloaded file (used by tests and integrity checks).

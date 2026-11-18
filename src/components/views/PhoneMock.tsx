@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { api, resourceUrl } from '../../lib/api';
 import type { FileInfo } from '../../lib/types';
-import { argb } from './MamlPreview';
+import { argb, PhoneWidget } from './MamlPreview';
 
 /** Measured on HyperOS, in screen widths. */
 const M = {
@@ -22,6 +22,7 @@ const M = {
   label: 0.105, // label centre below the icon centre
   labelFont: 0.032,
   dockY: 0.2085, // dock icon centres, from the bottom
+  dotsY: 0.36, // page indicator, from the bottom
 };
 
 const SYSTEM_FONT = 'MiSans, "Mi Sans", Roboto, "Segoe UI", system-ui, sans-serif';
@@ -208,22 +209,72 @@ export interface HomeIcon {
   label: string;
 }
 
+export type HomePage = 'home' | 'apps';
+
+/** The theme's page indicator dots (com.miui.home workspace_seekpoint_*), dark ones over light wallpapers. */
+export function usePageDots(files: FileInfo[], dark: boolean) {
+  return useMemo(() => {
+    const rank = (f: FileInfo) => ['xxxhdpi', 'xxhdpi', 'nxhdpi', 'xhdpi', 'hdpi', 'mdpi'].indexOf(f.density ?? '') + 1 || 9;
+    const find = (name: string) =>
+      files
+        .filter((f) => f.component === 'home' && f.kind === 'image' && f.path.toLowerCase().endsWith(`/${name}.png`))
+        .sort((x, y) => rank(x) - rank(y))[0];
+    const on = (dark && find('workspace_seekpoint_highlight_dark')) || find('workspace_seekpoint_highlight');
+    const off = (dark && find('workspace_seekpoint_normal_dark')) || find('workspace_seekpoint_normal');
+    return on && off ? { on, off } : null;
+  }, [files, dark]);
+}
+
+/** How many icon rows fit on a launcher page of this shape (6 on a 20:9 phone). */
+export function gridRows(w: number, h: number) {
+  let rows = 1;
+  while (h - w * (M.lastRow + rows * M.rowPitch) > w * 0.2) rows++;
+  return rows;
+}
+
 /**
- * The theme's icons on the HyperOS launcher grid: 4 columns, rows counted up
- * from the dock, and four dock icons without labels. Only what the theme
- * provides is drawn (wallpaper, icons, label colours, font) — no widgets,
- * search bar or navigation bar, which depend on the phone's own settings.
+ * The theme on the HyperOS launcher grid: 4 columns, rows counted up from the
+ * dock, four dock icons without labels. The first page has the theme's own
+ * clock widget on the top two rows and two rows of icons at the bottom; the
+ * second page is a full page of icons. Only what the theme provides is drawn
+ * (wallpaper, icons, clock widget, page dots, label colours, font).
  */
-export function HomeScreen({ w, h, icons, font, tone, colors, onIcon }: { w: number; h: number; icons: HomeIcon[]; font?: string; tone: Tone; colors: HomeColors; onIcon?: (path: string) => void }) {
+export function HomeScreen({
+  w,
+  h,
+  icons,
+  font,
+  tone,
+  colors,
+  page = 'home',
+  clock,
+  dots,
+  onIcon,
+}: {
+  w: number;
+  h: number;
+  icons: HomeIcon[];
+  font?: string;
+  tone: Tone;
+  colors: HomeColors;
+  page?: HomePage;
+  clock?: string | null;
+  dots?: { on: FileInfo; off: FileInfo } | null;
+  onIcon?: (path: string) => void;
+}) {
   const size = w * M.icon;
+  const rows = gridRows(w, h);
   const dock = icons.slice(0, 4);
-  const grid = icons.slice(4, 20);
-  const rows = 4;
+  const rest = icons.slice(12, 12 + rows * 4);
+  const grid = page === 'home' ? icons.slice(4, 12) : rest.length ? rest : icons.slice(4, 4 + rows * 4);
+  // Centre of a row counted from the top of the page.
+  const rowY = (row: number) => h - w * M.lastRow - (rows - 1 - row) * w * M.rowPitch;
+  const firstRow = page === 'home' ? rows - 2 : 0;
   const label = tone.body ? colors.labelDark : colors.label;
   const shadow = tone.body ? colors.shadowLight : colors.shadow;
   const fontFamily = font ? `${font}, ${SYSTEM_FONT}` : SYSTEM_FONT;
 
-  const iconAt = (icon: HomeIcon, cx: number, cy: number, withLabel: boolean) => {
+  const iconAt = (icon: HomeIcon, cx: number, cy: number, withLabel: boolean, key: string) => {
     const img = <img src={resourceUrl('main', icon.file.path, icon.file.rev)} alt="" draggable={false} style={{ width: size, height: size, display: 'block', objectFit: 'contain' }} />;
     const lbl = withLabel ? (
       <span
@@ -248,12 +299,12 @@ export function HomeScreen({ w, h, icons, font, tone, colors, onIcon }: { w: num
     ) : null;
     const style: CSSProperties = { position: 'absolute', left: cx - size / 2, top: cy - size / 2, width: size, height: size, padding: 0, border: 0, background: 'none', zIndex: 3, pointerEvents: 'auto' };
     return onIcon ? (
-      <button key={icon.file.path} type="button" className="pm-icon pp-click" title={`Change this icon · ${icon.file.path}`} style={style} onClick={() => onIcon(icon.file.path)}>
+      <button key={key} type="button" className="pm-icon pp-click" title={`Change this icon · ${icon.file.path}`} style={style} onClick={() => onIcon(icon.file.path)}>
         {img}
         {lbl}
       </button>
     ) : (
-      <div key={icon.file.path} className="pm-icon" title={icon.file.path} style={style}>
+      <div key={key} className="pm-icon" title={icon.file.path} style={style}>
         {img}
         {lbl}
       </div>
@@ -261,12 +312,29 @@ export function HomeScreen({ w, h, icons, font, tone, colors, onIcon }: { w: num
   };
 
   const nodes: ReactNode[] = [];
-  grid.forEach((icon, i) => {
-    const row = Math.floor(i / 4);
-    const cy = h - w * M.lastRow - (rows - 1 - row) * w * M.rowPitch;
-    nodes.push(iconAt(icon, w * M.cols[i % 4], cy, true));
-  });
-  dock.forEach((icon, i) => nodes.push(iconAt(icon, w * M.cols[i], h - w * M.dockY, false)));
+  if (page === 'home' && clock && rows >= 4) {
+    // The 4x2 widget fills the cells of the top two rows.
+    const height = w * M.rowPitch * 2;
+    nodes.push(
+      <div key="clock" style={{ position: 'absolute', left: 0, top: rowY(0) - (w * M.rowPitch) / 2, width: w, height }}>
+        <PhoneWidget path={clock} width={w} height={height} font={font} />
+      </div>,
+    );
+  }
+  grid.forEach((icon, i) => nodes.push(iconAt(icon, w * M.cols[i % 4], rowY(firstRow + Math.floor(i / 4)), true, `g${i}`)));
+  dock.forEach((icon, i) => nodes.push(iconAt(icon, w * M.cols[i], h - w * M.dockY, false, `d${i}`)));
+  if (dots) {
+    const k = w / 1080;
+    const dot = (f: FileInfo, i: number) => (
+      <img key={i} src={resourceUrl('main', f.path, f.rev)} alt="" draggable={false} style={{ width: (f.width ?? 24) * k, height: (f.height ?? 24) * k, display: 'block' }} />
+    );
+    nodes.push(
+      <div key="dots" aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, top: h - w * M.dotsY, transform: 'translateY(-50%)', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: w * 0.012 }}>
+        {dot(page === 'home' ? dots.on : dots.off, 0)}
+        {dot(page === 'apps' ? dots.on : dots.off, 1)}
+      </div>,
+    );
+  }
 
   return (
     <div style={{ position: 'absolute', inset: 0, fontFamily, pointerEvents: 'none', zIndex: 3 }}>

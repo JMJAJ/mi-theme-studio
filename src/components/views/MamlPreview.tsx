@@ -634,7 +634,7 @@ export const useMamlSelection = create<{ path: string | null; ord: number | null
  * (saved or still being typed), any file it draws, the wallpaper or the clock
  * changes, so every edit shows straight away. `animate` plays the animations.
  */
-export function useMamlScene(componentId: string, opts: { path?: string | null; slot?: Slot; animate?: boolean; ratio?: number } = {}) {
+export function useMamlScene(componentId: string, opts: { path?: string | null; slot?: Slot; animate?: boolean; ratio?: number; aspect?: number } = {}) {
   const slot = opts.slot ?? 'main';
   const snapshot = useStore((s) => (slot === 'ref' ? s.reference : s.project));
   const screen = useStore((s) => (s.selectedSerial ? (s.deviceDetails[s.selectedSerial]?.screenOverride ?? s.deviceDetails[s.selectedSerial]?.screen) : null));
@@ -726,7 +726,7 @@ export function useMamlScene(componentId: string, opts: { path?: string | null; 
     const sw = Number(root.getAttribute('screenWidth')) || 1080;
     const phone = opts.ratio && opts.ratio > 1 ? opts.ratio : screen && screen.width && screen.height ? Math.max(screen.width, screen.height) / Math.min(screen.width, screen.height) : 20 / 9;
     const w = lock ? sw : Number(root.getAttribute('width')) || Number(root.getAttribute('w')) || sw;
-    const h = lock ? Math.round(sw * phone) : Number(root.getAttribute('height')) || Number(root.getAttribute('h')) || Math.round(sw * 0.46);
+    const h = lock ? Math.round(sw * phone) : opts.aspect ? Math.round(w * opts.aspect) : Number(root.getAttribute('height')) || Number(root.getAttribute('h')) || Math.round(sw * 0.46);
     const ctx: Ctx = { vars: systemVars(w, h, now), dir: manifest.path.replace(/manifest\.xml$/i, ''), files, wallpaper: findWallpaper(projectFiles, true), now, t: opts.animate ? t : null, slot, ord: good.ord, unknown: new Set() };
     if (ctx.wallpaper) {
       ctx.vars.set('wall.bmp_width', ctx.wallpaper.width ?? w);
@@ -740,7 +740,7 @@ export function useMamlScene(componentId: string, opts: { path?: string | null; 
     const nodes = renderNodes(root, ctx);
     const hasWallpaper = lock && root.getElementsByTagName('Wallpaper').length > 0;
     return { w, h, lock, nodes, unknown: [...ctx.unknown], hasWallpaper, wallpaper: ctx.wallpaper, slot, vars: ctx.vars };
-  }, [good, manifest, files, now, t, screen, projectFiles, opts.animate, opts.ratio, slot, config]);
+  }, [good, manifest, files, now, t, screen, projectFiles, opts.animate, opts.ratio, opts.aspect, slot, config]);
 
   /** Write a new manifest text: shown at once, then saved (undoable). */
   const apply = async (next: string) => {
@@ -1373,6 +1373,22 @@ export function PhoneLockScreen({ width, height, font, onPick }: { width: number
       </div>
     </div>
   );
+}
+
+/** The theme's 4x2 clock widget (clock_2x4), if it has one. */
+export function useClockWidgetPath() {
+  return useStore((s) => {
+    const files = s.project?.files ?? [];
+    const exact = files.find((f) => f.component === 'widgets' && /^clock_2x4!\/manifest\.xml$/i.test(f.path));
+    return (exact ?? files.find((f) => f.component === 'widgets' && /^clock_2x4!\/.*manifest\.xml$/i.test(f.path)))?.path ?? null;
+  });
+}
+
+/** A home screen widget's layout drawn into its cells (`width` x `height` on screen). */
+export function PhoneWidget({ path, width, height, font }: { path: string; width: number; height: number; font?: string }) {
+  const { scene } = useMamlScene('widgets', { path, aspect: width ? height / width : undefined });
+  if (!scene || scene.lock || !width) return null;
+  return <MamlCanvas scene={scene} scale={width / scene.w} font={font} />;
 }
 
 /** A part's layout scaled to fit its box (Swap dialog previews), main or reference package. */

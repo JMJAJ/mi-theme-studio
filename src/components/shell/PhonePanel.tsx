@@ -2,12 +2,12 @@
 // phone frame, or the real connected phone (screenshot / live mirror).
 import { themeFontFile, usePackageFont } from '../common/themeFont';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Camera, ChevronLeft, ChevronRight, Circle, ExternalLink, Loader2, Lock, MonitorPlay, MonitorSmartphone, Send, Smartphone, Sparkles, Square, Usb, X } from 'lucide-react';
+import { Camera, ChevronLeft, ChevronRight, Circle, ExternalLink, LayoutGrid, Loader2, Lock, MonitorPlay, MonitorSmartphone, Send, Smartphone, Sparkles, Square, Usb, X } from 'lucide-react';
 import { resourceUrl, screenshotUrl } from '../../lib/api';
 import { fileName } from '../../lib/paths';
 import { findWallpaper, pickIcons, useClock } from '../views/PreviewView';
-import { PhoneLockScreen, useHasLockLayout, useMamlSelection } from '../views/MamlPreview';
-import { HomeScreen, StatusBar, SystemLockClock, useHomeColors, useWallpaperTone } from '../views/PhoneMock';
+import { PhoneLockScreen, useClockWidgetPath, useHasLockLayout, useMamlSelection } from '../views/MamlPreview';
+import { HomeScreen, StatusBar, SystemLockClock, useHomeColors, usePageDots, useWallpaperTone } from '../views/PhoneMock';
 import { TryOnButton } from '../common/TryOnButton';
 import { attachCanvas, startStream, stopStream, streamKey, streamScroll, streamTouch, useMirrorStream } from '../../state/mirrorStream';
 import * as A from '../../state/actions';
@@ -15,7 +15,7 @@ import { updateLayout, useStore } from '../../state/store';
 import { useDeviceSummary } from './deviceSummary';
 
 type Mode = 'theme' | 'live';
-type Screen = 'lock' | 'home' | 'previews';
+type Screen = 'lock' | 'home' | 'apps' | 'previews';
 
 function useBox() {
   const ref = useRef<HTMLDivElement>(null);
@@ -61,6 +61,8 @@ function ThemeScreen({ screen, box, ratio, previewIndex }: { screen: Screen; box
   const lock = screen === 'lock';
   const wallpaper = findWallpaper(files, lock);
   const tone = useWallpaperTone(wallpaper, ratio);
+  const clockWidget = useClockWidgetPath();
+  const dots = usePageDots(files, tone.body);
 
   if (screen === 'previews') {
     const current = previews[Math.min(previewIndex, previews.length - 1)];
@@ -108,7 +110,7 @@ function ThemeScreen({ screen, box, ratio, previewIndex }: { screen: Screen; box
           )}
         </>
       ) : (
-        <HomeScreen w={w} h={h} icons={icons} font={themeFont} tone={tone} colors={homeColors} onIcon={openIcon} />
+        <HomeScreen w={w} h={h} icons={icons} font={themeFont} tone={tone} colors={homeColors} page={screen === 'apps' ? 'apps' : 'home'} clock={clockWidget} dots={dots} onIcon={openIcon} />
       )}
     </Frame>
   );
@@ -190,7 +192,8 @@ export function PhonePanel() {
   // Follow the part being edited so changes show on the right screen.
   const part = useStore((s) => s.part);
   useEffect(() => {
-    if (part === 'icons' || part === 'home' || part === 'wallpapers') setScreen('home');
+    if (part === 'icons') setScreen('apps');
+    else if (part === 'home' || part === 'wallpapers' || part === 'widgets') setScreen('home');
     else if (part === 'lockscreen') setScreen('lock');
     else if (part === 'previews') setScreen('previews');
   }, [part]);
@@ -246,6 +249,9 @@ export function PhonePanel() {
             </button>
             <button role="tab" aria-selected={screen === 'home'} onClick={() => setScreen('home')}>
               <MonitorSmartphone /> Home
+            </button>
+            <button role="tab" aria-selected={screen === 'apps'} onClick={() => setScreen('apps')} title="The second launcher page: a full grid of the theme's icons">
+              <LayoutGrid /> Apps
             </button>
             <button role="tab" aria-selected={screen === 'previews'} onClick={() => setScreen('previews')} disabled={!previews.length}>
               Previews{previews.length ? ` ${previews.length}` : ''}

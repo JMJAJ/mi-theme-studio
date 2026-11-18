@@ -9,8 +9,8 @@ import * as A from '../../state/actions';
 import { useDeviceSummary } from '../shell/deviceSummary';
 import { MirrorButton } from '../common/MirrorButton';
 import { themeFontFile, usePackageFont } from '../common/themeFont';
-import { PhoneLockScreen, useHasLockLayout } from './MamlPreview';
-import { HomeScreen, StatusBar, SystemLockClock, useHomeColors, useWallpaperTone } from './PhoneMock';
+import { PhoneLockScreen, useClockWidgetPath, useHasLockLayout } from './MamlPreview';
+import { HomeScreen, StatusBar, SystemLockClock, useHomeColors, usePageDots, useWallpaperTone, type HomePage } from './PhoneMock';
 
 /** The current time, refreshed every 15 seconds so mock-up clocks keep up. */
 export function useClock() {
@@ -79,10 +79,13 @@ export function pickIcons(files: FileInfo[]) {
     }
   }
   for (const [key, file] of byStem) {
-    if (matched.length >= 24) break;
+    if (matched.length >= 40) break;
     if (!used.has(key) && key.startsWith('com.')) {
-      const last = key.split('.').slice(-1)[0];
-      matched.push({ file, label: last.charAt(0).toUpperCase() + last.slice(1) });
+      // A readable name from the package, once per name, skipping system pieces that are not apps.
+      const last = key.split('.').slice(-1)[0].replace(/\d+d?$/i, '');
+      const label = last.charAt(0).toUpperCase() + last.slice(1);
+      if (last.length < 3 || /provider|telephony|service|^ui$|^res$|overlay|activity/i.test(last) || matched.some((m) => m.label.toLowerCase() === label.toLowerCase())) continue;
+      matched.push({ file, label });
       used.add(key);
     }
   }
@@ -165,7 +168,9 @@ export function PreviewView() {
   else res = PRESETS.find((p) => p.id === profile) ?? PRESETS[0];
 
   const pad = frame ? 22 : 0;
-  const fit = Math.min((stageSize.h - 110) / (res.h + pad * 4), (stageSize.w - 80) / (res.w + pad * 4));
+  // The home screen shows both launcher pages side by side, like theme store pictures.
+  const pages = screen === 'home' ? 2 : 1;
+  const fit = Math.min((stageSize.h - 110) / (res.h + pad * 4), (stageSize.w - 80 - (pages - 1) * 32) / (pages * (res.w + pad * 4)));
   const scale = zoom === 'fit' ? Math.max(0.08, fit) : zoom;
   const screenW = res.w * scale;
   const screenH = res.h * scale;
@@ -176,11 +181,14 @@ export function PreviewView() {
   const hasLockLayout = useHasLockLayout();
   const homeColors = useHomeColors(files);
   const tone = useWallpaperTone(wallpaper, res.h / res.w);
+  const clockWidget = useClockWidgetPath();
+  const dots = usePageDots(files, tone.body);
   const now = useClock();
   const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
   let label: React.ReactNode;
   let content: React.ReactNode;
+  let homePage: ((page: HomePage) => React.ReactNode) | null = null;
   if (screen === 'screenshot') {
     if (shot) {
       content = <img className="fill" src={screenshotUrl(shot.id)} alt="Device screenshot" style={{ objectFit: 'contain' }} />;
@@ -228,17 +236,30 @@ export function PreviewView() {
             {!realLock && <SystemLockClock w={screenW} now={now} font={themeFont} dark={tone.top} />}
           </>
         ) : (
-          <HomeScreen w={screenW} h={screenH} icons={icons} font={themeFont} tone={tone} colors={homeColors} />
+          <HomeScreen w={screenW} h={screenH} icons={icons} font={themeFont} tone={tone} colors={homeColors} clock={clockWidget} dots={dots} />
         )}
       </>
     );
+    if (!lock) {
+      homePage = (page) => (
+        <>
+          {wallpaper ? (
+            <img className="fill" src={resourceUrl('main', wallpaper.path, wallpaper.rev)} alt="" />
+          ) : (
+            <div className="fill" style={{ position: 'absolute', inset: 0, background: 'linear-gradient(160deg, #2b2f3a, #141519)' }} />
+          )}
+          <StatusBar w={screenW} left={time} font={themeFont} dark={tone.top} />
+          <HomeScreen w={screenW} h={screenH} icons={icons} font={themeFont} tone={tone} colors={homeColors} page={page} clock={clockWidget} dots={dots} />
+        </>
+      );
+    }
     label = realLock ? (
       <span className="badge badge-info" title="The theme's lock screen manifest.xml laid out for this screen size, with the status bar on top. Weather shows sample values; notifications, music and charging states only run on the phone.">
         Lock screen · as on the phone
       </span>
     ) : (
       <span className="badge badge-info" title="Theme wallpaper, icons, launcher label colours and font on the HyperOS launcher grid, measured from the phone. Only what the theme contains is drawn.">
-        {lock ? 'Lock screen · system clock (theme has no lock screen layout)' : `Home screen · ${Math.min(20, icons.length)} theme icons`}
+        {lock ? 'Lock screen · system clock (theme has no lock screen layout)' : `Home screen · first page${clockWidget ? ' with the theme clock' : ''} and a page of apps`}
       </span>
     );
   }
@@ -293,12 +314,25 @@ export function PreviewView() {
         </div>
         <div ref={stage} className="preview-stage">
           <div style={{ position: 'relative' }}>
-            <div className={`phone ${frame ? '' : 'no-frame'}`} style={{ ['--s' as string]: s }}>
-              {frame && screen !== 'screenshot' && screen !== 'previews' && <div className="phone-camera" />}
-              <div className="phone-screen" style={{ width: screenW, height: screenH }}>
-                {content}
+            {homePage ? (
+              <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start' }}>
+                {(['home', 'apps'] as const).map((page) => (
+                  <div key={page} className={`phone ${frame ? '' : 'no-frame'}`} style={{ ['--s' as string]: s }}>
+                    {frame && <div className="phone-camera" />}
+                    <div className="phone-screen" style={{ width: screenW, height: screenH }}>
+                      {homePage(page)}
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
+            ) : (
+              <div className={`phone ${frame ? '' : 'no-frame'}`} style={{ ['--s' as string]: s }}>
+                {frame && screen !== 'screenshot' && screen !== 'previews' && <div className="phone-camera" />}
+                <div className="phone-screen" style={{ width: screenW, height: screenH }}>
+                  {content}
+                </div>
+              </div>
+            )}
             <div className="preview-label">{label}</div>
           </div>
         </div>

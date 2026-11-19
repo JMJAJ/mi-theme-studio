@@ -4,10 +4,11 @@
 // Lock screen page you can click any piece to edit it, or drag it to move it.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { create } from 'zustand';
-import { AlertTriangle, ArrowLeftRight, BatteryCharging, ClipboardPaste, Copy, CopyPlus, FileArchive, Info, Loader2, Package, PackagePlus, Pause, Play, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeftRight, BatteryCharging, CalendarDays, Circle as CircleIcon, CircleDashed, Clock, ClipboardPaste, Copy, CopyPlus, Footprints, FileArchive, Image as ImageIcon, Info, Loader2, Minus, Package, PackagePlus, Pause, Play, Plus, RectangleHorizontal, Sparkles, Trash2, Type, X, Zap, CloudSun, BatteryMedium } from 'lucide-react';
 import { api, errorMessage, resourceUrl } from '../../lib/api';
 import { evalNumber, evalString, evaluate, formatDate, formatWithParas, systemVars, type Vars } from '../../lib/maml';
-import { insertBlock, pageGroupOrdinal, type LockBlock } from '../../lib/mamlBlocks';
+import { BASIC_BLOCKS, LOCK_BLOCKS, imageBlock, insertBlock, pageGroupOrdinal, type LockBlock } from '../../lib/mamlBlocks';
+import { openGuide } from '../../state/guide';
 import { BLOCK_IDS } from '../../lib/mamlRecipes';
 import { SAMPLE_COLUMNS } from '../../lib/sampleData';
 import { usePendingBlock } from '../../state/guide';
@@ -1187,6 +1188,30 @@ export function MamlCanvas({
     return () => window.removeEventListener('keydown', onKey);
   });
 
+  /** Right-button drag on a handle moves the selection, so tiny pieces covered by their handles can still be dragged. */
+  const rightDrag = useRef(false);
+  const handleMove = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    rightDrag.current = true;
+    const canvas = ref.current;
+    if (!canvas || !onEdit) return;
+    const nodes = all.map(nodeOf).filter((n): n is HTMLElement => !!n);
+    if (!nodes.length) return;
+    drag.current = { kind: 'move', ord: all[0], ords: all, nodes, x: e.clientX, y: e.clientY, moved: false, box: unionBox(nodes.map((n) => visibleBox(n, canvas, scale))), snaps: snapTargets(canvas, nodes, scale, scene.w, scene.h), dx: 0, dy: 0 };
+    canvas.setPointerCapture(e.pointerId);
+  };
+  const handleDown = (e: React.PointerEvent, left: () => void) => {
+    if (e.button === 2) handleMove(e);
+    else if (e.button === 0) left();
+    else e.stopPropagation();
+  };
+  // No context menu after a right-drag on a handle.
+  const noMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   const startResize = (handle: Handle, e: React.PointerEvent) => {
     e.stopPropagation();
     const canvas = ref.current;
@@ -1236,6 +1261,10 @@ export function MamlCanvas({
           ? (e) => {
               e.preventDefault();
               const canvas = ref.current;
+              if (rightDrag.current) {
+                rightDrag.current = false;
+                return;
+              }
               if (!canvas) return;
               const ranked = piecesRanked(canvas, e.clientX, e.clientY);
               const under = ranked.map((p) => Number(p.n.dataset.mk));
@@ -1465,8 +1494,8 @@ export function MamlCanvas({
           {multi && !live && <span className="maml-count">{all.length}</span>}
           {onEdit && !live && (
             <>
-              {canResize && HANDLES.filter((h) => edgeHandles || h.length === 2).map((h) => <span key={h} className={`maml-h h-${h}`} onPointerDown={(e) => startResize(h, e)} />)}
-              {!multi && <span className="maml-rot" title="Rotate (Shift: 15° steps)" onPointerDown={startRotate} />}
+              {canResize && HANDLES.filter((h) => edgeHandles || h.length === 2).map((h) => <span key={h} className={`maml-h h-${h}`} onPointerDown={(e) => handleDown(e, () => startResize(h, e))} onContextMenu={noMenu} />)}
+              {!multi && <span className="maml-rot" title="Drag to rotate (Shift: 15° steps) · right-drag to move" onPointerDown={(e) => handleDown(e, () => startRotate(e))} onContextMenu={noMenu} />}
             </>
           )}
         </div>
@@ -1749,6 +1778,55 @@ export function MamlPreview({ componentId }: { componentId: string }) {
     void live.apply(next).then(() => select(done.ord));
   };
   addRef.current = addBlock;
+  /** Pick a picture on the computer, copy it next to the manifest and place it on the page. */
+  const addPicture = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/png,image/jpeg,image/webp';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file || !scene) return;
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        const bitmap = await createImageBitmap(file);
+        const k = scene.w / 1080;
+        // At most 60% of the width or 40% of the height, in 1080-wide units.
+        const fit = Math.min(1, (648 * k) / bitmap.width, (scene.h * 0.4) / bitmap.height);
+        const w = Math.max(1, Math.round((bitmap.width / k) * fit));
+        const h = Math.max(1, Math.round((bitmap.height / k) * fit));
+        bitmap.close();
+        const taken = mainFiles().sizes;
+        const ext = (file.name.split('.').pop() ?? 'png').toLowerCase();
+        const stem = file.name.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '') || 'picture';
+        let rel = `mts_images/${stem}.${ext}`;
+        for (let n = 2; taken.has(rel); n++) rel = `mts_images/${stem}_${n}.${ext}`;
+        const ok = await A.writeGenerated([{ path: dir + rel, bytes }], `Add picture ${file.name}`);
+        if (!ok) return;
+        addBlock(imageBlock(rel, w, h));
+      } catch (e) {
+        toast('error', `Could not add “${file.name}”`, errorMessage(e));
+      }
+    };
+    input.click();
+  };
+  const BASIC_ICON: Record<string, typeof Type> = { text: Type, clock: Clock, date: CalendarDays, level: BatteryMedium, rect: RectangleHorizontal, circle: CircleIcon, ring: CircleDashed, line: Minus };
+  const WIDGET_ICON: Record<string, typeof Type> = { battery: BatteryMedium, weather: CloudSun, steps: Footprints, charging: Zap };
+  const openAdd = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const basics = BASIC_BLOCKS.filter((b) => b.id !== 'level' && b.id !== 'clock' && b.id !== 'date');
+    const info = BASIC_BLOCKS.filter((b) => b.id === 'clock' || b.id === 'date' || b.id === 'level');
+    openContextMenu({ clientX: r.left, clientY: r.bottom + 4, preventDefault: () => {} }, [
+      { heading: `Add to ${pageLabel}` },
+      ...basics.map((b) => ({ label: b.label, icon: BASIC_ICON[b.id], onSelect: () => addBlock(b) })),
+      { label: 'Picture from computer…', icon: ImageIcon, onSelect: addPicture },
+      { heading: 'Live info' },
+      ...info.map((b) => ({ label: b.label, icon: BASIC_ICON[b.id], onSelect: () => addBlock(b) })),
+      { heading: 'Widgets' },
+      ...LOCK_BLOCKS.map((b) => ({ label: b.label, icon: WIDGET_ICON[b.id] ?? Package, onSelect: () => addBlock(b) })),
+      'separator',
+      { label: 'More widgets in the recipe gallery…', icon: Sparkles, onSelect: () => openGuide('recipes') },
+    ]);
+  };
   const dir = manifest.path.replace(/manifest\.xml$/i, '');
   const pageLabel = pages && pageValue !== null ? `page ${pages.values.indexOf(pageValue) + 1}` : 'the lock screen';
   const mainFiles = () => slotReader(project.files, 'main', dir);
@@ -1957,6 +2035,9 @@ export function MamlPreview({ componentId }: { componentId: string }) {
         )}
         {scene?.lock && (
           <>
+            <button className="btn btn-sm btn-primary" onClick={openAdd} title="Add text, a clock, shapes, a picture or a widget to this page">
+              <Plus /> Add
+            </button>
             <button className="btn btn-sm" aria-pressed={invOpen} onClick={() => toggleInv(!invOpen)} title="Pieces you saved from any theme, and working widgets (battery, weather, steps, charging). Click one to add it to this page.">
               <Package /> Inventory
             </button>

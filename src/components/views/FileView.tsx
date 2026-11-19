@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
-import { xml } from '@codemirror/lang-xml';
+import { xmlAssist } from './mamlCodeAssist';
 import { Decoration, EditorView, keymap, type DecorationSet } from '@codemirror/view';
 import { StateEffect, StateField } from '@codemirror/state';
 import { openSearchPanel } from '@codemirror/search';
@@ -157,7 +157,17 @@ const editorTheme = EditorView.theme(
     '.cm-panels input, .cm-panels button': { fontFamily: 'var(--font)' },
     '.cm-searchMatch': { backgroundColor: 'rgba(214,160,61,0.3)' },
     '.cm-matchingBracket': { backgroundColor: 'rgba(255,255,255,0.08)', outline: '1px solid var(--line-strong)' },
-    '.cm-tooltip': { backgroundColor: 'var(--bg-3)', border: '1px solid var(--line-strong)' },
+    '.cm-tooltip': { backgroundColor: 'var(--bg-3)', border: '1px solid var(--line-strong)', borderRadius: '8px', overflow: 'hidden' },
+    '.cm-tooltip-autocomplete > ul': { maxHeight: '18em' },
+    '.cm-tooltip-autocomplete > ul > li': { padding: '3px 8px', fontFamily: 'var(--mono)', fontSize: '12.5px' },
+    '.cm-tooltip-autocomplete > ul > li[aria-selected]': { backgroundColor: 'var(--accent-soft)', color: 'var(--text)' },
+    '.cm-completionDetail': { color: 'var(--muted)', fontStyle: 'normal', marginLeft: '10px', fontFamily: 'var(--font)', fontSize: '12px' },
+    '.cm-completionInfo': { fontFamily: 'var(--font)', fontSize: '12px', padding: '6px 9px', maxWidth: '300px' },
+    '.cm-lintRange-error': { backgroundImage: 'none', textDecoration: 'underline wavy var(--err, #f87171)', textUnderlineOffset: '3px' },
+    '.cm-lintRange-warning': { backgroundImage: 'none', textDecoration: 'underline wavy var(--warn, #d6a03d)', textUnderlineOffset: '3px' },
+    '.cm-tooltip-lint': { padding: '0' },
+    '.cm-diagnostic-error': { borderLeft: '3px solid var(--err, #f87171)' },
+    '.cm-diagnostic-warning': { borderLeft: '3px solid var(--warn, #d6a03d)' },
   },
   { dark: true },
 );
@@ -189,7 +199,7 @@ const revealLineField = StateField.define<DecorationSet>({
 });
 
 // A stable object: a new one on every render makes the editor reconfigure, which closes the find bar.
-const BASIC_SETUP = { foldGutter: true, highlightActiveLine: true, autocompletion: false } as const;
+const BASIC_SETUP = { foldGutter: true, highlightActiveLine: true, autocompletion: true, closeBrackets: true, bracketMatching: true, highlightSelectionMatches: true } as const;
 
 function xmlError(text: string): string | null {
   const doc = new DOMParser().parseFromString(text.replace(/^﻿/, ''), 'application/xml');
@@ -204,6 +214,8 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState(draft?.text ?? '');
   const isXml = file.kind === 'xml';
+  // A lock screen / widget layout gets the MAML autocomplete, hover help and formula checks.
+  const isMaml = isXml && (/(^|\/)manifest\.xml$/i.test(file.path) || /<(Lockscreen|Widget|Clock)[\s>]/.test((draft?.text ?? loaded?.text ?? '').slice(0, 4000)));
   const readOnly = slot === 'ref';
   const view = useRef<EditorView | null>(null);
   const [editor, setEditor] = useState<EditorView | null>(null);
@@ -278,7 +290,7 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
 
   const extensions = useMemo(
     () => [
-      ...(isXml ? [xml()] : []),
+      ...(isXml ? xmlAssist(isMaml, !readOnly) : []),
       editorTheme,
       highlight,
       EditorView.lineWrapping,
@@ -302,7 +314,7 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
         },
       ]),
     ],
-    [isXml, file.path],
+    [isXml, isMaml, readOnly, file.path],
   );
 
   // A stable change handler: the editor component reconfigures itself whenever

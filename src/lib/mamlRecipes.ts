@@ -2,7 +2,7 @@
 // (order, colour, words…). Each recipe turns its settings into a LockBlock, so
 // it is drawn by the real preview and inserted exactly like a built-in widget.
 
-import { LOCK_BLOCKS, STEPS_BINDER, WEATHER_BINDER, type LockBlock } from './mamlBlocks';
+import { BASIC_BLOCKS, LOCK_BLOCKS, STEPS_BINDER, WEATHER_BINDER, type LockBlock } from './mamlBlocks';
 
 export type ParamValue = string | number | boolean;
 export type Params = Record<string, ParamValue>;
@@ -653,7 +653,7 @@ ${letters.map((l, i) => `    <Text name="${name}_d${i}" x="${60 + i * 120}" y="5
 ];
 
 /** Every block id the editor adds (recipes and built-in widgets), for stacking new ones below earlier ones. */
-export const BLOCK_IDS = new Set([...RECIPES.map((r) => r.id), ...LOCK_BLOCKS.map((b) => b.id)]);
+export const BLOCK_IDS = new Set([...RECIPES.map((r) => r.id), ...LOCK_BLOCKS.map((b) => b.id), ...BASIC_BLOCKS.map((b) => b.id), 'image']);
 
 /** The code a recipe inserts, as it will read in manifest.xml. */
 export function recipeCode(r: Recipe, p: Params) {

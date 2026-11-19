@@ -90,6 +90,84 @@ export const LOCK_BLOCKS: LockBlock[] = [
   },
 ];
 
+/**
+ * The basic pieces the Add menu puts on the page: one element each, ready to
+ * restyle. `{x}` is the left edge of a centred box, `{cx}` / `{cy}` its centre,
+ * `{x1}` its right edge and `{y}` its top.
+ */
+export const BASIC_BLOCKS: LockBlock[] = [
+  {
+    id: 'text',
+    label: 'Text',
+    hint: 'A line of words you type',
+    w: 480,
+    h: 80,
+    body: (n) => `<Text name="${n}" x="{cx}" y="{y}" align="center" size="64" color="#ffffffff" text="New text"/>`,
+  },
+  {
+    id: 'clock',
+    label: 'Clock',
+    hint: 'The time as text; follows the phone’s 12/24-hour setting',
+    w: 600,
+    h: 240,
+    body: (n) => `<DateTime name="${n}" x="{cx}" y="{y}" align="center" size="200" bold="true" color="#ffffffff" formatExp="ifelse(#time_format,'HH:mm','h:mm')"/>`,
+  },
+  {
+    id: 'date',
+    label: 'Date',
+    hint: 'Weekday and date, e.g. Thursday, November 19',
+    w: 640,
+    h: 60,
+    body: (n) => `<DateTime name="${n}" x="{cx}" y="{y}" align="center" size="48" color="#e6ffffff" format="EEEE, MMMM d"/>`,
+  },
+  {
+    id: 'level',
+    label: 'Battery %',
+    hint: 'The battery level as a number',
+    w: 200,
+    h: 60,
+    body: (n) => `<Text name="${n}" x="{cx}" y="{y}" align="center" size="44" color="#ffffffff" format="%d%%" paras="#battery_level"/>`,
+  },
+  {
+    id: 'rect',
+    label: 'Rectangle',
+    hint: 'A box with rounded corners, for cards and backgrounds',
+    w: 480,
+    h: 280,
+    body: (n) => `<Rectangle name="${n}" x="{x}" y="{y}" w="480" h="280" cornerRadius="40" fillColor="#40ffffff"/>`,
+  },
+  {
+    id: 'circle',
+    label: 'Circle',
+    hint: 'A filled circle (x / y is its centre)',
+    w: 240,
+    h: 240,
+    body: (n) => `<Circle name="${n}" x="{cx}" y="{cy}" r="120" fillColor="#40ffffff"/>`,
+  },
+  {
+    id: 'ring',
+    label: 'Ring',
+    hint: 'A circle outline; change sweep for a progress arc',
+    w: 300,
+    h: 300,
+    body: (n) => `<Arc name="${n}" x="{x}" y="{y}" w="300" h="300" startAngle="-90" sweep="360" strokeColor="#ccffffff" weight="16" strokeAlign="inner" cap="round"/>`,
+  },
+  {
+    id: 'line',
+    label: 'Line',
+    hint: 'A straight divider',
+    w: 600,
+    h: 6,
+    body: (n) => `<Line name="${n}" x="{x}" y="{y}" x1="{x1}" y1="{y}" weight="6" strokeColor="#99ffffff"/>`,
+  },
+];
+
+/** An Image piece for a picture the person added (path relative to the manifest folder; size in 1080 units). */
+export function imageBlock(src: string, w: number, h: number): LockBlock {
+  const attr = src.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  return { id: 'image', label: 'Picture', hint: src, w, h, body: (n) => `<Image name="${n}" x="{x}" y="{y}" w="${w}" h="${h}" src="${attr}"/>` };
+}
+
 const TOKEN = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<![A-Za-z][^>]*>|<\/[^>]*>|<([A-Za-z_][\w.:-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g;
 
 /** Where the end tag of the element with this document-order index starts. */
@@ -169,7 +247,9 @@ export function insertBlock(text: string, block: LockBlock, target: number, widt
   const name = `${block.id}_${n}`;
   const k = width / 1080;
   const scaled = block.body(name).replace(/\b(x|y|w|h|r|size|cornerRadius|weight|pivotX|pivotY)="(\d+(?:\.\d+)?)"/g, (_m, a: string, v: string) => `${a}="${Math.round(Number(v) * k)}"`);
-  const body = scaled.replace('{x}', String(Math.round((width - block.w * k) / 2))).replace('{y}', String(Math.round(y)));
+  const left = (width - block.w * k) / 2;
+  const at: Record<string, number> = { x: left, cx: width / 2, x1: left + block.w * k, y, cy: y + (block.h * k) / 2 };
+  const body = scaled.replace(/\{(x|cx|x1|y|cy)\}/g, (_m, key: string) => String(Math.round(at[key])));
   // Literal sizes inside formulas (520*#battery_level) scale too.
   const sized = k === 1 ? body : body.replace(/="(\d+)\*/g, (_m, v: string) => `="${Math.round(Number(v) * k)}*`);
   const placed = insertInto(text, target, sized);
@@ -180,7 +260,7 @@ export function insertBlock(text: string, block: LockBlock, target: number, widt
     if (!added) return null;
     out = added.text;
   }
-  const ord = ordinalAt(out, out.indexOf(`<Group name="${name}"`));
+  const ord = ordinalAt(out, out.search(new RegExp(`<[A-Za-z]+ name="${name}"`)));
   return { text: out, ord };
 }
 

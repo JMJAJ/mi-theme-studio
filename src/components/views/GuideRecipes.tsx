@@ -1,17 +1,20 @@
 // The Guide's recipe gallery: working lock screen widgets drawn live by the
 // editor's own preview, set up with plain controls, then added to the theme's
 // lock screen in one click. The code they write is shown so people learn it.
-import { useMemo, useState } from 'react';
-import { Check, Copy, Plus, RotateCcw, Search, X } from 'lucide-react';
+import { useCallback, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { Check, Copy, Move, Plus, RotateCcw, Search, X } from 'lucide-react';
 import { evalNumber } from '../../lib/maml';
-import type { LockBlock } from '../../lib/mamlBlocks';
-import { RECIPE_COLORS, RECIPES, recipeCode, type Params, type Recipe } from '../../lib/mamlRecipes';
+import { insertBlock, type LockBlock } from '../../lib/mamlBlocks';
+import { blockCode, defaultSpot, RECIPE_COLORS, RECIPES, type Params, type Recipe } from '../../lib/mamlRecipes';
+import { countElements } from '../../lib/playground';
 import type { FileInfo } from '../../lib/types';
 import { addToLockScreen } from '../../state/guide';
 import { useStore } from '../../state/store';
 import { Splitter } from '../common/Splitter';
 import { XmlCode } from './GuideCode';
-import { buildScene, MamlCanvas } from './MamlPreview';
+import { AlignToggle, buildScene, MamlCanvas, ThemePhone, useHasLockLayout } from './MamlPreview';
+import { PhoneSwitch, usePhoneMode } from './PhoneSwitch';
+import { applyMoves, usePhoneMoves } from './PhoneMoves';
 
 /** What the simulator controls set: the moment, battery, weather, messages and alarm. */
 interface Sim {
@@ -56,30 +59,62 @@ function overrides(sim: Sim): Record<string, number | string> {
 const NO_FILES = new Map<string, FileInfo>();
 
 /** A block drawn by the real preview engine, fitted into width × height. */
-function BlockView({ block, sim, width, height }: { block: LockBlock; sim: Sim; width: number; height: number }) {
+function BlockView({ block, sim, width, height, mv }: { block: LockBlock; sim: Sim; width: number; height: number; mv?: ReturnType<typeof usePhoneMoves> }) {
+  const moves = mv?.moves;
   const scene = useMemo(() => {
     const body = block.body(`${block.id}_1`).replace('{x}', '0').replace('{y}', '0');
-    const xml = `<Lockscreen version="1" screenWidth="1080">${block.binder ? `<VariableBinders>${block.binder.xml}</VariableBinders>` : ''}${body}</Lockscreen>`;
+    const plain = `<Lockscreen version="1" screenWidth="1080">${block.binder ? `<VariableBinders>${block.binder.xml}</VariableBinders>` : ''}${body}</Lockscreen>`;
+    const xml = moves ? applyMoves(plain, moves) : plain;
     const doc = new DOMParser().parseFromString(xml, 'text/xml');
     if (doc.querySelector('parsererror')) return null;
     const elements = Array.from(doc.getElementsByTagName('*'));
     try {
       const built = buildScene(doc, new Map(elements.map((e, i) => [e, i])), { phone: 20 / 9, dir: '', files: NO_FILES, now: simNow(sim), t: null, slot: 'main', overrides: overrides(sim) });
       const vis = doc.querySelector('Group')?.getAttribute('visibility');
-      return { built, hidden: !!vis && evalNumber(vis, built.vars, 1) <= 0 };
+      return { built, elements, hidden: !!vis && evalNumber(vis, built.vars, 1) <= 0 };
     } catch {
       return null;
     }
-  }, [block, sim]);
+  }, [block, sim, moves]);
   const k = Math.min((width * 0.9) / block.w, (height * 0.82) / block.h, 0.6);
   return (
-    <div className="rc-view" style={{ width, height }}>
+    <div className={`rc-view ${mv ? 'is-movable maml-movable' : ''}`} style={{ width, height }}>
       {scene && !scene.hidden && (
         <div style={{ position: 'absolute', left: (width - block.w * k) / 2, top: (height - block.h * k) / 2, width: scene.built.w * k, height: scene.built.h * k }}>
-          <MamlCanvas scene={scene.built} scale={k} />
+          <MamlCanvas scene={scene.built} scale={k} {...mv?.canvas(scene.elements)} />
         </div>
       )}
       {scene?.hidden && <span className="rc-hidden">Hidden right now · change the simulator above</span>}
+    </div>
+  );
+}
+
+/** Where the widget sits on the theme (its group's ordinal and top-left corner), before any drag. */
+interface Place {
+  ord: number;
+  x: number;
+  y: number;
+}
+
+/** The widget on the theme's own lock screen, a bit below the middle, for a look (nothing is saved). */
+function OnTheme({ block, sim, width, mv, place }: { block: LockBlock; sim: Sim; width: number; mv: ReturnType<typeof usePhoneMoves>; place: MutableRefObject<Place | null> }) {
+  const moves = mv.moves;
+  const transform = useCallback(
+    (text: string) => {
+      const sw = Number(/<Lockscreen[^>]*screenWidth="(\d+)"/.exec(text)?.[1]) || 1080;
+      const y = Math.round(sw * (20 / 9) * 0.42);
+      const done = insertBlock(text, block, 0, sw, y);
+      if (!done) return text;
+      place.current = { ord: done.ord, x: Math.round((sw - (block.w * sw) / 1080) / 2), y };
+      return applyMoves(done.text, moves);
+    },
+    [block, moves, place],
+  );
+  const now = useMemo(() => simNow(sim), [sim]);
+  const over = useMemo(() => overrides(sim), [sim]);
+  return (
+    <div className="rc-theme" style={{ height: Math.round(Math.min(620, Math.max(320, width * 1.3))) }}>
+      <ThemePhone transform={transform} now={now} overrides={over} pick={mv.canvas} />
     </div>
   );
 }
@@ -161,8 +196,30 @@ export function RecipeGallery() {
   const recipe = RECIPES.find((r) => r.id === selected) ?? RECIPES[0];
   const params = all[recipe.id];
   const blocks = useMemo(() => Object.fromEntries(RECIPES.map((r) => [r.id, r.block(all[r.id])])), [all]);
-  const code = recipeCode(recipe, params);
   const set = (patch: Partial<Sim>) => setSim((s) => ({ ...s, ...patch }));
+  const hasLock = useHasLockLayout();
+  const [mode, setMode] = usePhoneMode();
+  const onTheme = mode === 'theme' && hasLock;
+  const mv = usePhoneMoves(`${recipe.id}|${onTheme}`);
+  const place = useRef<Place | null>(null);
+  // What was dragged on the phone goes into the code and into what is added: the
+  // widget's own spot, and any piece moved inside it. Pieces of the theme only move in the drawing.
+  const widget = useMemo(() => {
+    const b = blocks[recipe.id];
+    const root = onTheme ? (place.current?.ord ?? -1) : 1 + (b.binder ? 1 + countElements(b.binder.xml) : 0);
+    const size = countElements(b.body(`${b.id}_1`));
+    const inside: Record<number, [number, number]> = {};
+    for (const [k, d] of Object.entries(mv.moves)) {
+      const o = Number(k);
+      if (o > root && o < root + size) inside[o - root] = d;
+    }
+    const block = Object.keys(inside).length ? { ...b, body: (name: string) => applyMoves(b.body(name), inside) } : b;
+    const base = onTheme && place.current ? { x: place.current.x, y: place.current.y } : defaultSpot(b);
+    const d = mv.moves[root];
+    const at = d ? { x: base.x + d[0], y: base.y + d[1] } : base;
+    return { block, at, dragged: !!d };
+  }, [blocks, recipe.id, mv.moves, onTheme]);
+  const code = blockCode(widget.block, widget.at);
 
   return (
     <div className="rc">
@@ -245,11 +302,29 @@ export function RecipeGallery() {
       <Splitter orientation="vertical" label="Resize the widget settings" value={width} min={MIN_WIDTH} max={MAX_WIDTH} direction={-1} onChange={resize} />
       <aside className="rc-detail" aria-label={recipe.title} style={{ width }}>
         <div className="faint rc-cat">{recipe.category}</div>
-        <h2>{recipe.title}</h2>
-        <BlockView block={blocks[recipe.id]} sim={sim} width={width - 36} height={Math.round(Math.min(360, Math.max(160, (width - 36) * 0.56)))} />
+        <div className="rc-titlebar">
+          <h2>{recipe.title}</h2>
+          <div className="rc-phonebar">
+            <AlignToggle />
+            <PhoneSwitch mode={onTheme ? 'theme' : 'blank'} onChange={setMode} hasTheme={hasLock} />
+          </div>
+        </div>
+        {onTheme ? (
+          <OnTheme block={blocks[recipe.id]} sim={sim} width={width - 36} mv={mv} place={place} />
+        ) : (
+          <BlockView block={blocks[recipe.id]} sim={sim} width={width - 36} height={Math.round(Math.min(360, Math.max(160, (width - 36) * 0.56)))} mv={mv} />
+        )}
+        <div className="rc-movehint faint">
+          <Move /> {onTheme ? 'Drag the widget (double-click for a piece inside it) and the code follows; it is added where you leave it. Your theme’s own pieces move only here, for a look.' : 'Drag the widget (double-click for a piece inside it) or nudge it with the arrow keys; the code below follows.'}
+          {mv.moved && (
+            <button className="link-btn" onClick={mv.reset}>
+              Put back
+            </button>
+          )}
+        </div>
         <Controls recipe={recipe} params={params} onChange={(p) => setAll((a) => ({ ...a, [recipe.id]: p }))} />
         <div className="rc-actions">
-          <button className="btn btn-primary" onClick={() => addToLockScreen(blocks[recipe.id], recipe.title)} title={project ? 'Open the lock screen editor and add it to the page you are editing' : 'Open or create a theme first'}>
+          <button className="btn btn-primary" onClick={() => addToLockScreen(widget.block, recipe.title, widget.dragged ? widget.at : undefined)} title={project ? 'Open the lock screen editor and add it to the page you are editing' : 'Open or create a theme first'}>
             <Plus /> Add to lock screen
           </button>
           <button

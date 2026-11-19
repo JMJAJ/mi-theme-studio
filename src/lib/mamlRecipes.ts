@@ -657,7 +657,15 @@ export const BLOCK_IDS = new Set([...RECIPES.map((r) => r.id), ...LOCK_BLOCKS.ma
 
 /** The code a recipe inserts, as it will read in manifest.xml. */
 export function recipeCode(r: Recipe, p: Params) {
-  const b = r.block(p);
-  const body = b.body(`${b.id}_1`).replace('{x}', String(Math.round((1080 - b.w) / 2))).replace('{y}', '900');
+  return blockCode(r.block(p));
+}
+
+/** Where a widget goes when nothing else says: centred, at y 900 on a 1080-wide screen. */
+export const defaultSpot = (b: LockBlock) => ({ x: Math.round((1080 - b.w) / 2), y: 900 });
+
+/** The code a widget writes with its top-left corner at `at` (its data source first, when it has one). */
+export function blockCode(b: LockBlock, at = defaultSpot(b)) {
+  const spot: Record<string, number> = { x: at.x, y: at.y, cx: at.x + b.w / 2, x1: at.x + b.w, cy: at.y + b.h / 2 };
+  const body = b.body(`${b.id}_1`).replace(/\{(x|cx|x1|y|cy)\}/g, (_m, k: string) => String(Math.round(spot[k])));
   return b.binder ? `<!-- added to <VariableBinders> once -->\n${b.binder.xml}\n\n${body}` : body;
 }

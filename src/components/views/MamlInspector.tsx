@@ -3,7 +3,7 @@
 // size, rotation, opacity, hide). Each change is written into manifest.xml in
 // place and can be undone. Number labels can be dragged left/right to scrub.
 import { useRef, useState } from 'react';
-import { ArrowLeft, Code2, Eye, EyeOff, Image as ImageIcon, Layers, PackagePlus, Repeat, RotateCw, Sigma, Type, X } from 'lucide-react';
+import { ArrowLeft, Code2, Eye, EyeOff, Group as GroupIcon, Image as ImageIcon, Layers, PackagePlus, Repeat, RotateCw, Sigma, Type, Ungroup as UngroupIcon, X } from 'lucide-react';
 import { resourceUrl } from '../../lib/api';
 import { evalNumber, evalString, type Vars } from '../../lib/maml';
 import { findStartTag, lineOf } from '../../lib/mamlEdit';
@@ -13,7 +13,7 @@ import * as A from '../../state/actions';
 import { useStore } from '../../state/store';
 import { openSwap } from './SwapPart';
 import { FormulaField } from './FormulaField';
-import { DRAWABLE, type Scene } from './MamlPreview';
+import { DRAWABLE, isUserGroup, type Scene } from './MamlPreview';
 
 const NAMES: Record<string, string> = {
   Text: 'Text',
@@ -181,6 +181,8 @@ export function MamlInspector({
   onSelectMany,
   onCommit,
   onSave,
+  onGroup,
+  onUngroup,
 }: {
   manifest: FileInfo;
   text: string | null;
@@ -193,6 +195,10 @@ export function MamlInspector({
   onCommit: Commit;
   /** Save these pieces (with their code and pictures) to the inventory. */
   onSave?: (ords: number[]) => void;
+  /** Keep these pieces together as one group (Ctrl+G). */
+  onGroup?: (ords: number[]) => void;
+  /** Take a group made with Group apart again (Ctrl+Shift+G). */
+  onUngroup?: (ord: number) => void;
 }) {
   const files = useStore((s) => s.fileIndex);
   const project = useStore((s) => s.project);
@@ -219,7 +225,7 @@ export function MamlInspector({
           </button>
           <strong>{chosen.length} pieces selected</strong>
         </div>
-        <p className="muted mi-hint">Drag any of them to move them together, or nudge with the arrow keys (Shift: 10 px). Shift+click a piece to add or remove it. Click one below to edit it on its own.</p>
+        <p className="muted mi-hint">Drag any of them to move them together, or nudge with the arrow keys (Shift: 10 px). Shift+click a piece to add or remove it. Group them (Ctrl+G) to keep them together next time. Click one below to edit it on its own.</p>
         <div className="mi-list">
           {chosen.map((o) => {
             const e = elements[o];
@@ -241,6 +247,11 @@ export function MamlInspector({
           })}
         </div>
         <div className="mi-foot">
+          {onGroup && (
+            <button className="btn btn-sm" onClick={() => onGroup(chosen)} title="Keep these pieces together: a click on any of them picks them all (Ctrl+G)">
+              <GroupIcon /> Group
+            </button>
+          )}
           {onSave && (
             <button className="btn btn-sm btn-primary" onClick={() => onSave(chosen)} title="Keep these pieces with their code and pictures, to add them to any theme later">
               <PackagePlus /> Save to inventory
@@ -318,6 +329,7 @@ export function MamlInspector({
         {el.getAttribute('name') && <span className="faint ellipsis">{el.getAttribute('name')}</span>}
       </div>
       {note && <p className="mi-note">{note}</p>}
+      {isUserGroup(el) && <p className="muted mi-hint">A click on any of its {el.children.length} pieces picks the whole group, so they move together. Double-click to pick one piece inside it.</p>}
 
       {tag === 'Image' && (
         <Section title={variants.length > 1 ? `Picture · ${variants.length} versions` : 'Picture'}>
@@ -503,6 +515,11 @@ export function MamlInspector({
         </div>
       )}
       <div className="mi-foot">
+        {onUngroup && isUserGroup(el) && (
+          <button className="btn btn-sm" onClick={() => onUngroup(selected)} title="Put the pieces back on their own (Ctrl+Shift+G)">
+            <UngroupIcon /> Ungroup
+          </button>
+        )}
         {parentOrd >= 0 && (
           <button className="btn btn-sm" onClick={() => onSelect(parentOrd)}>
             <Layers /> Select its group

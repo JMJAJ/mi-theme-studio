@@ -14,6 +14,7 @@
 import { evaluate, evalNumber, evalString, formatDate, formatWithParas, type Value, type Vars } from './maml';
 import { formulaProblems } from './mamlHelp';
 import { SAMPLE_COLUMNS } from './sampleData';
+import { findStartTag, setAttributes } from './mamlEdit';
 
 export type LineKind = 'empty' | 'comment' | 'value' | 'date' | 'format' | 'visible' | 'define' | 'element' | 'binder' | 'close';
 
@@ -290,11 +291,41 @@ function runElement(line: string, vars: Vars, now: Date): LineResult {
  * drawn by the editor's own preview.
  */
 export function scriptToLockscreen(source: string, results: LineResult[], units?: Unit[]): string {
+  return scriptLayout(source, results, units).xml;
+}
+
+/** One drawn piece of a script, and the lines it came from (for writing a drag back). */
+export interface ScriptPiece {
+  /** First and last line (0-based) of the line or block. */
+  start: number;
+  end: number;
+  /** A whole line turned into an element, a part of a multi-line block written as is, or a visible: marker. */
+  kind: 'line' | 'block' | 'visible';
+  /** The XML drawn for it. */
+  xml: string;
+  /** Elements in the block's own text before this part (data sources split off). */
+  skip: number;
+}
+
+/** Elements (start tags) in a piece of XML. */
+export function countElements(xml: string): number {
+  let n = 0;
+  while (findStartTag(xml, n)) n++;
+  return n;
+}
+
+/** The lock screen a script draws, and where each drawn piece came from. The pieces are the layout's last elements, in order. */
+export function scriptLayout(source: string, results: LineResult[], units?: Unit[]): { xml: string; pieces: ScriptPiece[] } {
   const lines = source.split('\n');
   const list = units ?? lines.map((_, i) => ({ start: i, end: i, block: lines[i].trim().startsWith('<') }));
   const binders: string[] = [];
   const vars: string[] = [];
   const body: string[] = [];
+  const pieces: ScriptPiece[] = [];
+  const put = (xml: string, piece: Omit<ScriptPiece, 'xml'>) => {
+    body.push(xml);
+    pieces.push({ ...piece, xml });
+  };
   let y = 260;
   const next = (size: number) => {
     const at = y;
@@ -313,16 +344,23 @@ export function scriptToLockscreen(source: string, results: LineResult[], units?
         .replace(/<!--[\s\S]*?-->/g, '')
         .trim();
       if (!text) continue;
+      let seen = 0;
+      const add = (xml: string) => {
+        put(xml, { start: u.start, end: u.end, kind: 'block', skip: seen });
+        seen += countElements(xml);
+      };
       for (const part of text.split(/(?=<ContentProviderBinder\b)/)) {
         const m = /^<ContentProviderBinder\b[\s\S]*?<\/ContentProviderBinder>/.exec(part.trim());
         if (m) {
           binders.push(m[0]);
+          seen += countElements(m[0]);
           const after = part.trim().slice(m[0].length).trim();
-          if (after) body.push(after);
-        } else if (part.trim()) body.push(part.trim());
+          if (after) add(after);
+        } else if (part.trim()) add(part.trim());
       }
       continue;
     }
+    const one = { start: u.start, end: u.start, skip: 0 };
     if (r.kind === 'define') vars.push(r.tag === 'Var' ? line : (r.xml ?? ''));
     else if (r.kind === 'binder') binders.push(line);
     else if (r.kind === 'element') {
@@ -333,18 +371,55 @@ export function scriptToLockscreen(source: string, results: LineResult[], units?
       if (a.y === undefined) el += ` y="${next(size)}"`;
       if (a.size === undefined && (r.tag === 'Text' || r.tag === 'DateTime')) el += ' size="48"';
       if (a.color === undefined && (r.tag === 'Text' || r.tag === 'DateTime')) el += ' color="#ffffffff"';
-      body.push(/\/>\s*$/.test(line) ? `${el}/>` : line);
+      put(/\/>\s*$/.test(line) ? `${el}/>` : line, { ...one, kind: 'line' });
     } else if (r.kind === 'value' || r.kind === 'date' || r.kind === 'format') {
       const at = next(48);
       const attrs = (r.xml ?? '').replace(/^<(\w+)\s*/, '').replace(/\/>$/, '');
       const tagName = r.kind === 'date' ? 'DateTime' : 'Text';
-      body.push(`<${tagName} x="540" y="${at}" align="center" size="48" color="#ffffffff" ${attrs}/>`);
+      put(`<${tagName} x="540" y="${at}" align="center" size="48" color="#ffffffff" ${attrs}/>`, { ...one, kind: 'line' });
     } else if (r.kind === 'visible') {
       const at = next(40);
       const cond = (r.xml ?? '').replace(/^visibility="/, '').replace(/"$/, '');
-      body.push(`<Text x="540" y="${at}" align="center" size="40" color="#ffa8e6ff" text="visible: shown" visibility="${cond}"/>`);
+      put(`<Text x="540" y="${at}" align="center" size="40" color="#ffa8e6ff" text="visible: shown" visibility="${cond}"/>`, { ...one, kind: 'visible' });
     }
   }
   const head = binders.length ? `<VariableBinders>\n${binders.join('\n')}\n</VariableBinders>\n` : '';
-  return `<Lockscreen version="1" screenWidth="1080">\n${head}${vars.join('\n')}\n${body.join('\n')}\n</Lockscreen>`;
+  return { xml: `<Lockscreen version="1" screenWidth="1080">\n${head}${vars.join('\n')}\n${body.join('\n')}\n</Lockscreen>`, pieces };
+}
+
+/**
+ * Write a drag on the phone back into the script. `local` is the dragged
+ * element's index inside its piece. A one-line piece becomes the element it
+ * draws, at its new spot; inside a block only that element's x and y change.
+ */
+export function moveInScript(source: string, piece: ScriptPiece, local: number, dx: number, dy: number): string {
+  if (piece.kind === 'visible' || (!dx && !dy)) return source;
+  const lines = source.split('\n');
+  const shift = (xml: string, ord: number) => {
+    const tag = findStartTag(xml, ord);
+    if (!tag) return xml;
+    const head = xml.slice(tag.start, tag.end);
+    const attr = (name: string) => new RegExp(`\\s${name}\\s*=\\s*"([^"]*)"`).exec(head)?.[1] ?? null;
+    return setAttributes(xml, ord, { ...(dx ? { x: shiftValue(attr('x'), dx) } : {}), ...(dy ? { y: shiftValue(attr('y'), dy) } : {}) });
+  };
+  if (piece.kind === 'line') {
+    const indent = /^\s*/.exec(lines[piece.start])?.[0] ?? '';
+    lines[piece.start] = indent + shift(piece.xml, local);
+    return lines.join('\n');
+  }
+  const block = lines.slice(piece.start, piece.end + 1).join('\n');
+  const next = shift(block, piece.skip + local);
+  return [...lines.slice(0, piece.start), ...next.split('\n'), ...lines.slice(piece.end + 1)].join('\n');
+}
+
+/** Add pixels to an x/y value, keeping a formula a formula. */
+export function shiftValue(value: string | null, d: number): string {
+  const v = (value ?? '0').trim() || '0';
+  if (/^-?\d+(\.\d+)?$/.test(v)) return String(Math.round(Number(v) + d));
+  const m = /^(.*?)\s*([+-])\s*(\d+(?:\.\d+)?)$/.exec(v);
+  if (m) {
+    const n = (m[2] === '-' ? -1 : 1) * Number(m[3]) + d;
+    return n === 0 ? m[1] : `${m[1]}${n < 0 ? '-' : '+'}${Math.abs(Math.round(n))}`;
+  }
+  return d < 0 ? `${v}-${Math.abs(d)}` : `${v}+${d}`;
 }

@@ -241,13 +241,13 @@ export function addBinders(text: string, binders: string[]): { text: string; at:
  * Put a block inside the element `target` (a page's group, or the root at 0),
  * centred across `width` at height `y`. Returns the new text and the block's ordinal.
  */
-export function insertBlock(text: string, block: LockBlock, target: number, width: number, y: number): { text: string; ord: number } | null {
+export function insertBlock(text: string, block: LockBlock, target: number, width: number, y: number, x?: number): { text: string; ord: number } | null {
   let n = 1;
   while (new RegExp(`name="${block.id}_${n}"`).test(text)) n++;
   const name = `${block.id}_${n}`;
   const k = width / 1080;
   const scaled = block.body(name).replace(/\b(x|y|w|h|r|size|cornerRadius|weight|pivotX|pivotY)="(\d+(?:\.\d+)?)"/g, (_m, a: string, v: string) => `${a}="${Math.round(Number(v) * k)}"`);
-  const left = (width - block.w * k) / 2;
+  const left = x ?? (width - block.w * k) / 2;
   const at: Record<string, number> = { x: left, cx: width / 2, x1: left + block.w * k, y, cy: y + (block.h * k) / 2 };
   const body = scaled.replace(/\{(x|cx|x1|y|cy)\}/g, (_m, key: string) => String(Math.round(at[key])));
   // Literal sizes inside formulas (520*#battery_level) scale too.
@@ -278,4 +278,26 @@ export function pageGroupOrdinal(elements: Element[], name: string, value: numbe
     }
   });
   return best;
+}
+
+/**
+ * Lay a whole small lock screen (its binders, then everything else) over a
+ * theme's own layout, for a look: binders join the theme's, the rest goes on
+ * top of the theme's pieces. Gives the theme unchanged when it can't be placed.
+ */
+export function overlayLockscreen(theme: string, extra: string): string {
+  const inner = /<Lockscreen\b[^>]*>([\s\S]*)<\/Lockscreen>/.exec(extra)?.[1] ?? '';
+  const binders: string[] = [];
+  const body = inner
+    .replace(/<VariableBinders>([\s\S]*?)<\/VariableBinders>/g, (_m, b: string) => {
+      for (const m of b.matchAll(/<ContentProviderBinder\b[\s\S]*?<\/ContentProviderBinder>/g)) {
+        const name = /name="([^"]*)"/.exec(m[0])?.[1];
+        if (!name || !new RegExp(`<ContentProviderBinder[^>]*name="${name}"`).test(theme)) binders.push(m[0]);
+      }
+      return '';
+    })
+    .trim();
+  const withBinders = addBinders(theme, binders)?.text ?? theme;
+  if (!body) return withBinders;
+  return insertInto(withBinders, 0, body)?.text ?? withBinders;
 }

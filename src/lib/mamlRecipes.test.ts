@@ -85,3 +85,34 @@ describe('recipes', () => {
   });
 });
 
+
+describe('overlayLockscreen', () => {
+  it('lays a script over a theme, binders joined once', async () => {
+    const { overlayLockscreen } = await import('./mamlBlocks');
+    const theme = '<Lockscreen version="1" screenWidth="1080">\n    <VariableBinders>\n        <ContentProviderBinder name="mts_weather" uri="x"></ContentProviderBinder>\n    </VariableBinders>\n    <Wallpaper/>\n</Lockscreen>\n';
+    const extra = '<Lockscreen version="1" screenWidth="1080">\n<VariableBinders>\n<ContentProviderBinder name="mts_weather" uri="x"></ContentProviderBinder>\n<ContentProviderBinder name="mts_steps" uri="y"></ContentProviderBinder>\n</VariableBinders>\n<Text x="540" y="260" text="hi"/>\n</Lockscreen>';
+    const out = overlayLockscreen(theme, extra);
+    expect(out.match(/name="mts_weather"/g)).toHaveLength(1);
+    expect(out).toContain('name="mts_steps"');
+    expect(out.indexOf('<Text')).toBeGreaterThan(out.indexOf('<Wallpaper/>'));
+    expect(out.match(/<VariableBinders>/g)).toHaveLength(1);
+    expect(out.indexOf('</VariableBinders>')).toBeLessThan(out.indexOf('<Wallpaper/>'));
+  });
+});
+
+describe('dragging on the try-out phones', () => {
+  it('shifts only the dragged pieces, formulas kept', async () => {
+    const { applyMoves } = await import('../components/views/PhoneMoves');
+    const xml = '<Lockscreen screenWidth="1080">\n<Text x="540" y="200"/>\n<Group name="date_1" x="#screen_width/2" y="900"><Text x="0"/></Group>\n</Lockscreen>';
+    const out = applyMoves(xml, { 1: [10, -20], 2: [-30, 5] });
+    expect(out).toContain('<Text x="550" y="180"/>');
+    expect(out).toContain('<Group name="date_1" x="#screen_width/2-30" y="905">');
+    expect(out).toContain('<Text x="0"/>');
+  });
+
+  it('adds a widget where it was dropped', () => {
+    const r = recipe('date');
+    const done = insertBlock('<Lockscreen screenWidth="1080">\n</Lockscreen>\n', r.block(r.defaults), 0, 1080, 900, 50)!;
+    expect(done.text).toMatch(/name="date_1" x="50" y="900"/);
+  });
+});

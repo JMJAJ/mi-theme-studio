@@ -423,7 +423,17 @@
 /* Lock screen / widget layout preview */
 .maml { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .maml-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 14px; border-bottom: 1px solid var(--line); font-size: var(--fs-sm); flex: none; }
-.maml-stage { flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden; background: radial-gradient(80% 80% at 50% 30%, rgba(255, 255, 255, 0.04), transparent 70%), var(--bg-1); }
+.maml-stage { position: relative; flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden; background: radial-gradient(80% 80% at 50% 30%, rgba(255, 255, 255, 0.04), transparent 70%), var(--bg-1); }
+/* Keys and clicks just used, bottom-right of the editor (newest at the bottom). */
+.keycast { position: absolute; right: 14px; bottom: 14px; z-index: 5; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: none; }
+.keycast-row { display: flex; align-items: center; gap: 4px; padding: 5px 8px; border-radius: 8px; background: color-mix(in srgb, var(--bg-0) 82%, transparent); border: 1px solid var(--line-strong); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); font-size: var(--fs-sm); color: var(--text); animation: keycast-fade linear forwards; }
+.keycast-part { display: inline-flex; align-items: center; gap: 4px; }
+.keycast-row kbd { font: inherit; font-weight: 600; min-width: 22px; text-align: center; padding: 2px 7px; border-radius: 5px; background: var(--bg-3); border: 1px solid var(--line-strong); border-bottom-width: 2px; }
+.keycast-plus { color: var(--muted); }
+.keycast-count { color: var(--muted); font-variant-numeric: tabular-nums; margin-left: 2px; }
+@keyframes keycast-fade { 0% { opacity: 0; transform: translateY(4px); } 6% { opacity: 1; transform: none; } 55% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .keycast-row { animation-name: keycast-fade-plain; } }
+@keyframes keycast-fade-plain { 0%, 55% { opacity: 1; } 100% { opacity: 0; } }
 .maml-frame { position: relative; overflow: hidden; background: #000; box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55); }
 .maml-frame.is-phone { border-radius: 26px; outline: 3px solid #23252b; }
 .maml-canvas { position: absolute; left: 0; top: 0; transform-origin: 0 0; overflow: hidden; color: #fff; }

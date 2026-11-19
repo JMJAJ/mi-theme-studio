@@ -111,3 +111,87 @@ export function removeElements(text: string, ordinals: number[]): string {
   }
   return out;
 }
+
+/** How many start tags begin before this offset: the ordinal of an element starting there. */
+function ordinalAt(text: string, offset: number) {
+  TOKEN.lastIndex = 0;
+  let n = 0;
+  for (let m = TOKEN.exec(text); m && m.index < offset; m = TOKEN.exec(text)) if (m[1] !== undefined) n++;
+  return n;
+}
+
+/** An element's range widened to its whole line(s) when nothing else is on them. */
+function lineRange(text: string, r: { start: number; end: number }) {
+  const lineStart = text.lastIndexOf('\n', r.start - 1) + 1;
+  const nl = text.indexOf('\n', r.end);
+  const lineEnd = nl === -1 ? text.length : nl + 1;
+  const own = !text.slice(lineStart, r.start).trim() && !text.slice(r.end, lineEnd).trim();
+  return own ? { start: lineStart, end: lineEnd, own } : { ...r, own };
+}
+
+/** The indent step a file uses (a tab, or its smallest run of leading spaces, at least 2). */
+function indentUnit(text: string) {
+  if (/^\t/m.test(text)) return '\t';
+  let best = 0;
+  for (const m of text.matchAll(/^( +)</gm)) if (!best || m[1].length < best) best = m[1].length;
+  return ' '.repeat(Math.max(2, Math.min(best || 2, 4)));
+}
+
+/**
+ * Wrap elements (by document-order index, all with the same parent) in a new
+ * `<Group>` placed where the first of them was, keeping their order. Pieces inside
+ * another wrapped one go with it. Returns the new text and the group's ordinal.
+ */
+export function groupElements(text: string, ordinals: number[], attrs: Record<string, string>): { text: string; ord: number } | null {
+  const ranges = [...new Set(ordinals)]
+    .map((o) => elementRange(text, o))
+    .filter((r): r is { start: number; end: number } => !!r)
+    .sort((a, b) => a.start - b.start)
+    .filter((r, i, all) => !all.slice(0, i).some((p) => p.start <= r.start && r.end <= p.end));
+  if (!ranges.length) return null;
+  const unit = indentUnit(text);
+  const first = lineRange(text, ranges[0]);
+  const base = first.own ? (/^[ \t]*/.exec(text.slice(first.start))?.[0] ?? '') : '';
+  const pieces = ranges.map((r) => {
+    const body = text.slice(r.start, r.end);
+    const lead = text.slice(text.lastIndexOf('\n', r.start - 1) + 1, r.start);
+    const own = !lead.trim() ? lead : base;
+    // Re-indent one step deeper than the group, keeping each piece's own inner indentation.
+    return body
+      .split('\n')
+      .map((line, i) => (i === 0 ? `${base}${unit}${line}` : line.startsWith(own) ? `${base}${unit}${line.slice(own.length)}` : `${base}${unit}${line.trimStart()}`))
+      .join('\n');
+  });
+  const open = `<Group${Object.entries(attrs).map(([k, v]) => ` ${k}="${escapeAttr(v)}"`).join('')}>`;
+  const block = first.own ? `${base}${open}\n${pieces.join('\n')}\n${base}</Group>\n` : `${open}${pieces.map((p) => p.trim()).join('')}</Group>`;
+  let out = text;
+  for (const r of [...ranges].reverse()) {
+    const w = lineRange(out, r);
+    out = out.slice(0, w.start) + out.slice(w.end);
+  }
+  const at = first.start;
+  out = out.slice(0, at) + block + out.slice(at);
+  return { text: out, ord: ordinalAt(out, at + block.indexOf('<Group')) };
+}
+
+/** Take a group's contents out of it, in its place, dropping the group itself. */
+export function ungroupElement(text: string, ordinal: number): string {
+  const tag = findStartTag(text, ordinal);
+  const r = elementRange(text, ordinal);
+  if (!tag || !r) return text;
+  if (r.end === tag.end) return removeElements(text, [ordinal]);
+  const closeAt = text.lastIndexOf('</', r.end);
+  const inner = text.slice(tag.end, closeAt);
+  const unit = indentUnit(text);
+  const w = lineRange(text, r);
+  let body: string;
+  if (w.own) {
+    const lines = inner.split('\n');
+    // Drop the empty remainders of the group's own start and end lines.
+    if (!lines[0].trim()) lines.shift();
+    if (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+    body = lines.map((l) => (l.startsWith(unit) ? l.slice(unit.length) : l)).join('\n');
+    body = body ? `${body}\n` : '';
+  } else body = inner;
+  return text.slice(0, w.start) + body + text.slice(w.end);
+}

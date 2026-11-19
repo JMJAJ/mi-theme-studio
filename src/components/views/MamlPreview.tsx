@@ -4,7 +4,7 @@
 // Lock screen page you can click any piece to edit it, or drag it to move it.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { create } from 'zustand';
-import { AlertTriangle, ArrowLeftRight, BatteryCharging, CalendarDays, Circle as CircleIcon, CircleDashed, Clock, ClipboardPaste, Copy, CopyPlus, Footprints, FileArchive, Image as ImageIcon, Info, Loader2, Minus, Package, PackagePlus, Pause, Play, Plus, RectangleHorizontal, Sparkles, Trash2, Type, X, Zap, CloudSun, BatteryMedium } from 'lucide-react';
+import { AlertTriangle, AlignCenterVertical, ArrowLeftRight, BatteryCharging, CalendarDays, Circle as CircleIcon, CircleDashed, Clock, ClipboardPaste, Copy, CopyPlus, Footprints, Group as GroupIcon, Ungroup as UngroupIcon, FileArchive, Image as ImageIcon, Info, Loader2, Minus, Package, PackagePlus, Pause, Play, Plus, RectangleHorizontal, Sparkles, Trash2, Type, X, Zap, CloudSun, BatteryMedium } from 'lucide-react';
 import { api, errorMessage, resourceUrl } from '../../lib/api';
 import { evalNumber, evalString, evaluate, formatDate, formatWithParas, systemVars, type Vars } from '../../lib/maml';
 import { BASIC_BLOCKS, LOCK_BLOCKS, imageBlock, insertBlock, pageGroupOrdinal, type LockBlock } from '../../lib/mamlBlocks';
@@ -13,7 +13,7 @@ import { BLOCK_IDS } from '../../lib/mamlRecipes';
 import { SAMPLE_COLUMNS } from '../../lib/sampleData';
 import { usePendingBlock } from '../../state/guide';
 import { absOffset, extractSnippet, pasteSnippet, type Snippet } from '../../lib/mamlCopy';
-import { lenientXml, removeElements, setAttributes } from '../../lib/mamlEdit';
+import { groupElements, lenientXml, removeElements, setAttributes, ungroupElement } from '../../lib/mamlEdit';
 import { openContextMenu } from '../common/Menu';
 import type { FileInfo, Slot } from '../../lib/types';
 import * as A from '../../state/actions';
@@ -24,6 +24,7 @@ import { InventoryPanel } from './LockKit';
 import { themeFontFile, usePackageFont } from '../common/themeFont';
 import { findWallpaper } from './PreviewView';
 import { MamlInspector } from './MamlInspector';
+import { KeyCast } from './KeyCast';
 
 const SKIP = new Set(['Var', 'VariableBinders', 'ExternalCommands', 'Trigger', 'Triggers', 'MusicControl', 'Pressed', 'PressedState', 'ReachedState', 'EndPoint', 'Path', 'FolmeState', 'FolmeConfig', 'Function', 'Array', 'Slider', 'Permanence', 'Sound', 'Item', 'AniFrame', 'Position', 'Alpha', 'Rotation', 'Size', 'Source', 'Mask', 'VarArray', 'Vars', 'Items']);
 const CONTAINERS = new Set(['Group', 'Button', 'Unlocker', 'StartPoint', 'Normal', 'NormalState', 'Layer', 'FramerateController', 'AutoScaleGroup', 'ScreenElementsGroup']);
@@ -746,7 +747,21 @@ export const useMamlSelection = create<{ path: string | null; ord: number | null
  * (saved or still being typed), any file it draws, the wallpaper or the clock
  * changes, so every edit shows straight away. `animate` plays the animations.
  */
-export function useMamlScene(componentId: string, opts: { path?: string | null; slot?: Slot; animate?: boolean; ratio?: number; aspect?: number; overrides?: Record<string, number> | null } = {}) {
+export function useMamlScene(
+  componentId: string,
+  opts: {
+    path?: string | null;
+    slot?: Slot;
+    animate?: boolean;
+    ratio?: number;
+    aspect?: number;
+    overrides?: Record<string, number | string> | null;
+    /** Draw a changed copy of the layout (a widget added for a look), never saved. */
+    transform?: ((text: string) => string) | null;
+    /** A fixed moment instead of the clock. */
+    now?: Date;
+  } = {},
+) {
   const slot = opts.slot ?? 'main';
   const snapshot = useStore((s) => (slot === 'ref' ? s.reference : s.project));
   const screen = useStore((s) => (s.selectedSerial ? (s.deviceDetails[s.selectedSerial]?.screenOverride ?? s.deviceDetails[s.selectedSerial]?.screen) : null));
@@ -815,8 +830,12 @@ export function useMamlScene(componentId: string, opts: { path?: string | null; 
   }, [configFile?.path, configFile?.rev, slot]);
   const config = useMemo(() => configDefaults(configText), [configText]);
 
-  const text = draft ?? saved;
+  const own = draft ?? saved;
+  const transform = opts.transform;
+  const shown = useMemo(() => (own !== null && transform ? transform(own) : own), [own, transform]);
+  const text = own;
   const parsed = useMemo(() => {
+    const text = shown;
     if (text === null) return null;
     let doc = new DOMParser().parseFromString(text, 'text/xml');
     // Draw what the phone draws: retry with the slips its parser forgives (a repeated attribute, a bare &).
@@ -824,7 +843,7 @@ export function useMamlScene(componentId: string, opts: { path?: string | null; 
     if (doc.querySelector('parsererror')) return { doc: null, elements: [] as Element[] };
     const elements = Array.from(doc.getElementsByTagName('*'));
     return { doc, elements, ord: new Map(elements.map((e, i) => [e, i])) };
-  }, [text]);
+  }, [shown]);
   // Keep the last good drawing while a half-typed edit is not valid XML.
   const lastGood = useRef<typeof parsed>(null);
   if (parsed?.doc) lastGood.current = parsed;
@@ -832,13 +851,13 @@ export function useMamlScene(componentId: string, opts: { path?: string | null; 
 
   const files = useMemo(() => new Map(projectFiles.map((f) => [f.path, f])), [projectFiles]);
   const overrideKey = opts.overrides ? JSON.stringify(opts.overrides) : '';
-  const overrides = useMemo(() => (overrideKey ? (JSON.parse(overrideKey) as Record<string, number>) : null), [overrideKey]);
+  const overrides = useMemo(() => (overrideKey ? (JSON.parse(overrideKey) as Record<string, number | string>) : null), [overrideKey]);
   const pages = useMemo(() => findPages(good?.doc ?? null), [good]);
   const scene = useMemo(() => {
     if (!good?.doc || !manifest || !('ord' in good) || !good.ord) return null;
     const phone = opts.ratio && opts.ratio > 1 ? opts.ratio : screen && screen.width && screen.height ? Math.max(screen.width, screen.height) / Math.min(screen.width, screen.height) : 20 / 9;
-    return buildScene(good.doc, good.ord, { phone, aspect: opts.aspect, dir: manifest.path.replace(/manifest\.xml$/i, ''), files, wallpaper: findWallpaper(projectFiles, true), now, t: opts.animate ? t : null, slot, config, overrides });
-  }, [good, manifest, files, now, t, screen, projectFiles, opts.animate, opts.ratio, opts.aspect, slot, config, overrideKey]);
+    return buildScene(good.doc, good.ord, { phone, aspect: opts.aspect, dir: manifest.path.replace(/manifest\.xml$/i, ''), files, wallpaper: findWallpaper(projectFiles, true), now: opts.now ?? now, t: opts.animate ? t : null, slot, config, overrides });
+  }, [good, manifest, files, now, opts.now, t, screen, projectFiles, opts.animate, opts.ratio, opts.aspect, slot, config, overrideKey]);
 
   /** Write a new manifest text: shown at once, then saved (undoable). */
   const apply = async (next: string) => {
@@ -1104,6 +1123,8 @@ export function MamlCanvas({
   onSelectMany,
   onEdit,
   onContext,
+  lift,
+  moveOnly = false,
 }: {
   scene: Scene;
   scale: number;
@@ -1117,11 +1138,18 @@ export function MamlCanvas({
   onEdit?: (ord: number, edit: CanvasEdit) => void;
   /** Right-click: the pieces it is about (the selection, or the piece under the pointer) and where they sit on the screen. */
   onContext?: (ords: number[], box: { x: number; y: number; w: number; h: number } | null, e: React.MouseEvent) => void;
+  /**
+   * The piece a click on `ord` picks: the group it was grouped into, unless the
+   * selection is already inside that group. With `deep` (a double-click), one level in.
+   */
+  lift?: (ord: number, deep?: boolean) => number;
+  /** Pieces can be picked and moved, not resized or turned (the Guide's try-out phones). */
+  moveOnly?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const drag = useRef<DragState | null>(null);
   // Clicking the same spot again goes one piece deeper (what is underneath).
-  const lastClick = useRef<{ x: number; y: number; ords: number[] } | null>(null);
+  const lastClick = useRef<{ x: number; y: number; ords: number[]; at: number } | null>(null);
   const [hover, setHover] = useState<number | null>(null);
   const [boxes, setBoxes] = useState<{ sel: Box | null; hover: Box | null; tag: string; items: Box[]; groupResize: GroupResize }>({ sel: null, hover: null, tag: '', items: [], groupResize: 'none' });
   const [marquee, setMarquee] = useState<{ box: Box; hits: Box[] } | null>(null);
@@ -1131,6 +1159,9 @@ export function MamlCanvas({
   const [live, setLive] = useState<Box | null>(null);
   const [guides, setGuides] = useState<{ x: number[]; y: number[] } | null>(null);
   const editable = !!onSelect;
+  const up = (o: number, deep = false) => (lift ? lift(o, deep) : o);
+  /** Lifted pieces in order, each once. */
+  const upAll = (ords: number[], deep = false) => [...new Set(ords.map((o) => up(o, deep)))];
 
   useEffect(() => {
     if (!editable) return;
@@ -1170,7 +1201,7 @@ export function MamlCanvas({
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (!all.length || !ref.current?.isConnected || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (t && t !== document.body && (!t.closest('.maml') || t.closest('input, textarea, select, [contenteditable="true"], .cm-editor'))) return;
+      if (t && t !== document.body && (!t.closest('.maml, .maml-movable') || t.closest('input, textarea, select, [contenteditable="true"], .cm-editor'))) return;
       const step = e.shiftKey ? 10 : 1;
       const dir: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
       if (e.key === 'Escape') {
@@ -1248,7 +1279,7 @@ export function MamlCanvas({
   const hoverFrame = useRef(0);
   const sel = boxes.sel;
   const inv = 1 / scale;
-  const canResize = multi ? boxes.groupResize !== 'none' : RESIZABLE.has(boxes.tag);
+  const canResize = !moveOnly && (multi ? boxes.groupResize !== 'none' : RESIZABLE.has(boxes.tag));
   const edgeHandles = multi ? boxes.groupResize === 'free' : !UNIFORM.has(boxes.tag);
 
   return (
@@ -1267,7 +1298,7 @@ export function MamlCanvas({
               }
               if (!canvas) return;
               const ranked = piecesRanked(canvas, e.clientX, e.clientY);
-              const under = ranked.map((p) => Number(p.n.dataset.mk));
+              const under = upAll(ranked.map((p) => Number(p.n.dataset.mk)));
               const top = ranked.length && ranked[0].r < 2 ? under[0] : null;
               let ords = all;
               if (!under.some((o) => all.includes(o)) && top !== null) {
@@ -1284,8 +1315,8 @@ export function MamlCanvas({
               if (e.button !== 0) return;
               const canvas = e.currentTarget as HTMLElement;
               const ranked = piecesRanked(canvas, e.clientX, e.clientY);
-              const pieces = ranked.map((p) => p.n);
-              const ords = pieces.map((n) => Number(n.dataset.mk));
+              const raw = ranked.map((p) => Number(p.n.dataset.mk));
+              const ords = upAll(raw);
               const additive = e.shiftKey || e.ctrlKey || e.metaKey;
               // Nothing visible under the pointer: groups, transparent pixels, the wallpaper.
               const empty = !ranked.length || ranked[0].r >= 2;
@@ -1300,12 +1331,16 @@ export function MamlCanvas({
               // A plain click: pick the top piece, or the next one down when clicking the same spot again.
               const pick = () => {
                 const last = lastClick.current;
-                let index = 0;
-                if (last && Math.abs(last.x - e.clientX) < 4 && Math.abs(last.y - e.clientY) < 4 && selected !== null && ords.includes(selected) && last.ords.join() === ords.join()) {
-                  index = (ords.indexOf(selected) + 1) % ords.length;
+                const again = !!last && Math.abs(last.x - e.clientX) < 4 && Math.abs(last.y - e.clientY) < 4 && last.ords.join() === ords.join();
+                lastClick.current = { x: e.clientX, y: e.clientY, ords, at: e.timeStamp };
+                // Double-clicking a group picks the piece inside it.
+                if (again && e.timeStamp - last!.at < 450 && !empty && selected === ords[0]) {
+                  const deeper = up(raw[0], true);
+                  if (deeper !== ords[0]) return deeper;
                 }
-                lastClick.current = { x: e.clientX, y: e.clientY, ords };
-                return pieces[index] ? ords[index] : null;
+                let index = 0;
+                if (again && selected !== null && ords.includes(selected)) index = (ords.indexOf(selected) + 1) % ords.length;
+                return ords[index] ?? null;
               };
 
               if (onSelectMany && additive && !empty) {
@@ -1364,7 +1399,7 @@ export function MamlCanvas({
             const top = piecesAt(canvas, clientX, clientY)[0];
             const tag = top?.dataset.mt ?? '';
             const seen = top && (!srcOf(top) || solidAt(top, clientX, clientY));
-            setHover(top && seen && !CONTAINERS.has(tag) && tag !== 'Wallpaper' ? Number(top.dataset.mk) : null);
+            setHover(top && seen && !CONTAINERS.has(tag) && tag !== 'Wallpaper' ? up(Number(top.dataset.mk)) : null);
           });
           return;
         }
@@ -1376,7 +1411,7 @@ export function MamlCanvas({
           d.moved = true;
           const box = { l: Math.min(x, d.x), t: Math.min(y, d.y), w: Math.abs(x - d.x), h: Math.abs(y - d.y) };
           const canvas = e.currentTarget as HTMLElement;
-          d.hits = piecesIn(canvas, scale, scene.w, scene.h, box);
+          d.hits = upAll(piecesIn(canvas, scale, scene.w, scene.h, box));
           setHover(null);
           setMarquee({
             box,
@@ -1387,8 +1422,8 @@ export function MamlCanvas({
           });
           return;
         }
-        // Snap within 6 screen pixels; hold Alt to place freely.
-        const thr = e.altKey ? 0 : 6 / scale;
+        // Snap within 6 screen pixels when align lines are on; Alt does the opposite for this drag.
+        const thr = useAlignLines.getState().on !== e.altKey ? 6 / scale : 0;
         if (d.kind === 'move') {
           let dx = (e.clientX - d.x) / scale;
           let dy = (e.clientY - d.y) / scale;
@@ -1495,7 +1530,7 @@ export function MamlCanvas({
           {onEdit && !live && (
             <>
               {canResize && HANDLES.filter((h) => edgeHandles || h.length === 2).map((h) => <span key={h} className={`maml-h h-${h}`} onPointerDown={(e) => handleDown(e, () => startResize(h, e))} onContextMenu={noMenu} />)}
-              {!multi && <span className="maml-rot" title="Drag to rotate (Shift: 15° steps) · right-drag to move" onPointerDown={(e) => handleDown(e, () => startRotate(e))} onContextMenu={noMenu} />}
+              {!multi && !moveOnly && <span className="maml-rot" title="Drag to rotate (Shift: 15° steps) · right-drag to move" onPointerDown={(e) => handleDown(e, () => startRotate(e))} onContextMenu={noMenu} />}
             </>
           )}
         </div>
@@ -1581,6 +1616,54 @@ export function MamlFit({ componentId, slot = 'main' }: { componentId: string; s
   );
 }
 
+/**
+ * The theme's own lock screen (wallpaper, font and all) with something added on
+ * top just for a look, fitted into its box. Nothing is saved. Shows `fallback`
+ * when the theme has no lock screen layout yet.
+ */
+export function ThemePhone({
+  transform,
+  now,
+  overrides,
+  fallback,
+  pick,
+}: {
+  transform: (text: string) => string;
+  now?: Date;
+  overrides?: Record<string, number | string> | null;
+  fallback?: ReactNode;
+  /** Lets pieces be picked and dragged: the canvas props for this layout's elements. */
+  pick?: (elements: Element[]) => Partial<Parameters<typeof MamlCanvas>[0]>;
+}) {
+  const has = useHasLockLayout();
+  const { scene, elements } = useMamlScene('lockscreen', { transform, now, overrides });
+  const project = useStore((s) => s.project);
+  const font = usePackageFont(useMemo(() => themeFontFile(project?.files ?? []), [project])).family ?? undefined;
+  const box = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setFit({ w: el.clientWidth, h: el.clientHeight }));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const scale = scene && fit.w > 0 && fit.h > 0 ? Math.min(fit.w / scene.w, fit.h / scene.h) : 0;
+  return (
+    <div ref={box} className="theme-phone">
+      {!has ? (
+        fallback
+      ) : scene && scale > 0 ? (
+        <div className={`maml-frame is-phone is-small ${pick ? 'maml-movable' : ''}`} style={{ width: scene.w * scale, height: scene.h * scale }}>
+          <MamlCanvas scene={scene} scale={scale} font={font} {...pick?.(elements)} />
+        </div>
+      ) : (
+        <Loader2 className="spin" />
+      )}
+    </div>
+  );
+}
+
 /** True when the theme has a lock screen layout the phone mock-ups can draw. */
 export function useHasLockLayout() {
   return useStore((s) => !!s.project?.files.some((f) => f.component === 'lockscreen' && /(^|\/|!\/)manifest\.xml$/i.test(f.path)));
@@ -1653,8 +1736,43 @@ function scaleAttrs(el: Element, vars: Vars, f: number, e: Box, next: Box): Reco
   return attrs;
 }
 
+// ---------- align lines ----------
+
+const ALIGN_KEY = 'mts.alignLines.v1';
+function loadAlign() {
+  try {
+    return localStorage.getItem(ALIGN_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+/** Snap to other pieces and the screen's edges and middle while dragging, with lines showing it. Shared by every editable phone. */
+export const useAlignLines = create<{ on: boolean }>(() => ({ on: loadAlign() }));
+export function setAlignLines(on: boolean) {
+  useAlignLines.setState({ on });
+  try {
+    localStorage.setItem(ALIGN_KEY, on ? '1' : '0');
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** The on/off button for align lines. */
+export function AlignToggle({ small = true }: { small?: boolean }) {
+  const on = useAlignLines((s) => s.on);
+  return (
+    <button className={`btn ${small ? 'btn-sm' : ''}`} aria-pressed={on} onClick={() => setAlignLines(!on)} title={on ? 'Pieces snap to each other and to the screen’s edges and middle, with lines showing it. Click to drag freely (or hold Alt).' : 'Pieces move freely. Click to snap them into line with each other and the screen (or hold Alt while dragging).'}>
+      <AlignCenterVertical /> Align lines
+    </button>
+  );
+}
+
+/** Groups made with Group (Ctrl+G): a click on any piece in one picks the whole group. */
+const GROUP_NAME = /^mts_group_\d+$/;
+export const isUserGroup = (el: Element | undefined | null) => !!el && el.tagName === 'Group' && GROUP_NAME.test(el.getAttribute('name') ?? '');
+
 /** Add a pixel offset to an x/y value, keeping formulas as formulas. */
-function nudge(value: string | null, d: number) {
+export function nudge(value: string | null, d: number) {
   const v = (value ?? '0').trim() || '0';
   if (/^-?\d+(\.\d+)?$/.test(v)) return String(Math.round(Number(v) + d));
   const m = /^(.*?)\s*([+-])\s*(\d+(?:\.\d+)?)$/.exec(v);
@@ -1726,12 +1844,13 @@ export function MamlPreview({ componentId }: { componentId: string }) {
 
   // A widget sent from the Guide's recipe gallery: add it once the lock screen is drawn.
   const pending = usePendingBlock((s) => s.block);
-  const addRef = useRef<((block: LockBlock) => void) | null>(null);
+  const addRef = useRef<((block: LockBlock, at?: { x: number; y: number }) => void) | null>(null);
   useEffect(() => {
     if (!pending || componentId !== 'lockscreen' || !scene?.lock || text === null || !addRef.current) return;
-    const title = usePendingBlock.getState().title || pending.label;
-    usePendingBlock.setState({ block: null, title: '' });
-    addRef.current(pending);
+    const { title: named, at } = usePendingBlock.getState();
+    const title = named || pending.label;
+    usePendingBlock.setState({ block: null, title: '', at: undefined });
+    addRef.current(pending, at);
     toast('success', `Added “${title}” to the lock screen`, 'Drag it into place, or change it in the side panel.');
   }, [pending, componentId, scene, text]);
 
@@ -1756,7 +1875,7 @@ export function MamlPreview({ componentId }: { componentId: string }) {
       : 0;
   const select = (ord: number | null) => useMamlSelection.setState({ path: manifest.path, ord, extra: [] });
   // Add a working piece (battery, weather, steps, charging) to the page being edited.
-  const addBlock = (block: LockBlock) => {
+  const addBlock = (block: LockBlock, at?: { x: number; y: number }) => {
     if (text === null || !scene) return;
     const group = pages && pageValue !== null ? pageGroupOrdinal(elements, pages.name, pageValue) : null;
     const k = scene.w / 1080;
@@ -1765,7 +1884,7 @@ export function MamlPreview({ componentId }: { componentId: string }) {
     const added = elements.filter((el) => el.parentElement === parent && /^[a-z]+_\d+$/.test(el.getAttribute('name') ?? '') && BLOCK_IDS.has((el.getAttribute('name') ?? '').replace(/_\d+$/, '')));
     const below = Math.max(scene.h * 0.3, ...added.map((el) => Number(el.getAttribute('y')) + Number(el.getAttribute('h')) + 30 * k).filter(Number.isFinite));
     const y = below + block.h * k > scene.h * 0.9 ? scene.h * 0.3 : below;
-    const done = insertBlock(text, block, group ?? 0, scene.w, y);
+    const done = at ? insertBlock(text, block, group ?? 0, scene.w, at.y, at.x) : insertBlock(text, block, group ?? 0, scene.w, y);
     if (!done) return;
     let next = done.text;
     // No group for this page: show the piece only on it.
@@ -1908,7 +2027,11 @@ export function MamlPreview({ componentId }: { componentId: string }) {
     }
   };
   const mainContext = (ords: number[], area: Snippet['box'], e: React.MouseEvent) => {
+    const canUngroup = ords.length === 1 && isUserGroup(elements[ords[0]]);
     openContextMenu(e, [
+      ...(ords.length > 1 ? [{ label: 'Group', icon: GroupIcon, shortcut: 'Ctrl+G', onSelect: () => groupSel(ords) }] : []),
+      ...(canUngroup ? [{ label: 'Ungroup', icon: UngroupIcon, shortcut: 'Ctrl+Shift+G', onSelect: () => ungroupSel(ords[0]) }] : []),
+      ...(ords.length > 1 || canUngroup ? ['separator' as const] : []),
       ...(ords.length
         ? [
             { label: 'Save to inventory', icon: PackagePlus, onSelect: () => save('main', ords, area) },
@@ -1941,11 +2064,19 @@ export function MamlPreview({ componentId }: { componentId: string }) {
     ]);
   };
   keys.current = (e: KeyboardEvent) => {
-    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
     const t = e.target as HTMLElement | null;
     if (t && t !== document.body && (!t.closest('.maml') || t.closest('input, textarea, select, [contenteditable="true"], .cm-editor'))) return;
     const key = e.key.toLowerCase();
     const mine = selected === null ? extra : [selected, ...extra.filter((o) => o !== selected)];
+    if (key === 'g' && scene?.lock) {
+      // Ctrl+G groups the selection, Ctrl+Shift+G takes a group apart.
+      e.preventDefault();
+      if (e.shiftKey) mine.filter((o) => isUserGroup(elements[o])).slice(0, 1).forEach(ungroupSel);
+      else if (mine.length > 1) groupSel(mine);
+      return;
+    }
+    if (e.shiftKey) return;
     if (key === 'c' && (mine.length || refSel.length)) {
       e.preventDefault();
       if (mine.length) copy('main', mine);
@@ -1956,6 +2087,55 @@ export function MamlPreview({ componentId }: { componentId: string }) {
     }
   };
   const selectMany = (ords: number[]) => useMamlSelection.setState({ path: manifest.path, ord: ords[0] ?? null, extra: ords.slice(1) });
+  const selAll = selected === null ? extra : [selected, ...extra];
+  /** A click picks the outermost group made with Group, unless the selection is already inside it. */
+  const lift = (ord: number, deep = false) => {
+    const chain: number[] = [];
+    for (let p = elements[ord]?.parentElement; p; p = p.parentElement) if (isUserGroup(p)) chain.unshift(elements.indexOf(p));
+    for (const g of chain) {
+      const inside = selAll.some((o) => o !== g && elements[g]?.contains(elements[o] ?? null));
+      if (inside || (deep && selAll.includes(g))) continue;
+      return g;
+    }
+    return ord;
+  };
+  /** Wrap the selected pieces in a group that keeps them together for later moves. */
+  const groupSel = (ords: number[]) => {
+    if (text === null) return;
+    // A piece inside another selected one goes with it.
+    const top = ords.filter((o) => !ords.some((p) => p !== o && elements[p]?.contains(elements[o] ?? null)));
+    if (top.length < 2) return;
+    const parent = elements[top[0]]?.parentElement;
+    if (!parent || top.some((o) => elements[o]?.parentElement !== parent)) {
+      toast('error', 'Those pieces can’t be grouped', 'They sit in different groups of the layout. Pick pieces from the same one.');
+      return;
+    }
+    const taken = new Set(elements.map((el) => el.getAttribute('name')));
+    let n = 1;
+    while (taken.has(`mts_group_${n}`)) n++;
+    const done = groupElements(text, top, { name: `mts_group_${n}` });
+    if (!done) return;
+    void live.apply(done.text).then((ok) => ok !== false && select(done.ord));
+  };
+  /** Put a group's pieces back on their own, where they show now. */
+  const ungroupSel = (ord: number) => {
+    const g = elements[ord];
+    if (text === null || !isUserGroup(g)) return;
+    const vars = scene?.vars ?? new Map();
+    const dx = Math.round(evalNumber(g.getAttribute('x'), vars));
+    const dy = Math.round(evalNumber(g.getAttribute('y'), vars));
+    const kids = Array.from(g.children).map((c) => elements.indexOf(c));
+    let next = text;
+    // The group's offset moves onto its pieces, so nothing jumps.
+    for (const k of kids) {
+      const el = elements[k];
+      if (!el || !(DRAWABLE.has(el.tagName) || CONTAINERS.has(el.tagName))) continue;
+      next = setAttributes(next, k, { ...(dx ? { x: nudge(el.getAttribute('x'), dx) } : {}), ...(dy ? { y: nudge(el.getAttribute('y'), dy) } : {}) });
+    }
+    next = ungroupElement(next, ord);
+    // Every piece after the group's start tag moves up by one.
+    void live.apply(next).then((ok) => ok !== false && selectMany(kids.filter((k) => DRAWABLE.has(elements[k]?.tagName ?? '') || CONTAINERS.has(elements[k]?.tagName ?? '')).map((k) => k - 1)));
+  };
   const commit = (ord: number, attrs: Record<string, string | null>) => (text === null ? Promise.resolve(false) : live.apply(setAttributes(text, ord, attrs)));
   const edit = (ord: number, change: CanvasEdit) => {
     const el = elements[ord];
@@ -2052,7 +2232,8 @@ export function MamlPreview({ componentId }: { componentId: string }) {
         <button className="btn btn-sm" onClick={() => setPlaying((p) => !p)} title={playing ? 'Stop animations to edit in the resting pose' : 'Play the layout’s animations'}>
           {playing ? <Pause /> : <Play />} {playing ? 'Stop animations' : 'Play animations'}
         </button>
-        <span className="muted">Click a piece to edit it, drag to move it (hold Alt to skip snapping). Drag on an empty spot or Shift+click to select several. Right-click to save, copy or paste.{scene ? ` ${scene.w} × ${scene.h}` : ''}</span>
+        {scene?.lock && <AlignToggle />}
+        <span className="muted">Click a piece to edit it, drag to move it (Alt flips snapping). Drag on an empty spot or Shift+click to select several, Ctrl+G to group them (double-click a group to reach a piece inside). Right-click to save, copy or paste.{scene ? ` ${scene.w} × ${scene.h}` : ''}</span>
         {scene && scene.unknown.length > 0 && (
           <span className="badge badge-warn" title={`Drawn on the phone but not here: ${scene.unknown.join(', ')}`}>
             <AlertTriangle /> {scene.unknown.join(', ')} not drawn here
@@ -2062,6 +2243,7 @@ export function MamlPreview({ componentId }: { componentId: string }) {
       <div className="maml-body">
         {scene?.lock && invOpen && <InventoryPanel target={pageLabel} onAdd={(item) => void addItem(item)} onAddBlock={addBlock} onClose={() => toggleInv(false)} />}
         <div className="maml-stage" ref={box}>
+          {scene?.lock && <KeyCast area={box} />}
           {error ? (
             <div className="banner banner-err">{error}</div>
           ) : !scene || !scale ? (
@@ -2069,7 +2251,7 @@ export function MamlPreview({ componentId }: { componentId: string }) {
           ) : (
             <div className="maml-pages">
               <div className={`maml-frame is-main ${scene.lock ? 'is-phone' : ''}`} style={{ width: scene.w * scale, height: scene.h * scale }}>
-                <MamlCanvas scene={scene} scale={scale} font={font} selected={selected} extra={extra} onSelect={select} onSelectMany={selectMany} onEdit={edit} onContext={scene.lock ? mainContext : undefined} />
+                <MamlCanvas scene={scene} scale={scale} font={font} selected={selected} extra={extra} onSelect={select} onSelectMany={selectMany} onEdit={edit} onContext={scene.lock ? mainContext : undefined} lift={lift} />
               </div>
               {refScene && reference && (
                 <div className="maml-ref">
@@ -2123,7 +2305,7 @@ export function MamlPreview({ componentId }: { componentId: string }) {
             </div>
           )}
         </div>
-        <MamlInspector manifest={manifest} text={text} elements={elements} selected={selected} extra={extra} scene={scene} onSelect={select} onSelectMany={selectMany} onCommit={commit} onSave={scene?.lock ? (ords) => save('main', ords) : undefined} />
+        <MamlInspector manifest={manifest} text={text} elements={elements} selected={selected} extra={extra} scene={scene} onSelect={select} onSelectMany={selectMany} onCommit={commit} onSave={scene?.lock ? (ords) => save('main', ords) : undefined} onGroup={scene?.lock ? groupSel : undefined} onUngroup={scene?.lock ? ungroupSel : undefined} />
       </div>
     </div>
   );

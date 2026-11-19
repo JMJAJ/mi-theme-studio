@@ -999,7 +999,17 @@ button.catalog-card:hover, button.icon-link:hover { border-color: var(--line-str
 .rc-cap .faint { font-size: var(--fs-xs); }
 .rc-detail { flex: none; overflow: auto; border-left: 1px solid var(--line); background: var(--bg-1); padding: 16px 18px 28px; display: flex; flex-direction: column; gap: 10px; }
 .rc-detail h2 { margin: -6px 0 0; font-size: 18px; color: var(--text); }
+.rc-titlebar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.rc-titlebar h2 { margin: 0; }
+.rc-phonebar, .try-phonebar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rc-theme { display: flex; min-height: 0; flex-shrink: 0; }
+.phone-switch button:disabled { opacity: 0.45; cursor: not-allowed; }
+.theme-phone { flex: 1; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; }
+.try-theme { flex: 1; min-height: 0; width: 100%; display: flex; }
 .rc-detail .rc-view { border-radius: var(--radius-lg); }
+.rc-detail .rc-view.is-movable { pointer-events: auto; }
+.rc-movehint { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: var(--fs-xs); margin-top: -4px; }
+.rc-movehint svg { width: 13px; height: 13px; flex: none; }
 .rc-cat { font-size: var(--fs-xs); }
 .rc-ctls { display: flex; flex-direction: column; gap: 12px; }
 .rc-ctl { display: flex; flex-direction: column; gap: 5px; }

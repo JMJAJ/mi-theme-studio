@@ -746,7 +746,11 @@ impl Adb {
                 "This phone does not expose the AOD MAML path needed for a permanent apply.",
             ));
         }
-        if support.can_apply {
+        // Theme Manager 3.0.5.16 applies a uiVersion 17 + lockstyle package only
+        // partially (icons). When the package has a lockstyle archive, use the
+        // AOD full apply so the MAML lock screen, effect assets and wallpaper
+        // are installed as real files instead.
+        if support.can_apply && !theme_requires_maml(local)? {
             let applied = self.apply_theme(serial, local, support, cancel.clone())?;
             let mut steps = applied.steps;
             steps.push("Theme Manager copied the theme files".into());
@@ -773,7 +777,7 @@ impl Adb {
     ) -> AppResult<PermanentApplyResult> {
         let (temp, entries, wallpaper) = extract_aod_theme(local, staging)?;
         let result = (|| {
-            let mut steps = vec!["Theme Manager has no editor entry point; using the AOD full-apply path".to_string()];
+            let mut steps = vec!["Theme package contains a MAML lockstyle; using the AOD full-apply path".to_string()];
             self.shell(
                 serial,
                 &[&format!("rm -rf '{AOD_THEME_STAGING}'")],
@@ -854,7 +858,7 @@ impl Adb {
                 "Home icons: the launcher reads /data/system/theme/icons itself and regenerates its icon bitmaps on every process start, so an empty /data/system/theme_magic/customized_icons is expected".into(),
             );
             steps.push(
-                "Home clock: flipped the system dual-clock setting and back. That is the only state change the launcher turns into a forced DualClockUtils.updateBackup(), which reloads app_clock_bak from /data/system/theme/clock_2x4 and reloads clock gadgets 6/8. The original dual-clock settings were restored".into(),
+                "Home clock: asked the launcher to refresh its clock backup by toggling the dual-clock setting. If the widget is still stock, the launcher's private app_clock_bak cache is missing; remove and re-add the clock from the launcher widget picker, or restore the launcher data from backup.".into(),
             );
             steps.push(
                 "A clock that is a MAML widget (HyperOS 3 'Default classic clock') is a different widget: it only applies /data/system/theme/clock_2x4 when it was provisioned by Theme Manager (addSource 1011), so re-add the clock from the launcher widget picker if the home screen shows the stock one".into(),
@@ -955,6 +959,16 @@ fn xml_escape(value: &str) -> String {
 }
 
 /// Extract an .mtz locally and return the theme components that Theme Manager
+/// A lockstyle archive is the HyperOS 3 MAML lock-screen format. Theme Manager
+/// 3.0.5.16's designer apply does not install it, so these packages must go
+/// through the full AOD path even when the editor entry point is present.
+fn theme_requires_maml(local: &Path) -> AppResult<bool> {
+    let file = File::open(local).map_err(|e| AppError::io("Could not open the theme package", e))?;
+    let mut archive = ZipArchive::new(file)
+        .map_err(|e| AppError::new("package", format!("Could not read the theme package: {e}")))?;
+    Ok(archive.by_name("lockstyle").is_ok() || archive.by_name("advance/manifest.xml").is_ok())
+}
+
 /// applies: top-level files plus the two wallpaper images. `source` is relative
 /// to the staging directory; `destination` is relative to /data/system/theme.
 fn extract_aod_theme(
@@ -1011,7 +1025,10 @@ fn extract_aod_theme(
                 .chars()
                 .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '+' | '-'))
             {
-                entries.push((name.clone(), name));
+                // Theme Manager 3.0.5.19 names the MAML archive `lockstyle`;
+                // the theme resource slot is still `/data/system/theme/lockscreen`.
+                let destination = if name == "lockstyle" { "lockscreen".to_string() } else { name.clone() };
+                entries.push((name, destination));
             }
             continue;
         }

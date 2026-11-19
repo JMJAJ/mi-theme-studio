@@ -109,3 +109,20 @@ describe('playground', () => {
   });
 });
 
+
+describe('dragging on the Try it phone', () => {
+  it('writes the move into the line or block it came from', async () => {
+    const { scriptLayout, moveInScript } = await import('./playground');
+    const src = ['#battery_level', '<Text x="100" y="200" text="hi"/>', '<ContentProviderBinder name="b" uri="x">', '<Variable name="v" type="int" column="c"/>', '</ContentProviderBinder>', '<Group name="g_1" x="10" y="20">', '    <Text x="5" y="#h/2"/>', '</Group>'].join('\n');
+    const { results, units } = runScript(src, base, now);
+    const { pieces } = scriptLayout(src, results, units);
+    expect(pieces.map((p) => p.kind)).toEqual(['line', 'line', 'block']);
+    // A formula line becomes the Text it draws, at its new spot.
+    expect(moveInScript(src, pieces[0], 0, 0, 40).split('\n')[0]).toBe('<Text x="540" y="300" align="center" size="48" color="#ffffffff" textExp="#battery_level"/>');
+    expect(moveInScript(src, pieces[1], 0, -20, 0).split('\n')[1]).toBe('<Text x="80" y="200" text="hi" size="48" color="#ffffffff"/>');
+    // Inside a block: only that element, past the data source, formulas kept.
+    const moved = moveInScript(src, pieces[2], 1, 10, -6).split('\n');
+    expect(moved[5]).toBe('<Group name="g_1" x="10" y="20">');
+    expect(moved[6]).toBe('    <Text x="15" y="#h/2-6"/>');
+  });
+});

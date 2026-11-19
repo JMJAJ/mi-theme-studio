@@ -2,7 +2,7 @@
 // (formulas, date patterns, formats, conditions, names, pasted MAML elements),
 // and the output on the right, each result level with its line, or the whole
 // script drawn as a lock screen by the editor's own preview.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { autocompletion, type Completion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from '@codemirror/language';
@@ -14,11 +14,14 @@ import type { FileInfo } from '../../lib/types';
 import { sampleVars } from '../../lib/mamlDocExamples';
 import { FUNC_INFO, VAR_INFO } from '../../lib/mamlHelp';
 import { cachedLiveData, fetchLiveData, liveColumns, liveVars, type LiveData } from '../../lib/liveData';
-import { runScript, scriptToLockscreen, type LineResult, type Unit } from '../../lib/playground';
+import { countElements, moveInScript, runScript, scriptLayout, type LineResult, type Unit } from '../../lib/playground';
 import { SAMPLE_COLUMNS } from '../../lib/sampleData';
 import { useGuide } from '../../state/guide';
 import { findExtension, showReplace } from './findPanel';
-import { buildScene, MamlCanvas } from './MamlPreview';
+import { overlayLockscreen } from '../../lib/mamlBlocks';
+import { AlignToggle, buildScene, MamlCanvas, ThemePhone, useHasLockLayout } from './MamlPreview';
+import { PhoneSwitch, usePhoneMode } from './PhoneSwitch';
+import { applyMoves, usePhoneMoves } from './PhoneMoves';
 
 const SCRIPT_KEY = 'mts.try.script.v1';
 const LIVE_KEY = 'mts.try.live.on.v1';
@@ -280,7 +283,7 @@ function Row({ r, onCopy, copied }: { r: LineResult; onCopy: () => void; copied:
 
 const NO_FILES = new Map<string, FileInfo>();
 
-function PhoneOutput({ script, results, units, now, overrides }: { script: string; results: LineResult[]; units: Unit[]; now: Date; overrides: Record<string, string | number> }) {
+function PhoneOutput({ script, results, units, now, overrides, onScript }: { script: string; results: LineResult[]; units: Unit[]; now: Date; overrides: Record<string, string | number>; onScript: (s: string) => void }) {
   const box = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 300, h: 500 });
   useEffect(() => {
@@ -290,27 +293,79 @@ function PhoneOutput({ script, results, units, now, overrides }: { script: strin
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  const hasLock = useHasLockLayout();
+  const [mode, setMode] = usePhoneMode();
+  const onTheme = mode === 'theme' && hasLock;
+  const layout = useMemo(() => scriptLayout(script, results, units), [script, results, units]);
+  const xml = layout.xml;
+  // Dragging a piece of the script writes its new x / y into the code. Pieces of
+  // the theme (and visible: markers) only move in the drawing, for a look.
+  const onMove = (ords: number[], dx: number, dy: number, elements: Element[]) => {
+    const sizes = layout.pieces.map((p) => countElements(p.xml));
+    const first = elements.length - sizes.reduce((a, b) => a + b, 0);
+    let next = script;
+    const done: number[] = [];
+    for (const o of ords) {
+      let at = first;
+      for (let i = 0; i < sizes.length; i++) {
+        if (o >= at && o < at + sizes[i]) {
+          if (layout.pieces[i].kind !== 'visible') {
+            next = moveInScript(next, layout.pieces[i], o - at, dx, dy);
+            done.push(o);
+          }
+          break;
+        }
+        at += sizes[i];
+      }
+    }
+    if (next !== script) onScript(next);
+    return done;
+  };
+  const mv = usePhoneMoves(`${onTheme}|${(xml.match(/<ContentProviderBinder\b/g) ?? []).length}`, onMove);
+  const moves = mv.moves;
+  const transform = useCallback((text: string) => applyMoves(overlayLockscreen(text, xml), moves), [xml, moves]);
   const scene = useMemo(() => {
-    const doc = new DOMParser().parseFromString(scriptToLockscreen(script, results, units), 'text/xml');
+    if (onTheme) return null;
+    const doc = new DOMParser().parseFromString(applyMoves(xml, moves), 'text/xml');
     if (doc.querySelector('parsererror')) return null;
     const elements = Array.from(doc.getElementsByTagName('*'));
     try {
-      return buildScene(doc, new Map(elements.map((e, i) => [e, i])), { phone: 20 / 9, dir: '', files: NO_FILES, now, t: null, slot: 'main', overrides });
+      return { built: buildScene(doc, new Map(elements.map((e, i) => [e, i])), { phone: 20 / 9, dir: '', files: NO_FILES, now, t: null, slot: 'main', overrides }), elements };
     } catch {
       return null;
     }
-  }, [script, results, units, now, overrides]);
-  const k = scene ? Math.min((size.w - 40) / scene.w, (size.h - 40) / scene.h) : 0;
+  }, [xml, onTheme, now, overrides, moves]);
+  const k = scene ? Math.min((size.w - 40) / scene.built.w, (size.h - 110) / scene.built.h) : 0;
   return (
     <div className="try-phone" ref={box}>
-      {scene ? (
-        <div className="try-screen" style={{ width: scene.w * k, height: scene.h * k }}>
-          <MamlCanvas scene={scene} scale={k} />
+      <div className="try-phonebar">
+        <AlignToggle />
+        <PhoneSwitch mode={onTheme ? 'theme' : 'blank'} onChange={setMode} hasTheme={hasLock} />
+      </div>
+      {onTheme ? (
+        <div className="try-theme">
+          <ThemePhone transform={transform} now={now} overrides={overrides} pick={mv.canvas} />
+        </div>
+      ) : scene ? (
+        <div className="try-screen maml-movable" style={{ width: scene.built.w * k, height: scene.built.h * k }}>
+          <MamlCanvas scene={scene.built} scale={k} {...mv.canvas(scene.elements)} />
         </div>
       ) : (
         <p className="muted">An element line isn’t valid XML yet, so the screen can’t be drawn. The Results tab shows which.</p>
       )}
-      <p className="faint try-phone-note">Every line on one screen: elements where they say, everything else stacked in the middle. Names you set apply to the whole screen here, as a &lt;Var&gt; does on the phone.</p>
+      <p className="faint try-phone-note">
+        {onTheme
+          ? 'Your script over your theme’s lock screen. Dragging your pieces updates their x and y in the code; the theme’s own pieces only move here, for a look.'
+          : 'Every line on one screen. Drag a piece (or nudge it with the arrow keys) and its x and y change in the code; a formula line becomes the <Text> it draws.'}
+        {mv.moved && (
+          <>
+            {' '}
+            <button className="link-btn" onClick={mv.reset}>
+              Put back
+            </button>
+          </>
+        )}
+      </p>
     </div>
   );
 }
@@ -613,7 +668,7 @@ export function TryPlayground() {
               </div>
             </div>
           ) : (
-            <PhoneOutput script={script} results={results} units={units} now={now} overrides={overrides} />
+            <PhoneOutput script={script} results={results} units={units} now={now} overrides={overrides} onScript={setScript} />
           )}
         </section>
       </div>

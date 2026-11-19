@@ -41,10 +41,11 @@ export function tryFormula(code: string) {
 }
 
 /** A widget from the recipe gallery waiting to be added when the lock screen editor opens. */
-export const usePendingBlock = create<{ block: LockBlock | null; title: string }>(() => ({ block: null, title: '' }));
+/** A widget waiting to be added; `at` is a top-left corner picked by dragging it on the theme. */
+export const usePendingBlock = create<{ block: LockBlock | null; title: string; at?: { x: number; y: number } }>(() => ({ block: null, title: '' }));
 
 /** Open the lock screen editor and add this widget to the page being edited. */
-export function addToLockScreen(block: LockBlock, title: string) {
+export function addToLockScreen(block: LockBlock, title: string, at?: { x: number; y: number }) {
   const project = getState().project;
   if (!project) {
     toast('warning', 'Open or create a theme first', 'The widget is added to the theme’s lock screen.');
@@ -55,6 +56,6 @@ export function addToLockScreen(block: LockBlock, title: string) {
     toast('warning', 'This theme has no lock screen layout yet', 'Use Swap on the Lock screen card to take one from another theme, then add widgets to it.');
     return;
   }
-  usePendingBlock.setState({ block, title });
+  usePendingBlock.setState({ block, title, at });
   goTo('design', 'lockscreen');
 }

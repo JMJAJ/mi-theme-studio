@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findStartTag, lenientXml, removeElements, setAttributes } from './mamlEdit';
+import { findStartTag, groupElements, lenientXml, removeElements, setAttributes, ungroupElement } from './mamlEdit';
 
 const doc = `<?xml version="1.0"?>
 <!-- <Fake x="1"/> -->
@@ -69,5 +69,50 @@ describe('removeElements', () => {
   });
   it('keeps the line when other content shares it', () => {
     expect(removeElements('<A><B/><C/></A>', [1])).toBe('<A><C/></A>');
+  });
+});
+
+describe('groupElements / ungroupElement', () => {
+  const src = `<Lockscreen>
+  <Text name="a" x="1"/>
+  <Image src="b.png">
+    <AlphaAnimation/>
+  </Image>
+  <Text name="c"/>
+  <Text name="d"/>
+</Lockscreen>`;
+
+  it('wraps siblings in a group where the first one was', () => {
+    const done = groupElements(src, [4, 1], { name: 'g' })!;
+    expect(done.text).toBe(`<Lockscreen>
+  <Group name="g">
+    <Text name="a" x="1"/>
+    <Text name="c"/>
+  </Group>
+  <Image src="b.png">
+    <AlphaAnimation/>
+  </Image>
+  <Text name="d"/>
+</Lockscreen>`);
+    expect(findStartTag(done.text, done.ord)?.name).toBe('Group');
+  });
+
+  it('keeps inner indentation and undoes cleanly', () => {
+    const done = groupElements(src, [2, 4], { name: 'g' })!;
+    expect(done.text).toContain(`  <Group name="g">
+    <Image src="b.png">
+      <AlphaAnimation/>
+    </Image>
+    <Text name="c"/>
+  </Group>`);
+    expect(done.ord).toBe(2);
+    expect(ungroupElement(done.text, done.ord)).toBe(src);
+  });
+
+  it('handles pieces on one line', () => {
+    const one = '<L><A/><B/><C/></L>';
+    const done = groupElements(one, [1, 3], { name: 'g' })!;
+    expect(done.text).toBe('<L><Group name="g"><A/><C/></Group><B/></L>');
+    expect(ungroupElement(done.text, done.ord)).toBe('<L><A/><C/><B/></L>');
   });
 });

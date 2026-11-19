@@ -8,7 +8,7 @@ import { syntaxTree } from '@codemirror/language';
 import { type Completion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
 import { linter, type Diagnostic } from '@codemirror/lint';
 import { Decoration, EditorView, hoverTooltip, MatchDecorator, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view';
-import type { Extension } from '@codemirror/state';
+import { StateEffect, StateField, type Extension } from '@codemirror/state';
 import { FUNC_INFO, VAR_INFO, formulaProblems, tokenAt } from '../../lib/mamlHelp';
 import type { Value } from '../../lib/maml';
 
@@ -382,3 +382,98 @@ export function xmlAssist(maml: boolean, lint: boolean): Extension[] {
     lint ? linter((v) => xmlDiagnostics(v, maml), { delay: 500 }) : [],
   ];
 }
+
+// ---------------------------------------------------------------- file links
+
+type Link = { from: number; to: number; target: string };
+const setLink = StateEffect.define<Link | null>();
+const linkField = StateField.define<Link | null>({
+  create: () => null,
+  update: (value, tr) => {
+    for (const e of tr.effects) if (e.is(setLink)) return e.value;
+    return value && tr.docChanged ? null : value;
+  },
+  provide: (f) =>
+    EditorView.decorations.from(f, (l) =>
+      l ? Decoration.set([Decoration.mark({ class: 'cm-file-link', attributes: { title: `Ctrl+click to open ${l.target.split('/').pop()}` } }).range(l.from, l.to)]) : Decoration.none,
+    ),
+});
+
+/**
+ * Hold Ctrl over an attribute that names a file (src="time2/time.png") to underline
+ * it, and Ctrl+click to open that file. `resolve` turns the value into a path, or null.
+ */
+export function fileLinks(resolve: (value: string, attr: string) => string | null, open: (path: string) => void): Extension {
+  const linkAt = (view: EditorView, pos: number): Link | null => {
+    let node = syntaxTree(view.state).resolveInner(pos, 1);
+    if (node.name !== 'AttributeValue') node = syntaxTree(view.state).resolveInner(pos, -1);
+    if (node.name !== 'AttributeValue' || node.to - node.from < 3) return null;
+    const nameNode = node.prevSibling?.prevSibling ?? node.parent?.getChild('AttributeName');
+    const attr = nameNode && nameNode.name === 'AttributeName' ? view.state.sliceDoc(nameNode.from, nameNode.to) : '';
+    const from = node.from + 1;
+    const to = node.to - 1;
+    const target = resolve(view.state.sliceDoc(from, to), attr);
+    return target ? { from, to, target } : null;
+  };
+  const plugin = ViewPlugin.fromClass(
+    class {
+      x = -1;
+      y = -1;
+      ctrl = false;
+      constructor(readonly view: EditorView) {
+        window.addEventListener('keydown', this.onKey);
+        window.addEventListener('keyup', this.onKey);
+        window.addEventListener('blur', this.clear);
+      }
+      onKey = (e: KeyboardEvent) => {
+        const ctrl = e.ctrlKey || e.metaKey;
+        if (ctrl === this.ctrl) return;
+        this.ctrl = ctrl;
+        this.refresh();
+      };
+      clear = () => {
+        this.ctrl = false;
+        this.refresh();
+      };
+      refresh() {
+        const pos = this.ctrl && this.x >= 0 ? this.view.posAtCoords({ x: this.x, y: this.y }) : null;
+        const next = pos !== null ? linkAt(this.view, pos) : null;
+        const cur = this.view.state.field(linkField);
+        if (cur?.from !== next?.from || cur?.to !== next?.to) this.view.dispatch({ effects: setLink.of(next) });
+      }
+      destroy() {
+        window.removeEventListener('keydown', this.onKey);
+        window.removeEventListener('keyup', this.onKey);
+        window.removeEventListener('blur', this.clear);
+      }
+    },
+    {
+      eventHandlers: {
+        mousemove(e) {
+          this.x = e.clientX;
+          this.y = e.clientY;
+          this.ctrl = e.ctrlKey || e.metaKey;
+          this.refresh();
+        },
+        mouseleave() {
+          this.x = -1;
+          this.refresh();
+        },
+        mousedown(e, view) {
+          if (e.button !== 0 || !(e.ctrlKey || e.metaKey)) return false;
+          const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+          const link = pos !== null ? linkAt(view, pos) : null;
+          if (!link) return false;
+          e.preventDefault();
+          open(link.target);
+          return true;
+        },
+      },
+    },
+  );
+  return [linkField, plugin, linkTheme];
+}
+
+const linkTheme = EditorView.baseTheme({
+  '.cm-file-link': { textDecoration: 'underline', textUnderlineOffset: '3px', cursor: 'pointer', color: 'var(--accent)' },
+});

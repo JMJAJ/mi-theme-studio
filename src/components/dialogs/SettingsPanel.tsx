@@ -221,6 +221,7 @@ const FIXED: [string, [string, string][]][] = [
       ['Toggle selection', 'Ctrl+Click'],
       ['Select range', 'Shift+Click'],
       ['Apply text edits', 'Ctrl+Enter'],
+      ['Open the picture or file a value names (src="…")', 'Ctrl+Click'],
     ],
   ],
   [

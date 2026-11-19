@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
-import { xmlAssist } from './mamlCodeAssist';
+import { fileLinks, xmlAssist } from './mamlCodeAssist';
 import { Decoration, EditorView, keymap, type DecorationSet } from '@codemirror/view';
 import { StateEffect, StateField } from '@codemirror/state';
 import { openSearchPanel } from '@codemirror/search';
@@ -208,6 +208,33 @@ function xmlError(text: string): string | null {
   return (error.textContent ?? 'XML syntax error').split('\n').filter(Boolean).slice(0, 2).join(' ');
 }
 
+/** Attributes that never name a file, so a value that happens to match one is not a link. */
+const NOT_FILE = /^(name|x|y|w|h|width|height|align|alignV|alpha|visibility|expression|format|formatExp|textExp|text|color|fillColor|strokeColor|target|value|condition|srcExp)$/;
+
+/**
+ * The file an attribute value in an XML file points at, if it exists: relative to
+ * the XML file's folder, case-insensitively. A digit picture (Time / ImageNumber
+ * src="time.png") opens its first digit, time_0.png.
+ */
+function linkedFile(from: string, slot: Slot, value: string, attr: string): string | null {
+  const v = value.trim().replace(/^\.?\/+/, '');
+  if (!v || NOT_FILE.test(attr) || !/\.[a-z0-9]{2,5}$/i.test(v) || /[#@()\s]/.test(v)) return null;
+  const s = useStore.getState();
+  const files = slot === 'ref' ? (s.reference?.files ?? []).map((f) => f.path) : [...s.fileIndex.keys()];
+  const dir = from.replace(/[^/]*$/, '');
+  const wanted = [v, v.replace(/(\.[a-z0-9]+)$/i, '_0$1')].flatMap((rel) => [`${dir}${rel}`.toLowerCase(), rel.toLowerCase()]);
+  for (const want of wanted) {
+    const hit = files.find((p) => p.toLowerCase() === want);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function openLinked(path: string, slot: Slot) {
+  A.openFile(path, slot);
+  if (slot === 'main') A.revealInExplorer(path);
+}
+
 function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
   const draft = useStore((s) => (slot === 'main' ? s.drafts[file.path] : undefined));
   const [loaded, setLoaded] = useState<{ text: string; rev: number; lossy: boolean; bom: boolean } | null>(null);
@@ -291,6 +318,7 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
   const extensions = useMemo(
     () => [
       ...(isXml ? xmlAssist(isMaml, !readOnly) : []),
+      ...(isXml ? [fileLinks((value, attr) => linkedFile(file.path, slot, value, attr), (path) => openLinked(path, slot))] : []),
       editorTheme,
       highlight,
       EditorView.lineWrapping,

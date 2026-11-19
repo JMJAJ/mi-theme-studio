@@ -17,7 +17,7 @@ const SECTIONS: { id: SettingsSection; label: string; icon: LucideIcon; keywords
   { id: 'appearance', label: 'Appearance', icon: Palette, keywords: 'zoom size scale interface layout phone panel' },
   { id: 'phone', label: 'Phone', icon: Smartphone, keywords: 'adb device mirror scrcpy usb' },
   { id: 'store', label: 'Theme store', icon: ShoppingBag, keywords: 'region free paid downloads catalog' },
-  { id: 'keys', label: 'Keyboard shortcuts', icon: Keyboard, keywords: 'shortcuts keys keybindings hotkeys' },
+  { id: 'keys', label: 'Keyboard shortcuts', icon: Keyboard, keywords: 'shortcuts keys keybindings hotkeys group ungroup lock screen editor nudge' },
   { id: 'about', label: 'About', icon: Info, keywords: 'version license credits scrcpy' },
 ];
 
@@ -210,6 +210,40 @@ function Store() {
   );
 }
 
+/** Shortcuts that belong to one view rather than to a command. */
+const FIXED: [string, [string, string][]][] = [
+  [
+    'Files and selection',
+    [
+      ['Move / extend selection', '↑ ↓ / Shift+↑ ↓'],
+      ['Expand / collapse folder', '→ / ←'],
+      ['Open file', 'Enter'],
+      ['Toggle selection', 'Ctrl+Click'],
+      ['Select range', 'Shift+Click'],
+      ['Apply text edits', 'Ctrl+Enter'],
+    ],
+  ],
+  [
+    'Lock screen editor',
+    [
+      ['Select a piece / the piece underneath', 'Click / Click again'],
+      ['Add or remove from selection', 'Shift+Click'],
+      ['Select several', 'Drag on an empty spot'],
+      ['Group selected pieces', 'Ctrl+G'],
+      ['Ungroup', 'Ctrl+Shift+G'],
+      ['Pick a piece inside a group', 'Double-click'],
+      ['Move without snapping', 'Alt+Drag'],
+      ['Move a tiny piece by its handles', 'Right-drag'],
+      ['Nudge 1 px / 10 px', 'Arrows / Shift+Arrows'],
+      ['Rotate in 15° steps', 'Shift+Drag rotate handle'],
+      ['Resize freely from a corner', 'Shift+Drag corner'],
+      ['Copy / paste pieces', 'Ctrl+C / Ctrl+V'],
+      ['Delete selected pieces', 'Del'],
+      ['Clear selection', 'Esc'],
+    ],
+  ],
+];
+
 function Keys({ query }: { query: string }) {
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -230,20 +264,19 @@ function Keys({ query }: { query: string }) {
           ))}
         </Group>
       ))}
-      <Group title="Files and selection">
-        {[
-          ['Move / extend selection', '↑ ↓ / Shift+↑ ↓'],
-          ['Expand / collapse folder', '→ / ←'],
-          ['Open file', 'Enter'],
-          ['Toggle selection', 'Ctrl+Click'],
-          ['Select range', 'Shift+Click'],
-          ['Apply text edits', 'Ctrl+Enter'],
-        ].map(([label, key]) => (
-          <Row key={label} title={label}>
-            <kbd>{key}</kbd>
-          </Row>
-        ))}
-      </Group>
+      {FIXED.map(([title, rows]) => {
+        const q = query.trim().toLowerCase();
+        const shown = rows.filter(([label, key]) => !q || label.toLowerCase().includes(q) || key.toLowerCase().includes(q) || title.toLowerCase().includes(q));
+        return shown.length ? (
+          <Group key={title} title={title}>
+            {shown.map(([label, key]) => (
+              <Row key={label} title={label}>
+                <kbd>{key}</kbd>
+              </Row>
+            ))}
+          </Group>
+        ) : null;
+      })}
     </>
   );
 }

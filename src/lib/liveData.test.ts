@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { liveColumns, liveVars, placeFromIpapi, placeFromIpwho, weatherFromOpenMeteo, weatherWords, windLevel } from './liveData';
+import { liveColumns, liveVars, phoneClock, phoneColumns, phoneHasWeather, phoneVars, placeFromIpapi, placeFromIpwho, weatherFromOpenMeteo, weatherWords, windLevel } from './liveData';
+import type { PhoneLiveState } from './types';
 
 describe('live data', () => {
   it('reads the location services', () => {
@@ -33,5 +34,41 @@ describe('live data', () => {
     expect(weatherWords(95)).toBe('Thunderstorm');
     expect(windLevel(0)).toBe(0);
     expect(windLevel(30)).toBe(5);
+  });
+});
+
+describe('phone live data', () => {
+  const base: PhoneLiveState = {
+    batteryLevel: 67,
+    charging: true,
+    full: false,
+    epochMs: 1_000_000,
+    tzOffsetMinutes: null,
+    weather: { city_name: ['Praha'], description: ['Rain'], temperature: ['5'], temperature_range: ['2℃~7℃'], aqilevel: [''] },
+    weatherError: null,
+    musicPlaying: true,
+    fetchedAtMs: 990_000,
+  };
+  it('turns the phone into variables', () => {
+    const v = phoneVars(base);
+    expect(v.battery_level).toBe(67);
+    expect(v.battery_state).toBe(1);
+    expect(v.music_state).toBe(1);
+    expect(v.weather_city).toBe('Praha');
+    expect(v.weather_temperature).toBe('5℃');
+    expect(v.weather_temp).toBe(5);
+    expect(phoneVars({ ...base, full: true }).battery_state).toBe(3);
+    expect(phoneVars({ ...base, charging: false }).battery_state).toBe(0);
+  });
+  it('keeps only columns with values and knows when there is weather', () => {
+    expect(Object.keys(phoneColumns(base))).not.toContain('aqilevel');
+    expect(phoneHasWeather(base)).toBe(true);
+    expect(phoneHasWeather({ ...base, weather: {} })).toBe(false);
+    expect(phoneHasWeather(null)).toBe(false);
+  });
+  it('follows the phone clock and time zone', () => {
+    expect(phoneClock(base, 2_000_000).getTime()).toBe(2_010_000);
+    const pcZone = -new Date(2_010_000).getTimezoneOffset();
+    expect(phoneClock({ ...base, tzOffsetMinutes: pcZone + 60 }, 2_000_000).getTime()).toBe(2_010_000 + 3_600_000);
   });
 });

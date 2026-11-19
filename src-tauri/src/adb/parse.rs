@@ -154,9 +154,180 @@ pub fn parse_size(output: &str) -> Option<u64> {
     output.lines().find_map(|l| l.trim().parse().ok())
 }
 
+/// What the phone reports right now, for previews fed from the phone.
+#[derive(Debug, Clone, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveState {
+    pub battery_level: Option<u32>,
+    pub charging: Option<bool>,
+    pub full: bool,
+    /// The phone's clock, in milliseconds since 1970.
+    pub epoch_ms: Option<u64>,
+    /// The phone's time zone, minutes east of UTC.
+    pub tz_offset_minutes: Option<i32>,
+    /// Columns from the Weather app's provider, by name, one value per row.
+    pub weather: HashMap<String, Vec<String>>,
+    pub weather_error: Option<String>,
+    pub music_playing: Option<bool>,
+    pub fetched_at_ms: u64,
+}
+
+/// Split the output of the combined live-state shell command into its `@@name` sections.
+pub fn split_sections(output: &str) -> HashMap<String, String> {
+    let mut out: HashMap<String, String> = HashMap::new();
+    let mut current: Option<String> = None;
+    for line in output.lines() {
+        let line = line.trim_end_matches('\r');
+        if let Some(name) = line.strip_prefix("@@") {
+            let name = name.trim().to_string();
+            out.entry(name.clone()).or_default();
+            current = Some(name);
+        } else if let Some(name) = &current {
+            let text = out.entry(name.clone()).or_default();
+            text.push_str(line);
+            text.push('\n');
+        }
+    }
+    out
+}
+
+/// Parse `dumpsys battery`: level, and whether it is charging or full.
+pub fn parse_battery(output: &str) -> (Option<u32>, Option<bool>, bool) {
+    let mut level = None;
+    let mut scale = None;
+    let mut status = None;
+    let mut powered = false;
+    for line in output.lines() {
+        let Some((key, value)) = line.trim().split_once(':') else {
+            continue;
+        };
+        let value = value.trim();
+        match key.trim() {
+            "level" => level = value.parse::<u32>().ok(),
+            "scale" => scale = value.parse::<u32>().ok(),
+            "status" => status = value.parse::<u32>().ok(),
+            "AC powered" | "USB powered" | "Wireless powered" | "Dock powered" => {
+                powered |= value == "true"
+            }
+            _ => {}
+        }
+    }
+    let level = match (level, scale) {
+        (Some(l), Some(s)) if s > 0 && s != 100 => Some((l * 100 + s / 2) / s),
+        (l, _) => l,
+    };
+    // BatteryManager: 2 charging, 3 discharging, 4 not charging, 5 full.
+    let full = status == Some(5);
+    let charging = status.map(|s| s == 2 || (s == 5 && powered));
+    (level.map(|l| l.min(100)), charging, full)
+}
+
+/// Parse `date +%s` and `date +%z` lines: the clock and the zone offset.
+pub fn parse_clock(output: &str) -> (Option<u64>, Option<i32>) {
+    let mut epoch = None;
+    let mut zone = None;
+    for line in output.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        if (line.starts_with('+') || line.starts_with('-')) && line.len() == 5 {
+            let sign = if line.starts_with('-') { -1 } else { 1 };
+            let h: i32 = line[1..3].parse().unwrap_or(0);
+            let m: i32 = line[3..5].parse().unwrap_or(0);
+            zone = Some(sign * (h * 60 + m));
+        } else if let Ok(s) = line.parse::<u64>() {
+            epoch = Some(if s > 100_000_000_000 { s } else { s * 1000 });
+        }
+    }
+    (epoch, zone)
+}
+
+/// Parse `content query` rows (`Row: 0 a=1, b=two, c=x, y`) into columns.
+/// A value may itself hold ", "; a new column only starts at ", name=".
+pub fn parse_content_rows(output: &str) -> HashMap<String, Vec<String>> {
+    let mut columns: HashMap<String, Vec<String>> = HashMap::new();
+    for line in output.lines() {
+        let Some(rest) = line.trim().strip_prefix("Row:") else {
+            continue;
+        };
+        let rest = rest.trim_start();
+        let rest = rest.split_once(' ').map(|(_, r)| r).unwrap_or("");
+        let bytes = rest.as_bytes();
+        let mut starts = vec![0usize];
+        let mut i = 0;
+        while let Some(off) = rest[i..].find(", ") {
+            let at = i + off;
+            let name_start = at + 2;
+            let name_len = bytes[name_start..]
+                .iter()
+                .take_while(|b| b.is_ascii_alphanumeric() || **b == b'_')
+                .count();
+            if name_len > 0 && bytes.get(name_start + name_len) == Some(&b'=') {
+                starts.push(name_start);
+            }
+            i = name_start;
+        }
+        for (k, &start) in starts.iter().enumerate() {
+            let end = starts.get(k + 1).map(|&n| n - 2).unwrap_or(rest.len());
+            let Some((name, value)) = rest[start..end].split_once('=') else {
+                continue;
+            };
+            let value = if value == "NULL" { "" } else { value };
+            columns
+                .entry(name.trim().to_string())
+                .or_default()
+                .push(value.to_string());
+        }
+    }
+    columns
+}
+
+/// From `dumpsys media_session` lines: is any player playing (state 3)?
+pub fn parse_media_playing(output: &str) -> Option<bool> {
+    let mut seen = false;
+    for line in output.lines() {
+        let Some(pos) = line.find("{state=") else {
+            continue;
+        };
+        seen = true;
+        let n: String = line[pos + 7..]
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+        if n == "3" {
+            return Some(true);
+        }
+    }
+    seen.then_some(false)
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn parses_live_state_pieces() {
+        let battery = "Current Battery Service state:\n  AC powered: false\n  USB powered: true\n  Wireless powered: false\n  status: 2\n  health: 2\n  present: true\n  level: 67\n  scale: 100\n";
+        assert_eq!(parse_battery(battery), (Some(67), Some(true), false));
+        assert_eq!(parse_battery("  status: 3\n  level: 40\n  scale: 100\n"), (Some(40), Some(false), false));
+        assert_eq!(parse_battery("  status: 5\n  level: 100\n  AC powered: true\n"), (Some(100), Some(true), true));
+
+        assert_eq!(parse_clock("1763550000\n+0100\n"), (Some(1_763_550_000_000), Some(60)));
+        assert_eq!(parse_clock("1763550000\n-0530\n"), (Some(1_763_550_000_000), Some(-330)));
+
+        let rows = "Row: 0 city_name=Praha, description=Mostly cloudy, rain later, temperature=5℃, aqilevel=NULL\nRow: 1 city_name=Praha, description=Rain, temperature=3℃, aqilevel=40\n";
+        let cols = parse_content_rows(rows);
+        assert_eq!(cols["city_name"], vec!["Praha", "Praha"]);
+        assert_eq!(cols["description"], vec!["Mostly cloudy, rain later", "Rain"]);
+        assert_eq!(cols["temperature"], vec!["5℃", "3℃"]);
+        assert_eq!(cols["aqilevel"], vec!["", "40"]);
+        assert!(parse_content_rows("Error while accessing provider:weather\njava.lang.SecurityException").is_empty());
+
+        assert_eq!(parse_media_playing("    state=PlaybackState {state=2, position=0}\n    state=PlaybackState {state=3(PLAYING), position=1}"), Some(true));
+        assert_eq!(parse_media_playing("    state=PlaybackState {state=2, position=0}"), Some(false));
+        assert_eq!(parse_media_playing(""), None);
+
+        let s = split_sections("@@battery\n  level: 5\n@@time\n123\n");
+        assert_eq!(s["battery"], "  level: 5\n");
+        assert_eq!(s["time"], "123\n");
+    }
 
     #[test]
     fn parses_device_list() {

@@ -43,7 +43,7 @@ import type { DeviceApp, TryOnResult,
   Settings,
   Slot,
   TextFile,
-  ValidationReport, StorePart, ProductKind } from './types';
+  ValidationReport, StorePart, ProductKind, PhoneLiveState, AiSettings, AiSettingsPatch, AiProxyDetection, AiChatReply } from './types';
 
 export class ApiError extends Error {
   code: string;
@@ -149,6 +149,7 @@ export const api = {
   adbStatus: (quiet = false, withVersion = true) => call<AdbStatus>('adb_status', { quiet, withVersion }),
   adbRestartServer: () => call<AdbStatus>('adb_restart_server'),
   adbDetails: (serial: string) => call<DeviceDetails>('adb_details', { serial }),
+  adbLiveState: (serial: string) => call<PhoneLiveState>('adb_live_state', { serial }),
   adbCachedThemes: (serial: string) => call<CachedDeviceTheme[]>('adb_cached_themes', { serial }),
   adbCachedThemePreview: (serial: string, localId: string) =>
     call<number[]>('adb_cached_theme_preview', { serial, localId }),
@@ -207,6 +208,14 @@ export const api = {
   storeRemoveDownload: (moduleId: string) => call<void>('store_remove_download', { moduleId }),
   storeApplyMedia: (moduleId: string, target: MediaTarget) => call<ProjectSnapshot>('store_apply_media', { moduleId, target }),
   storeOpenProject: (moduleId: string) => call<ProjectSnapshot>('store_open_project', { moduleId }),
+
+  aiSettings: () => call<AiSettings>('ai_settings'),
+  aiSettingsUpdate: (patch: AiSettingsPatch) => call<AiSettings>('ai_settings_update', { patch }),
+  aiDetectAiproxy: () => call<AiProxyDetection>('ai_detect_aiproxy'),
+  aiModels: () => call<string[]>('ai_models'),
+  /** Streams `ai-stream` events tagged with requestId while it runs. */
+  aiChat: (requestId: string, body: object) => call<AiChatReply>('ai_chat', { requestId, body }),
+  aiCancel: (requestId: string) => call<void>('ai_cancel', { requestId }),
 };
 
 // Windows/Android webviews reach custom protocols as http://<scheme>.localhost.

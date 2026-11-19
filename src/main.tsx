@@ -5,6 +5,7 @@ import '@fontsource-variable/dm-sans';
 import './styles/app.css';
 import './styles/shell.css';
 import './styles/settings.css';
+import './styles/assistant.css';
 
 // Block the webview's own context menu and file navigation on drop; the app
 // provides its own menus and handles OS drops natively.

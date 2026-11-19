@@ -234,6 +234,23 @@ export interface Size {
   height: number;
 }
 
+/** What the connected phone reports right now (battery, clock, Weather app data, music). */
+export interface PhoneLiveState {
+  batteryLevel: number | null;
+  charging: boolean | null;
+  full: boolean;
+  /** The phone's clock, ms since 1970. */
+  epochMs: number | null;
+  /** The phone's time zone, minutes east of UTC. */
+  tzOffsetMinutes: number | null;
+  /** Weather app provider columns, one value per row. Empty when it can't be read. */
+  weather: Record<string, string[]>;
+  weatherError: string | null;
+  musicPlaying: boolean | null;
+  /** This computer's clock when it was read. */
+  fetchedAtMs: number;
+}
+
 export interface DeviceDetails {
   serial: string;
   manufacturer: string | null;
@@ -584,4 +601,54 @@ export interface MirrorStatus {
   serial: string | null;
   startedMs: number | null;
   version: string | null;
+}
+
+// ----- AI assistant -----
+
+export interface AiProviderView {
+  baseUrl: string;
+  model: string;
+  hasKey: boolean;
+}
+
+export interface AiSettings {
+  active: string;
+  providers: Record<string, AiProviderView>;
+  autoApply: boolean;
+}
+
+export interface AiSettingsPatch {
+  active?: string;
+  autoApply?: boolean;
+  provider?: { id: string; baseUrl?: string; model?: string; apiKey?: string };
+}
+
+export interface AiProxyDetection {
+  found: boolean;
+  baseUrl: string | null;
+  running: boolean;
+  models: string[];
+  message: string;
+}
+
+export interface AiToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+export interface AiChatReply {
+  content: string;
+  reasoning: string;
+  toolCalls: AiToolCall[];
+  finishReason: string | null;
+  model: string | null;
+  cancelled: boolean;
+}
+
+export interface AiStreamDelta {
+  requestId: string;
+  content: string | null;
+  reasoning: string | null;
+  tool: string | null;
 }

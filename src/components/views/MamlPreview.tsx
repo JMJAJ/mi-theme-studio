@@ -2,7 +2,7 @@
 // manifest.xml and draws its images, text, clocks and shapes where the
 // manifest puts them, with the current time and its animations playing. On the
 // Lock screen page you can click any piece to edit it, or drag it to move it.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { create } from 'zustand';
 import { AlertTriangle, AlignCenterVertical, ArrowLeftRight, BatteryCharging, CalendarDays, Circle as CircleIcon, CircleDashed, Clock, ClipboardPaste, Copy, CopyPlus, Footprints, Group as GroupIcon, Ungroup as UngroupIcon, FileArchive, Image as ImageIcon, Info, Loader2, Minus, Package, PackagePlus, Pause, Play, Plus, RectangleHorizontal, Sparkles, Trash2, Type, X, Zap, CloudSun, BatteryMedium } from 'lucide-react';
 import { api, errorMessage, resourceUrl } from '../../lib/api';
@@ -55,7 +55,7 @@ interface Ctx {
 
 const urlOf = (ctx: Ctx, f: FileInfo): string => (ctx.url ? ctx.url(f) : resourceUrl(ctx.slot, f.path, f.rev));
 
-function fileFor(ctx: Ctx, src: string) {
+function fileFor(ctx: Pick<Ctx, 'dir' | 'files'>, src: string) {
   const clean = src.replace(/^\/+/, '');
   return ctx.files.get(`${ctx.dir}${clean}`) ?? ctx.files.get(`${ctx.dir}${clean}`.toLowerCase());
 }
@@ -483,14 +483,14 @@ function renderNodes(parent: Element, ctx: Ctx): ReactNode[] {
  * weather gets sample values by column, everything else (notifications, music)
  * stays empty, as on a phone with nothing playing and no notifications.
  */
-function bindSampleData(root: Element, ctx: Ctx) {
+function bindSampleData(root: Element, ctx: Ctx, columns: Record<string, string[]> = SAMPLE_COLUMNS) {
   for (const binder of Array.from(root.getElementsByTagName('ContentProviderBinder'))) {
     if (!/weather|steps/i.test(binder.getAttribute('uri') ?? '')) continue;
     const count = binder.getAttribute('countName');
     if (count) ctx.vars.set(count, 1);
     for (const v of Array.from(binder.getElementsByTagName('Variable'))) {
       const name = v.getAttribute('name');
-      const values = SAMPLE_COLUMNS[v.getAttribute('column') ?? ''];
+      const values = columns[v.getAttribute('column') ?? ''];
       if (!name || !values) continue;
       const type = v.getAttribute('type') ?? 'string';
       const val = (x: string) => (/^(int|long|float|double|number)/.test(type) ? Number(x.replace(/[^\d.-]/g, '')) || 0 : x);
@@ -702,6 +702,8 @@ export interface SceneOptions {
   slot: Slot;
   config?: [string, string | number][];
   overrides?: Record<string, number | string> | null;
+  /** Content provider columns (live weather) instead of the sample ones. */
+  columns?: Record<string, string[]>;
   url?: (f: FileInfo) => string;
 }
 
@@ -718,7 +720,7 @@ export function buildScene(doc: Document, ord: Map<Element, number>, o: SceneOpt
     ctx.vars.set('wall.bmp_height', ctx.wallpaper.height ?? h);
   }
   for (const [id, value] of o.config ?? []) ctx.vars.set(id, value);
-  bindSampleData(root, ctx);
+  bindSampleData(root, ctx, o.columns);
   collectVars(root, ctx);
   // Variables the wake-up commands set, then everything that depends on them.
   if (runWakeCommands(root, ctx)) collectVars(root, ctx);
@@ -760,6 +762,8 @@ export function useMamlScene(
     transform?: ((text: string) => string) | null;
     /** A fixed moment instead of the clock. */
     now?: Date;
+    /** Content provider columns (live weather) instead of the sample ones. */
+    columns?: Record<string, string[]>;
   } = {},
 ) {
   const slot = opts.slot ?? 'main';
@@ -856,8 +860,8 @@ export function useMamlScene(
   const scene = useMemo(() => {
     if (!good?.doc || !manifest || !('ord' in good) || !good.ord) return null;
     const phone = opts.ratio && opts.ratio > 1 ? opts.ratio : screen && screen.width && screen.height ? Math.max(screen.width, screen.height) / Math.min(screen.width, screen.height) : 20 / 9;
-    return buildScene(good.doc, good.ord, { phone, aspect: opts.aspect, dir: manifest.path.replace(/manifest\.xml$/i, ''), files, wallpaper: findWallpaper(projectFiles, true), now: opts.now ?? now, t: opts.animate ? t : null, slot, config, overrides });
-  }, [good, manifest, files, now, opts.now, t, screen, projectFiles, opts.animate, opts.ratio, opts.aspect, slot, config, overrideKey]);
+    return buildScene(good.doc, good.ord, { phone, aspect: opts.aspect, dir: manifest.path.replace(/manifest\.xml$/i, ''), files, wallpaper: findWallpaper(projectFiles, true), now: opts.now ?? now, t: opts.animate ? t : null, slot, config, overrides, columns: opts.columns });
+  }, [good, manifest, files, now, opts.now, opts.columns, t, screen, projectFiles, opts.animate, opts.ratio, opts.aspect, slot, config, overrideKey]);
 
   /** Write a new manifest text: shown at once, then saved (undoable). */
   const apply = async (next: string) => {
@@ -1625,18 +1629,20 @@ export function ThemePhone({
   transform,
   now,
   overrides,
+  columns,
   fallback,
   pick,
 }: {
   transform: (text: string) => string;
   now?: Date;
+  columns?: Record<string, string[]>;
   overrides?: Record<string, number | string> | null;
   fallback?: ReactNode;
   /** Lets pieces be picked and dragged: the canvas props for this layout's elements. */
   pick?: (elements: Element[]) => Partial<Parameters<typeof MamlCanvas>[0]>;
 }) {
   const has = useHasLockLayout();
-  const { scene, elements } = useMamlScene('lockscreen', { transform, now, overrides });
+  const { scene, elements } = useMamlScene('lockscreen', { transform, now, overrides, columns });
   const project = useStore((s) => s.project);
   const font = usePackageFont(useMemo(() => themeFontFile(project?.files ?? []), [project])).family ?? undefined;
   const box = useRef<HTMLDivElement>(null);
@@ -1662,6 +1668,29 @@ export function ThemePhone({
       )}
     </div>
   );
+}
+
+/**
+ * The open theme's lock screen as Try it sees it: its folder and files (so
+ * src="sj.png" finds the theme's picture) and the variables its layout works
+ * out (#qq, #AQI…), so lines pasted from it read the same values.
+ */
+export function useThemeLock(now?: Date, columns?: Record<string, string[]>) {
+  const project = useStore((s) => s.project);
+  const list = useMemo(() => project?.files ?? [], [project]);
+  const manifest = useMemo(() => partManifests(list, 'lockscreen')[0] ?? null, [list]);
+  const dir = manifest ? manifest.path.replace(/manifest\.xml$/i, '') : '';
+  const files = useMemo(() => new Map(list.map((f) => [f.path, f])), [list]);
+  const { scene } = useMamlScene('lockscreen', { now, columns });
+  const vars = useMemo(() => {
+    const out: Record<string, number | string> = {};
+    if (!scene?.vars) return out;
+    const system = systemVars(1080, 2400, new Date());
+    for (const [k, v] of scene.vars) if (!system.has(k) && !k.startsWith('wall.')) out[k] = v;
+    return out;
+  }, [scene]);
+  const find = useCallback((src: string) => (manifest && src ? fileFor({ dir, files }, src) : undefined), [manifest, dir, files]);
+  return { manifest: manifest?.path ?? null, dir, files, vars, find };
 }
 
 /** True when the theme has a lock screen layout the phone mock-ups can draw. */

@@ -7,9 +7,11 @@
 //! - `storage`: settings, recents, autosave recovery, backups
 //! - `adb`: device discovery, details, screenshots, verified file copy
 //! - `store`: online theme store (browse, details, verified free downloads)
+//! - `ai`: OpenAI-compatible chat client for the assistant
 //! - `commands` / `protocol` / `state`: Tauri integration
 
 pub mod adb;
+pub mod ai;
 pub mod commands;
 pub mod error;
 pub mod inventory;
@@ -95,6 +97,7 @@ pub fn run() {
             commands::adb_status,
             commands::adb_restart_server,
             commands::adb_details,
+            commands::adb_live_state,
             commands::adb_cached_themes,
             commands::adb_cached_theme_preview,
             commands::adb_cached_theme_reference,
@@ -146,6 +149,12 @@ pub fn run() {
             commands::store_remove_download,
             commands::store_open_project,
             commands::store_apply_media,
+            commands::ai_settings,
+            commands::ai_settings_update,
+            commands::ai_detect_aiproxy,
+            commands::ai_models,
+            commands::ai_chat,
+            commands::ai_cancel,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Mi Theme Studio")

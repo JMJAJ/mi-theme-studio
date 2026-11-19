@@ -13,13 +13,15 @@ import { AlertTriangle, Check, Copy, Eye, EyeOff, ListTree, Loader2, MapPin, Ref
 import type { FileInfo } from '../../lib/types';
 import { sampleVars } from '../../lib/mamlDocExamples';
 import { FUNC_INFO, VAR_INFO } from '../../lib/mamlHelp';
-import { cachedLiveData, fetchLiveData, liveColumns, liveVars, type LiveData } from '../../lib/liveData';
+import { cachedLiveData, fetchLiveData, liveColumns, liveVars, phoneClock, phoneColumns, phoneHasWeather, phoneVars, type LiveData } from '../../lib/liveData';
+import { usePhoneLive } from './usePhoneLive';
 import { countElements, moveInScript, runScript, scriptLayout, type LineResult, type Unit } from '../../lib/playground';
 import { SAMPLE_COLUMNS } from '../../lib/sampleData';
 import { useGuide } from '../../state/guide';
 import { findExtension, showReplace } from './findPanel';
 import { overlayLockscreen } from '../../lib/mamlBlocks';
-import { AlignToggle, buildScene, MamlCanvas, ThemePhone, useHasLockLayout } from './MamlPreview';
+import { AlignToggle, buildScene, MamlCanvas, ThemePhone, useHasLockLayout, useThemeLock } from './MamlPreview';
+import { resourceUrl } from '../../lib/api';
 import { PhoneSwitch, usePhoneMode } from './PhoneSwitch';
 import { applyMoves, usePhoneMoves } from './PhoneMoves';
 
@@ -251,7 +253,7 @@ function Pill({ r }: { r: LineResult }) {
 
 const hasRow = (r: LineResult | undefined) => !!r && r.kind !== 'empty' && r.kind !== 'comment' && r.kind !== 'close';
 
-function Row({ r, onCopy, copied }: { r: LineResult; onCopy: () => void; copied: boolean }) {
+function Row({ r, pic, onCopy, copied }: { r: LineResult; pic?: FileInfo; onCopy: () => void; copied: boolean }) {
   if (!hasRow(r)) return null;
   return (
     <>
@@ -260,6 +262,7 @@ function Row({ r, onCopy, copied }: { r: LineResult; onCopy: () => void; copied:
       {r.kind === 'define' && r.tag === 'Variable' && <span className="try-tag">column</span>}
       {r.kind === 'date' && <span className="try-tag">date</span>}
       {r.kind === 'format' && <span className="try-tag">fmt</span>}
+      {pic && <img className="try-pic" src={resourceUrl('main', pic.path, pic.rev)} alt="" title={pic.path} />}
       <Pill r={r} />
       {r.kind === 'element' && r.shown !== undefined && r.type !== null && <span className={`try-vis is-small ${r.shown ? 'is-on' : ''}`}>{r.shown ? <Eye /> : <EyeOff />}</span>}
       {r.extras?.map(([k, v]) => (
@@ -281,9 +284,26 @@ function Row({ r, onCopy, copied }: { r: LineResult; onCopy: () => void; copied:
   );
 }
 
-const NO_FILES = new Map<string, FileInfo>();
-
-function PhoneOutput({ script, results, units, now, overrides, onScript }: { script: string; results: LineResult[]; units: Unit[]; now: Date; overrides: Record<string, string | number>; onScript: (s: string) => void }) {
+function PhoneOutput({
+  script,
+  results,
+  units,
+  now,
+  overrides,
+  columns,
+  pics,
+  onScript,
+}: {
+  script: string;
+  results: LineResult[];
+  units: Unit[];
+  now: Date;
+  overrides: Record<string, string | number>;
+  columns: Record<string, string[]>;
+  /** The theme's lock screen folder and files, so pictures by name are found on the blank phone too. */
+  pics: { dir: string; files: Map<string, FileInfo> };
+  onScript: (s: string) => void;
+}) {
   const box = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 300, h: 500 });
   useEffect(() => {
@@ -330,11 +350,11 @@ function PhoneOutput({ script, results, units, now, overrides, onScript }: { scr
     if (doc.querySelector('parsererror')) return null;
     const elements = Array.from(doc.getElementsByTagName('*'));
     try {
-      return { built: buildScene(doc, new Map(elements.map((e, i) => [e, i])), { phone: 20 / 9, dir: '', files: NO_FILES, now, t: null, slot: 'main', overrides }), elements };
+      return { built: buildScene(doc, new Map(elements.map((e, i) => [e, i])), { phone: 20 / 9, dir: pics.dir, files: pics.files, now, t: null, slot: 'main', overrides, columns }), elements };
     } catch {
       return null;
     }
-  }, [xml, onTheme, now, overrides, moves]);
+  }, [xml, onTheme, now, overrides, columns, moves, pics.dir, pics.files]);
   const k = scene ? Math.min((size.w - 40) / scene.built.w, (size.h - 110) / scene.built.h) : 0;
   return (
     <div className="try-phone" ref={box}>
@@ -344,7 +364,7 @@ function PhoneOutput({ script, results, units, now, overrides, onScript }: { scr
       </div>
       {onTheme ? (
         <div className="try-theme">
-          <ThemePhone transform={transform} now={now} overrides={overrides} pick={mv.canvas} />
+          <ThemePhone transform={transform} now={now} overrides={overrides} columns={columns} pick={mv.canvas} />
         </div>
       ) : scene ? (
         <div className="try-screen maml-movable" style={{ width: scene.built.w * k, height: scene.built.h * k }}>
@@ -408,6 +428,9 @@ export function TryPlayground() {
   const [liveState, setLiveState] = useState<{ loading: boolean; error: string | null }>({ loading: false, error: null });
   const [clock, setClock] = useState(() => new Date());
   const [realBattery, setRealBattery] = useState<{ level: number; charging: boolean } | null>(null);
+  // A connected phone is the real thing: its clock, battery, music and Weather app data come first.
+  const phone = usePhoneLive(live);
+  const phoneWeather = phoneHasWeather(phone.data);
   const view = useRef<EditorView | null>(null);
   const out = useRef<HTMLDivElement>(null);
   const varsRef = useRef<Map<string, string | number>>(new Map());
@@ -447,13 +470,18 @@ export function TryPlayground() {
       b?.addEventListener('levelchange', read);
       b?.addEventListener('chargingchange', read);
     }).catch(() => undefined);
-    if (!cachedLiveData()) void refreshLive();
     return () => {
       window.clearInterval(tick);
       battery?.removeEventListener('levelchange', read);
       battery?.removeEventListener('chargingchange', read);
     };
   }, [live]);
+  // The weather where you are, from the internet, only when the phone does not give its own.
+  const phonePending = !!phone.serial && !phone.data && !phone.error;
+  const needWeather = live && !phoneWeather && !phonePending;
+  useEffect(() => {
+    if (needWeather && !cachedLiveData()) void refreshLive();
+  }, [needWeather]);
 
   async function refreshLive() {
     setLiveState({ loading: true, error: null });
@@ -465,7 +493,7 @@ export function TryPlayground() {
     }
   }
 
-  const now = useMemo(() => (live ? clock : new Date(2026, 2, 17, hour, minute, 7)), [live, clock, hour, minute]);
+  const now = useMemo(() => (live ? (phone.data ? phoneClock(phone.data, clock.getTime()) : clock) : new Date(2026, 2, 17, hour, minute, 7)), [live, clock, hour, minute, phone.data]);
   const simVars = useMemo(() => {
     const [desc, temp] = WEATHER[weather];
     const sim = { battery_level: battery, battery_state: state, weather_description: desc, weather_temperature: `${temp}℃`, weather_temp: temp };
@@ -475,10 +503,16 @@ export function TryPlayground() {
       out.battery_level = realBattery.level;
       out.battery_state = realBattery.charging ? (realBattery.level >= 100 ? 3 : 1) : 0;
     }
-    return out;
-  }, [battery, state, weather, live, liveData, realBattery]);
-  const columns = useMemo(() => (live && liveData ? { ...SAMPLE_COLUMNS, ...liveColumns(liveData) } : SAMPLE_COLUMNS), [live, liveData]);
-  const base = useMemo(() => sampleVars(now, simVars), [now, simVars]);
+    return phone.data ? { ...out, ...phoneVars(phone.data) } : out;
+  }, [battery, state, weather, live, liveData, realBattery, phone.data]);
+  const columns = useMemo(() => {
+    if (!live) return SAMPLE_COLUMNS;
+    const net = liveData ? liveColumns(liveData) : {};
+    return { ...SAMPLE_COLUMNS, ...(phoneWeather ? {} : net), ...(phone.data ? phoneColumns(phone.data) : {}) };
+  }, [live, liveData, phone.data, phoneWeather]);
+  // The open theme's lock screen: its variables (#qq, #AQI…) and its pictures (src="sj.png").
+  const lock = useThemeLock(now, columns);
+  const base = useMemo(() => sampleVars(now, { ...lock.vars, ...simVars }), [now, simVars, lock.vars]);
   const { results, vars, units } = useMemo(() => runScript(script, base, now, columns), [script, base, now, columns]);
   varsRef.current = vars;
   const overrides = useMemo(() => Object.fromEntries(vars) as Record<string, string | number>, [vars]);
@@ -544,33 +578,68 @@ export function TryPlayground() {
       window.setTimeout(() => setCopied((c) => (c === i ? null : c)), 1300);
     });
 
-  const current = results[active - 1];
+  const pictures = useMemo(() => results.map((r) => (r.kind === 'element' && r.tag === 'Image' && r.text ? (lock.find(r.text) ?? null) : undefined)), [results, lock]);
+  const shown = useMemo(
+    () =>
+      results.map((r, i) =>
+        pictures[i] === null
+          ? { ...r, problems: [lock.manifest ? `${r.text} isn’t in the theme’s lock screen folder${lock.dir ? ` (${lock.dir})` : ''}, so nothing is drawn.` : `Open a theme to see ${r.text}: pictures come from its lock screen folder.`, ...r.problems] }
+          : r,
+      ),
+    [results, pictures, lock],
+  );
+  const current = shown[active - 1];
   const counts = results.reduce((n, r) => n + (hasRow(r) ? 1 : 0), 0);
 
   return (
     <div className="try">
       <div className="try-bar">
-        <button className={`btn btn-sm try-live ${live ? 'is-on' : ''}`} aria-pressed={live} onClick={() => setLive((v) => !v)} title="Live: the real time, this computer's battery, and the weather where you are. Asks ipwho.is for your approximate city (from your IP address) and open-meteo.com for its weather. Nothing else is sent.">
+        <button className={`btn btn-sm try-live ${live ? 'is-on' : ''}`} aria-pressed={live} onClick={() => setLive((v) => !v)} title="Live: real data. With a phone connected over ADB: the phone's clock, battery, music and Weather app data, read every 15 s. Otherwise (or for weather the phone doesn't share): this computer's time and battery, and the weather where you are from ipwho.is (approximate city from your IP) and open-meteo.com. Nothing else is sent.">
           <span className="try-live-dot" /> Live
         </button>
         {live ? (
           <span className="try-live-info">
+            {phone.serial ? (
+              <span className={`try-live-phone ${phone.error ? 'is-err' : ''}`} title={phone.error ? `Could not read the phone: ${phone.error}` : phone.data ? `Read from ${phone.name} at ${new Date(phone.data.fetchedAtMs).toLocaleTimeString()}, every 15 s` : 'Reading the phone…'}>
+                {phone.loading && !phone.data ? <Loader2 className="spin" /> : <Smartphone />} {phone.name}
+              </span>
+            ) : null}
             <span className="mono">
               {String(now.getHours()).padStart(2, '0')}:{String(now.getMinutes()).padStart(2, '0')}
             </span>
-            <span>{realBattery ? `${realBattery.level}%${realBattery.charging ? ' · charging' : ''}` : `${battery}% (no battery reported)`}</span>
-            {liveState.loading ? (
+            <span>
+              {phone.data?.batteryLevel != null
+                ? `${phone.data.batteryLevel}%${phone.data.charging ? (phone.data.full ? ' · full' : ' · charging') : ''}`
+                : realBattery
+                  ? `${realBattery.level}%${realBattery.charging ? ' · charging' : ''}`
+                  : `${battery}% (no battery reported)`}
+            </span>
+            {phone.data?.musicPlaying ? <span>♪ playing</span> : null}
+            {phoneWeather && phone.data ? (
+              <span title="From the phone's Weather app">
+                <MapPin /> {[phone.data.weather.city_name?.[0], phone.data.weather.description?.[0], phone.data.weather.temperature?.[0]].filter(Boolean).join(' · ')}
+              </span>
+            ) : liveState.loading ? (
               <span className="faint">
                 <Loader2 className="spin" /> Getting the weather…
               </span>
             ) : liveData ? (
-              <span title={`From open-meteo.com, ${new Date(liveData.fetchedAt).toLocaleTimeString()}`}>
+              <span title={`From open-meteo.com, ${new Date(liveData.fetchedAt).toLocaleTimeString()}${phone.data?.weatherError ? `. Phone: ${phone.data.weatherError}` : ''}`}>
                 <MapPin /> {liveData.city} · {liveData.description} {Math.round(liveData.temp)}℃
               </span>
             ) : (
               <span className="try-live-err">{liveState.error ? `No live weather: ${liveState.error}. Using sample weather.` : 'Sample weather'}</span>
             )}
-            <button className="tb-icon" title="Get the weather again" aria-label="Refresh live data" disabled={liveState.loading} onClick={() => void refreshLive()}>
+            <button
+              className="tb-icon"
+              title={phone.serial ? 'Read the phone and the weather again' : 'Get the weather again'}
+              aria-label="Refresh live data"
+              disabled={liveState.loading || phone.loading}
+              onClick={() => {
+                phone.refresh();
+                if (!phoneWeather) void refreshLive();
+              }}
+            >
               <RefreshCw />
             </button>
           </span>
@@ -657,18 +726,18 @@ export function TryPlayground() {
           {tab === 'results' ? (
             <div className="try-rows" ref={out} onWheel={(e) => view.current && (view.current.scrollDOM.scrollTop += e.deltaY)}>
               <div style={{ height: contentHeight + 40, position: 'relative' }}>
-                {results.map((r, i) =>
+                {shown.map((r, i) =>
                   rows[i] && hasRow(r) ? (
                     <div key={i} className={`try-row ${active === i + 1 ? 'is-active' : ''}`} style={{ top: rows[i].top, height: rows[i].height }} onClick={() => goToLine(i)}>
                       <span className="try-ln">{i + 1}</span>
-                      <Row r={r} copied={copied === i} onCopy={() => r.xml && copy(i, r.xml)} />
+                      <Row r={r} pic={pictures[i] ?? undefined} copied={copied === i} onCopy={() => r.xml && copy(i, r.xml)} />
                     </div>
                   ) : null,
                 )}
               </div>
             </div>
           ) : (
-            <PhoneOutput script={script} results={results} units={units} now={now} overrides={overrides} onScript={setScript} />
+            <PhoneOutput script={script} results={results} units={units} now={now} overrides={overrides} columns={columns} pics={lock} onScript={setScript} />
           )}
         </section>
       </div>

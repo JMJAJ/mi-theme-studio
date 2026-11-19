@@ -1,7 +1,7 @@
 // Settings: a large panel with searchable sections on the left and cards of
 // setting rows (title + description, control on the right) on the right.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { FolderOpen, Info, Keyboard, MonitorSmartphone, Palette, RotateCcw, Search, Settings2, ShoppingBag, Smartphone, X, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
+import { Bot, ExternalLink, Loader2, RefreshCw, FolderOpen, Info, Keyboard, MonitorSmartphone, Palette, RotateCcw, Search, Settings2, ShoppingBag, Smartphone, X, ZoomIn, ZoomOut, type LucideIcon } from 'lucide-react';
 import { COMMANDS } from '../../state/commands';
 import { closeDialog, updateLayout, useStore } from '../../state/store';
 import { DEFAULT_LAYOUT } from '../../state/store';
@@ -9,14 +9,19 @@ import * as A from '../../state/actions';
 import { MAX_ZOOM, MIN_ZOOM, resetZoom, setZoom, useZoom, zoomIn, zoomOut } from '../../state/zoom';
 import { REGIONS, REGION_NOTES, setFreeOnly, setRegion, useThemeStore } from '../../state/themeStore';
 import { checkForUpdate, installUpdate, useUpdater } from '../../state/updater';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { AI_PROVIDERS, providerPreset } from '../../lib/aiProviders';
+import { errorMessage } from '../../lib/api';
+import { chooseProvider, detectAiproxy, isConfigured, loadAiSettings, refreshModels, updateAiSettings, useAssistant } from '../../state/assistant';
 
-export type SettingsSection = 'general' | 'appearance' | 'phone' | 'store' | 'keys' | 'about';
+export type SettingsSection = 'general' | 'appearance' | 'phone' | 'store' | 'ai' | 'keys' | 'about';
 
 const SECTIONS: { id: SettingsSection; label: string; icon: LucideIcon; keywords: string }[] = [
   { id: 'general', label: 'General', icon: Settings2, keywords: 'recovery autosave backup save interval data folder' },
   { id: 'appearance', label: 'Appearance', icon: Palette, keywords: 'zoom size scale interface layout phone panel' },
   { id: 'phone', label: 'Phone', icon: Smartphone, keywords: 'adb device mirror scrcpy usb' },
   { id: 'store', label: 'Theme store', icon: ShoppingBag, keywords: 'region free paid downloads catalog' },
+  { id: 'ai', label: 'AI assistant', icon: Bot, keywords: 'ai assistant chat model provider api key openai aiproxy cliproxy nvidia nim openrouter gemini groq ollama pollinations llm' },
   { id: 'keys', label: 'Keyboard shortcuts', icon: Keyboard, keywords: 'shortcuts keys keybindings hotkeys group ungroup lock screen editor nudge' },
   { id: 'about', label: 'About', icon: Info, keywords: 'version license credits scrcpy' },
 ];
@@ -282,6 +287,194 @@ function Keys({ query }: { query: string }) {
   );
 }
 
+function AiSection() {
+  const settings = useAssistant((s) => s.settings);
+  const models = useAssistant((s) => s.models);
+  const modelsLoading = useAssistant((s) => s.modelsLoading);
+  const modelsError = useAssistant((s) => s.modelsError);
+  const [key, setKey] = useState('');
+  const [note, setNote] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const active = settings?.active ?? '';
+  const preset = providerPreset(active);
+  const provider = settings?.providers[active];
+  const [url, setUrl] = useState('');
+  const [model, setModel] = useState('');
+
+  useEffect(() => {
+    void loadAiSettings().then((s) => {
+      if (s?.active && isConfigured(s)) void refreshModels();
+    });
+  }, []);
+  useEffect(() => {
+    setUrl(provider?.baseUrl ?? '');
+    setModel(provider?.model ?? '');
+    setKey('');
+  }, [active, provider?.baseUrl, provider?.model]);
+
+  const run = async (job: () => Promise<string | void>) => {
+    setBusy(true);
+    setNote(null);
+    try {
+      const text = await job();
+      if (text) setNote({ tone: 'ok', text });
+    } catch (error) {
+      setNote({ tone: 'err', text: errorMessage(error) });
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (!settings) return null;
+  const options = model && !models.includes(model) ? [model, ...models] : models;
+  const saveKey = () =>
+    void run(async () => {
+      await updateAiSettings({ provider: { id: active, apiKey: key } });
+      setKey('');
+      await refreshModels();
+      return 'Key saved.';
+    });
+
+  return (
+    <>
+      <Group title="Provider">
+        <Row title="AI provider" description={preset?.note ?? 'Pick where the assistant gets its answers. Every provider speaks the OpenAI chat API.'}>
+          <select className="select" value={active} onChange={(e) => void run(() => chooseProvider(e.target.value))} aria-label="AI provider">
+            {!active && <option value="">Choose…</option>}
+            {AI_PROVIDERS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </Row>
+        {active === 'aiproxy' && (
+          <Row title="Detect AIProxy" description="Reads the address and access key from your AIProxy install (%LOCALAPPDATA%\AIProxy) and checks that the pool answers.">
+            <button className="btn" disabled={busy} onClick={() => void run(async () => (await detectAiproxy()).message)}>
+              {busy ? <Loader2 className="spin" /> : <RefreshCw />} Detect
+            </button>
+          </Row>
+        )}
+        {active && (preset?.editableUrl || !preset) && (
+          <Row title="API address" description="Base URL ending in /v1; chat goes to …/chat/completions.">
+            <input
+              className="input"
+              style={{ width: 280 }}
+              value={url}
+              placeholder="http://127.0.0.1:8080/v1"
+              onChange={(e) => setUrl(e.target.value)}
+              onBlur={() => url !== (provider?.baseUrl ?? '') && void run(async () => void (await updateAiSettings({ provider: { id: active, baseUrl: url } })))}
+            />
+          </Row>
+        )}
+        {active && (preset?.needsKey || active === 'custom' || active === 'ollama') && (
+          <Row
+            title="API key"
+            description={
+              <>
+                {provider?.hasKey ? 'A key is saved on this PC. It is only sent to this provider.' : preset?.needsKey ? 'Needed for this provider.' : 'Optional for this server.'}{' '}
+                {preset?.keyUrl && (
+                  <a
+                    href={preset.keyUrl}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void openUrl(preset.keyUrl!);
+                    }}
+                  >
+                    Get a free key <ExternalLink style={{ width: 12, height: 12, verticalAlign: -1 }} />
+                  </a>
+                )}
+              </>
+            }
+          >
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                className="input"
+                type="password"
+                style={{ width: 200 }}
+                value={key}
+                placeholder={provider?.hasKey ? '•••••••• (saved)' : (preset?.keyHint ?? 'API key')}
+                onChange={(e) => setKey(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && key.trim()) saveKey();
+                }}
+                aria-label="API key"
+              />
+              <button className="btn" disabled={!key.trim() || busy} onClick={saveKey}>
+                Save
+              </button>
+              {provider?.hasKey && (
+                <button className="btn btn-ghost" disabled={busy} onClick={() => void run(async () => void (await updateAiSettings({ provider: { id: active, apiKey: '' } })))}>
+                  Remove
+                </button>
+              )}
+            </div>
+          </Row>
+        )}
+        {active && (
+          <Row
+            title="Model"
+            description={modelsError ? <span className="ai-err-text">{modelsError}</span> : models.length ? `${models.length} chat models available. Pick one that supports tool calling so it can edit files.` : 'Reload the list from the provider, or type a model name.'}
+          >
+            <div style={{ display: 'flex', gap: 6 }}>
+              {options.length ? (
+                <select className="select" style={{ maxWidth: 260 }} value={model} onChange={(e) => void run(async () => void (await updateAiSettings({ provider: { id: active, model: e.target.value } })))} aria-label="Model">
+                  {!model && <option value="">Choose…</option>}
+                  {options.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="input"
+                  style={{ width: 220 }}
+                  value={model}
+                  placeholder="model name"
+                  onChange={(e) => setModel(e.target.value)}
+                  onBlur={() => model !== (provider?.model ?? '') && void run(async () => void (await updateAiSettings({ provider: { id: active, model } })))}
+                  aria-label="Model"
+                />
+              )}
+              <button className="btn btn-icon" title="Reload the model list" aria-label="Reload models" disabled={modelsLoading} onClick={() => void refreshModels()}>
+                {modelsLoading ? <Loader2 className="spin" /> : <RefreshCw />}
+              </button>
+            </div>
+          </Row>
+        )}
+        {note && <Row title={note.tone === 'ok' ? 'Done' : 'Problem'} description={<span className={note.tone === 'err' ? 'ai-err-text' : ''}>{note.text}</span>} />}
+      </Group>
+      <Group title="Editing">
+        <Row title="Apply edits without asking" description="Off: each file change shows as a diff to approve first. Either way every change is undoable with Ctrl+Z, and nothing is saved to the package until you save.">
+          <Switch checked={settings.autoApply} onChange={(v) => void updateAiSettings({ autoApply: v })} label="Apply edits without asking" />
+        </Row>
+        <Row title="Open the assistant" description="As a side panel next to any section, or full screen.">
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              className="btn"
+              onClick={() => {
+                updateLayout({ assistant: true });
+                closeDialog();
+              }}
+            >
+              Side panel <kbd>Ctrl+Shift+A</kbd>
+            </button>
+            <button
+              className="btn"
+              onClick={() => {
+                A.goTo('assistant');
+                closeDialog();
+              }}
+            >
+              Full screen <kbd>Ctrl+8</kbd>
+            </button>
+          </div>
+        </Row>
+      </Group>
+    </>
+  );
+}
+
 function UpdatesRow() {
   const { status, version, error, checkedAt, progress } = useUpdater();
   const when = checkedAt ? new Date(checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
@@ -420,6 +613,7 @@ export function SettingsPanel({ initial = 'general' }: { initial?: SettingsSecti
               {section === 'appearance' && <Appearance />}
               {section === 'phone' && <Phone />}
               {section === 'store' && <Store />}
+              {section === 'ai' && <AiSection />}
               {section === 'keys' && <Keys query={q && current.id === 'keys' ? q : ''} />}
               {section === 'about' && <About />}
             </div>

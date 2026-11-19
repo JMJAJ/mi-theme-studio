@@ -1077,3 +1077,6 @@ button.catalog-card:hover, button.icon-link:hover { border-color: var(--line-str
 .try-live-info svg { width: 13px; height: 13px; }
 .try-live-info .tb-icon { width: 26px; height: 26px; }
 .try-live-err { color: var(--warn); overflow: hidden; text-overflow: ellipsis; }
+.try-live-phone { color: var(--ok); font-weight: 500; }
+.try-pic { height: 22px; max-width: 44px; object-fit: contain; border-radius: 4px; background: repeating-conic-gradient(var(--line) 0 25%, transparent 0 50%) 0 0 / 8px 8px; flex-shrink: 0; }
+.try-live-phone.is-err { color: var(--warn); }

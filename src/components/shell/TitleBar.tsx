@@ -3,7 +3,7 @@
 // on the right. The full menu lives behind one button.
 import { TryOnButton } from '../common/TryOnButton';
 import { useRef, useState } from 'react';
-import { ArrowDownCircle, Clock3, Download, FilePen, Loader2, XCircle, Menu, PanelRight, Redo2, Save, Search, Smartphone, Undo2 } from 'lucide-react';
+import { Bot, ArrowDownCircle, Clock3, Download, FilePen, Loader2, XCircle, Menu, PanelRight, Redo2, Save, Search, Smartphone, Undo2 } from 'lucide-react';
 import { installUpdate, useUpdater } from '../../state/updater';
 import { MenuPopup, type MenuAction, type MenuItem } from '../common/Menu';
 import { commandById, isEnabled, runCommand } from '../../state/commands';
@@ -74,6 +74,7 @@ export function TitleBar() {
   const hasDrafts = useStore((s) => Object.keys(s.drafts).length > 0);
   const busy = useStore((s) => s.busy);
   const phoneOpen = useStore((s) => s.layout.phone);
+  const assistantOpen = useStore((s) => s.layout.assistant || s.section === 'assistant');
   const device = useDeviceSummary();
   const [menu, setMenu] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
@@ -122,6 +123,9 @@ export function TitleBar() {
           <span className={`dot dot-${device.tone}`} />
           <Smartphone />
           <span className="ellipsis">{device.ready ? device.label : device.label === 'No device' ? 'Connect phone' : device.label}</span>
+        </button>
+        <button className={`tb-icon ${assistantOpen ? 'is-on' : ''}`} aria-pressed={assistantOpen} title={assistantOpen ? 'Hide AI assistant (Ctrl+Shift+A)' : 'AI assistant (Ctrl+Shift+A)'} aria-label="Toggle AI assistant" onClick={() => runCommand('view.assistant')}>
+          <Bot />
         </button>
         <button className={`tb-icon ${phoneOpen ? 'is-on' : ''}`} aria-pressed={phoneOpen} title={phoneOpen ? 'Hide phone preview' : 'Show phone preview'} aria-label="Toggle phone preview" onClick={() => updateLayout({ phone: !phoneOpen })}>
           <PanelRight />

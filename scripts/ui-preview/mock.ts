@@ -50,11 +50,14 @@ mockIPC((cmd, args) => {
     }
     case 'file_write_text':
       (globalThis as { __lastWrite?: unknown }).__lastWrite = args;
-      return null;
+      return fixture;
     case 'project_snapshot':
       return withProject ? fixture : null;
     case 'metadata_get':
       return metadata;
+    case 'metadata_update':
+    case 'files_delete':
+      return fixture;
     case 'reference_snapshot':
       return params.get('ref') ? { ...fixture, title: 'Reference copy' } : null;
     case 'inventory_list':
@@ -108,6 +111,24 @@ mockIPC((cmd, args) => {
       return storeDetail;
     case 'plugin:event|listen':
       return 1;
+    // AI: Pollinations (free, no key) straight from the browser, without streaming.
+    case 'ai_settings':
+    case 'ai_settings_update':
+      return { active: 'pollinations', providers: { pollinations: { baseUrl: 'https://text.pollinations.ai/openai', model: 'openai', hasKey: false } }, autoApply: false };
+    case 'ai_models':
+      return ['openai'];
+    case 'ai_cancel':
+      return null;
+    case 'ai_chat': {
+      const { body } = args as { body: Record<string, unknown> };
+      return fetch('/__ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, model: 'openai', stream: false }) })
+        .then((r) => r.json())
+        .then((j) => {
+          if (j.error) throw { code: 'ai_http', message: `The AI provider answered: ${j.error.message ?? JSON.stringify(j.error)}` };
+          const m = j.choices?.[0]?.message ?? {};
+          return { content: m.content ?? '', reasoning: m.reasoning ?? '', toolCalls: (m.tool_calls ?? []).map((c: { id: string; function: { name: string; arguments: unknown } }) => ({ id: c.id, name: c.function.name, arguments: typeof c.function.arguments === 'string' ? c.function.arguments : JSON.stringify(c.function.arguments ?? {}) })), finishReason: j.choices?.[0]?.finish_reason ?? null, model: j.model ?? null, cancelled: false };
+        });
+    }
     default:
       return null;
   }

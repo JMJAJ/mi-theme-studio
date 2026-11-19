@@ -4,6 +4,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Archive,
   BookOpen,
+  Bot,
   Camera,
   Copy,
   Download,
@@ -110,6 +111,21 @@ export const COMMANDS: Command[] = [
   { id: 'go.check', group: 'Go', label: 'Check & export', shortcut: 'Ctrl+5', run: () => A.goTo('check'), global: true },
   { id: 'go.library', group: 'Go', label: 'Library', shortcut: 'Ctrl+6', run: () => A.goTo('library'), global: true },
   { id: 'go.guide', group: 'Go', label: 'Guide', shortcut: 'Ctrl+7', icon: BookOpen, run: () => A.goTo('guide'), global: true },
+  { id: 'go.assistant', group: 'Go', label: 'AI assistant (full screen)', shortcut: 'Ctrl+8', icon: Bot, run: () => A.goTo('assistant'), global: true },
+  {
+    id: 'view.assistant',
+    group: 'View',
+    label: 'Toggle AI assistant',
+    shortcut: 'Ctrl+Shift+A',
+    icon: Bot,
+    run: () => {
+      const s = getState();
+      // In the full-screen chat, the toggle leaves it for the side panel's home.
+      if (s.section === 'assistant') A.goTo('design');
+      else updateLayout({ assistant: !s.layout.assistant });
+    },
+    global: true,
+  },
   { id: 'view.phone', group: 'View', label: 'Toggle phone preview', shortcut: 'Ctrl+Alt+P', run: () => updateLayout({ phone: !getState().layout.phone }), global: true },
 
   // View

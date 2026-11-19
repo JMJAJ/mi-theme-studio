@@ -1043,6 +1043,11 @@ pub async fn adb_details(app: AppHandle, serial: String) -> AppResult<DeviceDeta
 }
 
 #[tauri::command]
+pub async fn adb_live_state(app: AppHandle, serial: String) -> AppResult<adb::parse::LiveState> {
+    blocking(app, move |state, app| adb_for(state, app)?.live_state(&serial)).await
+}
+
+#[tauri::command]
 pub async fn adb_cached_themes(
     app: AppHandle,
     serial: String,
@@ -2097,4 +2102,42 @@ pub async fn inventory_delete(app: AppHandle, id: String) -> AppResult<()> {
 #[tauri::command]
 pub async fn inventory_files(app: AppHandle, id: String) -> AppResult<Vec<crate::inventory::InventoryFile>> {
     blocking(app, move |state, _| crate::inventory::files(&state.paths, &id)).await
+}
+
+// ----- AI assistant ---------------------------------------------------------
+
+#[tauri::command]
+pub async fn ai_settings(app: AppHandle) -> AppResult<crate::ai::AiSettingsView> {
+    blocking(app, |state, _| Ok(crate::ai::get_settings(&state.paths.config))).await
+}
+
+#[tauri::command]
+pub async fn ai_settings_update(app: AppHandle, patch: crate::ai::AiSettingsPatch) -> AppResult<crate::ai::AiSettingsView> {
+    blocking(app, move |state, _| crate::ai::update_settings(&state.paths.config, patch)).await
+}
+
+#[tauri::command]
+pub async fn ai_detect_aiproxy(app: AppHandle) -> AppResult<crate::ai::AiProxyDetection> {
+    blocking(app, |state, app| crate::ai::detect_aiproxy(&state.paths.config, &user_agent(app))).await
+}
+
+#[tauri::command]
+pub async fn ai_models(app: AppHandle) -> AppResult<Vec<String>> {
+    blocking(app, |state, app| crate::ai::models(&state.paths.config, &user_agent(app))).await
+}
+
+/// Stream one chat completion; pieces arrive as `ai-stream` events.
+#[tauri::command]
+pub async fn ai_chat(app: AppHandle, request_id: String, body: serde_json::Value) -> AppResult<crate::ai::ChatReply> {
+    blocking(app, move |state, app| {
+        crate::ai::chat(&state.paths.config, &user_agent(app), &request_id, body, |delta| {
+            let _ = app.emit("ai-stream", delta);
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub fn ai_cancel(request_id: String) {
+    crate::ai::cancel(&request_id);
 }

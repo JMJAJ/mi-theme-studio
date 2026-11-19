@@ -10,6 +10,7 @@ import { LibraryView } from './components/views/LibraryView';
 import { GuideView } from './components/views/GuideView';
 import { PhoneView } from './components/views/PhoneView';
 import { BuildView } from './components/views/BuildView';
+import { AssistantChat, AssistantView } from './components/assistant/Assistant';
 import { StatusBar } from './components/shell/StatusBar';
 import { Explorer } from './components/explorer/Explorer';
 import { Workspace } from './components/views/Workspace';
@@ -277,6 +278,8 @@ function SectionView() {
       return <GuideView />;
     case 'phone':
       return <PhoneView />;
+    case 'assistant':
+      return <AssistantView />;
     case 'check':
       return project ? <BuildView /> : <DesignView />;
     default:
@@ -324,7 +327,17 @@ export function App() {
             )}
           </main>
         </div>
-        {layout.phone && !(section === 'phone' && !deviceReady) && (
+        {layout.assistant && section !== 'assistant' && (
+          <div className="assistant-dock">
+            <Splitter orientation="vertical" label="Resize assistant" value={layout.assistantWidth} min={300} max={720} direction={-1} onChange={(assistantWidth) => updateLayout({ assistantWidth })} />
+            <div style={{ width: `clamp(300px, ${layout.assistantWidth}px, 40vw)`, display: 'flex', minHeight: 0 }}>
+              <ErrorBoundary name="Assistant">
+                <AssistantChat mode="side" />
+              </ErrorBoundary>
+            </div>
+          </div>
+        )}
+        {layout.phone && !(section === 'phone' && !deviceReady) && section !== 'assistant' && (
           <div className="phone-dock">
             <Splitter orientation="vertical" label="Resize phone preview" value={layout.phoneWidth} min={280} max={620} direction={-1} onChange={(phoneWidth) => updateLayout({ phoneWidth })} />
             {/* Scales with the window: never more than about a third of it. */}

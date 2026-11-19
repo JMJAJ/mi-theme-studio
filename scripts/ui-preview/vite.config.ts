@@ -21,6 +21,24 @@ function fixtureServer(): Plugin {
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const url = req.url ?? '';
+        // AI requests from the preview: forwarded server-side (the provider rejects browser origins).
+        if (url === '/__ai' && req.method === 'POST') {
+          const chunks: Buffer[] = [];
+          req.on('data', (c: Buffer) => chunks.push(c));
+          req.on('end', () => {
+            fetch('https://text.pollinations.ai/openai/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: Buffer.concat(chunks) })
+              .then(async (r) => {
+                res.statusCode = r.status;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(await r.text());
+              })
+              .catch((e) => {
+                res.statusCode = 502;
+                res.end(JSON.stringify({ error: { message: String(e) } }));
+              });
+          });
+          return;
+        }
         if (url.startsWith('/__fixture/')) {
           res.setHeader('Content-Type', 'application/json');
           res.end(readFileSync(path.join(fixture, url.slice('/__fixture/'.length).split('?')[0])));

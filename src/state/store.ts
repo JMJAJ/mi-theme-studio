@@ -64,7 +64,7 @@ export type DockTab = 'problems' | 'output' | 'adb' | 'build' | 'history';
 export type SideTab = 'files' | 'search' | 'reference';
 
 /** Top-level areas of the app (left rail). */
-export type Section = 'design' | 'files' | 'store' | 'library' | 'phone' | 'check' | 'guide';
+export type Section = 'design' | 'files' | 'store' | 'library' | 'phone' | 'check' | 'guide' | 'assistant';
 
 /** A text range to select once its file is open in an editor. */
 export interface Reveal {
@@ -86,6 +86,9 @@ export interface Layout {
   /** Phone preview panel on the right. */
   phone: boolean;
   phoneWidth: number;
+  /** AI assistant chat on the right. */
+  assistant: boolean;
+  assistantWidth: number;
 }
 
 const LAYOUT_KEY = 'mts.layout.v2';
@@ -99,6 +102,8 @@ export const DEFAULT_LAYOUT: Layout = {
   navHeight: 300,
   phone: true,
   phoneWidth: 380,
+  assistant: false,
+  assistantWidth: 400,
 };
 
 function loadLayout(): Layout {
@@ -150,7 +155,7 @@ export type DialogState =
       resolve: (value: string) => void;
     }
   | { type: 'copyPlan'; paths: string[]; policy?: ConflictPolicy; title?: string }
-  | { type: 'settings'; section?: 'general' | 'appearance' | 'phone' | 'store' | 'keys' | 'about' }
+  | { type: 'settings'; section?: 'general' | 'appearance' | 'phone' | 'store' | 'ai' | 'keys' | 'about' }
   | { type: 'shortcuts' }
   | { type: 'about' }
   | { type: 'move'; paths: string[] };

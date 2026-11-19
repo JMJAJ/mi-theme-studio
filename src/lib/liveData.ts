@@ -4,6 +4,7 @@
 // turned into the same columns the Weather app's provider gives a lock screen.
 
 import type { Value } from './maml';
+import type { PhoneLiveState } from './types';
 
 export interface LiveData {
   city: string;
@@ -176,4 +177,47 @@ export async function fetchLiveData(signal?: AbortSignal): Promise<LiveData> {
     /* storage unavailable */
   }
   return data;
+}
+
+// ---- From the connected phone (adb_live_state) -------------------------------
+
+/** The phone's clock now, as a Date whose local fields read like the phone's lock screen. */
+export function phoneClock(p: PhoneLiveState, pcNow: number = Date.now()): Date {
+  const drift = p.epochMs !== null ? p.epochMs - p.fetchedAtMs : 0;
+  const at = new Date(pcNow + drift);
+  if (p.tzOffsetMinutes === null) return at;
+  const pcZone = -at.getTimezoneOffset();
+  return new Date(at.getTime() + (p.tzOffsetMinutes - pcZone) * 60_000);
+}
+
+/** Weather columns the phone gave, without empty ones, so sample values fill the gaps. */
+export function phoneColumns(p: PhoneLiveState): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(p.weather)) if (v.some((x) => x !== '')) out[k] = v;
+  return out;
+}
+
+/** True when the phone's Weather app shared something worth drawing. */
+export const phoneHasWeather = (p: PhoneLiveState | null) => !!(p && (p.weather.city_name?.[0] || p.weather.temperature?.[0]));
+
+/** Battery, music and weather variables as the phone has them. */
+export function phoneVars(p: PhoneLiveState): Record<string, Value> {
+  const out: Record<string, Value> = {};
+  if (p.batteryLevel !== null) {
+    out.battery_level = p.batteryLevel;
+    out.battery_state = p.charging ? (p.full || p.batteryLevel >= 100 ? 3 : 1) : 0;
+  }
+  if (p.musicPlaying !== null) out.music_state = p.musicPlaying ? 1 : 0;
+  const w = p.weather;
+  const first = (k: string) => w[k]?.[0] || '';
+  const withUnit = (t: string) => (/^-?\d+(\.\d+)?$/.test(t) ? `${t}℃` : t);
+  if (first('city_name')) out.weather_city = first('city_name');
+  if (first('description')) out.weather_description = first('description');
+  if (first('temperature')) {
+    out.weather_temperature = withUnit(first('temperature'));
+    out.weather_temp = Number(first('temperature').replace(/[^\d.-]/g, '')) || 0;
+  }
+  if (first('temperature_range')) out.weather_range = first('temperature_range');
+  if (first('weather_type') && Number.isFinite(Number(first('weather_type')))) out.weather_type = Number(first('weather_type'));
+  return out;
 }

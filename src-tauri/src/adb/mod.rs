@@ -452,6 +452,54 @@ impl Adb {
         })
     }
 
+    /// Battery, clock, weather and music as the phone has them now, in one quiet
+    /// shell call (the previews ask every few seconds, so it stays out of the log).
+    pub fn live_state(&self, serial: &str) -> AppResult<parse::LiveState> {
+        valid_serial(serial)?;
+        const SCRIPT: &str = "echo @@battery; dumpsys battery; \
+            echo @@time; date +%s; date +%z; \
+            echo @@weather; w=$(content query --uri content://weather/actualWeatherData/1 2>&1); \
+            case \"$w\" in *Row:*) echo \"$w\";; *) echo \"$w\"; content query --uri content://weather/weather 2>&1;; esac; \
+            echo @@media; dumpsys media_session 2>/dev/null | grep 'state=PlaybackState' | head -n 8";
+        let out = self.exec(
+            &["-s", serial, "shell", SCRIPT],
+            Duration::from_secs(12),
+            None,
+            true,
+        )?;
+        let out = self.expect_ok(out, "live state")?;
+        let sections = parse::split_sections(&out.stdout_text());
+        let part = |name: &str| sections.get(name).map(String::as_str).unwrap_or("");
+        let (battery_level, charging, full) = parse::parse_battery(part("battery"));
+        let (epoch_ms, tz_offset_minutes) = parse::parse_clock(part("time"));
+        let weather = parse::parse_content_rows(part("weather"));
+        let weather_error = if weather.is_empty() {
+            let text = part("weather").trim();
+            Some(
+                if text.contains("SecurityException") || text.contains("Permission Denial") {
+                    "The Weather app does not share its data over USB".to_string()
+                } else if text.is_empty() || text.contains("Could not find provider") || text.contains("Unknown") {
+                    "No Weather app data on the phone".to_string()
+                } else {
+                    text.lines().next().unwrap_or("No weather").chars().take(120).collect()
+                },
+            )
+        } else {
+            None
+        };
+        Ok(parse::LiveState {
+            battery_level,
+            charging,
+            full,
+            epoch_ms,
+            tz_offset_minutes,
+            weather,
+            weather_error,
+            music_playing: parse::parse_media_playing(part("media")),
+            fetched_at_ms: crate::storage::now_ms(),
+        })
+    }
+
     pub fn screenshot(&self, serial: &str, cancel: Option<Arc<AtomicBool>>) -> AppResult<Vec<u8>> {
         valid_serial(serial)?;
         let out = self.exec(

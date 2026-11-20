@@ -236,8 +236,8 @@ export const RECIPES: Recipe[] = [
         w: d,
         h: d,
         body: (name) => `<Group name="${name}" x="{x}" y="{y}" w="${d}" h="${d}"${vis}>
-    <Arc name="${name}_track" x="0" y="0" w="${d}" h="${d}" startAngle="-90" sweep="360" strokeColor="#33ffffff" weight="${t}" strokeAlign="inner"/>
-    <Arc name="${name}_fill" x="0" y="0" w="${d}" h="${d}" startAngle="-90" sweep="360*#battery_level/100" strokeColor="${s(p.color)}" weight="${t}" strokeAlign="inner" cap="round"/>${
+    <Arc name="${name}_track" x="${Math.round(d / 2)}" y="${Math.round(d / 2)}" w="${d}" h="${d}" startAngle="-90" sweep="360" strokeColor="#33ffffff" weight="${t}" strokeAlign="inner"/>
+    <Arc name="${name}_fill" x="${Math.round(d / 2)}" y="${Math.round(d / 2)}" w="${d}" h="${d}" startAngle="-90" sweep="360*#battery_level/100" strokeColor="${s(p.color)}" weight="${t}" strokeAlign="inner" cap="round"/>${
       p.percent
         ? `
     <Text name="${name}_percent" x="${Math.round(d / 2)}" y="${Math.round(d / 2)}" align="center" alignV="center" size="${Math.round(d / 4.5)}" bold="true" color="#ffffffff" format="%d%%" paras="#battery_level"/>`
@@ -409,8 +409,8 @@ ${hand('minute', Math.round(d * 0.38), Math.round(d * 0.024), '#minute*6+#second
         w: d,
         h: d,
         body: (name) => `<Group name="${name}" x="{x}" y="{y}" w="${d}" h="${d}">
-    <Arc name="${name}_track" x="0" y="0" w="${d}" h="${d}" startAngle="-90" sweep="360" strokeColor="#26ffffff" weight="${t}" strokeAlign="inner"/>
-    <Arc name="${name}_fill" x="0" y="0" w="${d}" h="${d}" startAngle="-90" sweep="#second*6" strokeColor="${s(p.color)}" weight="${t}" strokeAlign="inner" cap="round"/>
+    <Arc name="${name}_track" x="${Math.round(d / 2)}" y="${Math.round(d / 2)}" w="${d}" h="${d}" startAngle="-90" sweep="360" strokeColor="#26ffffff" weight="${t}" strokeAlign="inner"/>
+    <Arc name="${name}_fill" x="${Math.round(d / 2)}" y="${Math.round(d / 2)}" w="${d}" h="${d}" startAngle="-90" sweep="#second*6" strokeColor="${s(p.color)}" weight="${t}" strokeAlign="inner" cap="round"/>
     <DateTime name="${name}_time" x="${Math.round(d / 2)}" y="${Math.round(d / 2)}" align="center" alignV="center" size="${Math.round(d / 4)}" color="#ffffffff" format="HH:mm"/>
 </Group>`,
       };
@@ -630,8 +630,8 @@ ${letters.map((l, i) => `    <Text name="${name}_d${i}" x="${60 + i * 120}" y="5
         w: d,
         h: d,
         body: (name) => `<Group name="${name}" x="{x}" y="{y}" w="${d}" h="${d}">
-    <Arc name="${name}_track" x="0" y="0" w="${d}" h="${d}" startAngle="-90" sweep="360" strokeColor="#26ffffff" weight="${t}" strokeAlign="inner"/>
-    <Arc name="${name}_fill" x="0" y="0" w="${d}" h="${d}" startAngle="-90" sweep="360*min(#mts_steps/max(#mts_steps_goal,1),1)" strokeColor="${s(p.color)}" weight="${t}" strokeAlign="inner" cap="round"/>
+    <Arc name="${name}_track" x="${Math.round(d / 2)}" y="${Math.round(d / 2)}" w="${d}" h="${d}" startAngle="-90" sweep="360" strokeColor="#26ffffff" weight="${t}" strokeAlign="inner"/>
+    <Arc name="${name}_fill" x="${Math.round(d / 2)}" y="${Math.round(d / 2)}" w="${d}" h="${d}" startAngle="-90" sweep="360*min(#mts_steps/max(#mts_steps_goal,1),1)" strokeColor="${s(p.color)}" weight="${t}" strokeAlign="inner" cap="round"/>
     <Text name="${name}_count" x="${Math.round(d / 2)}" y="${Math.round(d * 0.44)}" align="center" alignV="center" size="${Math.round(d / 5)}" bold="true" color="#ffffffff" format="%d" paras="#mts_steps"/>
     <Text name="${name}_label" x="${Math.round(d / 2)}" y="${Math.round(d * 0.64)}" align="center" alignV="center" size="${Math.round(d / 13)}" color="#ccffffff" text="steps"/>
 </Group>`,

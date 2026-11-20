@@ -81,8 +81,8 @@ export const LOCK_BLOCKS: LockBlock[] = [
     w: 520,
     h: 520,
     body: (n) => `<Group name="${n}" x="{x}" y="{y}" w="520" h="520" visibility="${CHARGING}">
-    <Arc name="${n}_track" x="0" y="0" w="520" h="520" startAngle="-90" sweep="360" strokeColor="#33ffffff" weight="28" strokeAlign="inner"/>
-    <Arc name="${n}_fill" x="0" y="0" w="520" h="520" startAngle="-90" sweep="360*#battery_level/100" strokeColor="#ffffffff" weight="28" strokeAlign="inner" cap="round"/>
+    <Arc name="${n}_track" x="260" y="260" w="520" h="520" startAngle="-90" sweep="360" strokeColor="#33ffffff" weight="28" strokeAlign="inner"/>
+    <Arc name="${n}_fill" x="260" y="260" w="520" h="520" startAngle="-90" sweep="360*#battery_level/100" strokeColor="#ffffffff" weight="28" strokeAlign="inner" cap="round"/>
     <Text name="${n}_percent" x="260" y="240" align="center" alignV="center" size="120" bold="true" color="#ffffffff" format="%d%%" paras="#battery_level"/>
     <Text name="${n}_state" x="260" y="340" align="center" alignV="center" size="36" color="#ccffffff" text="Charging" visibility="eq(#battery_state,1)"/>
     <Text name="${n}_full" x="260" y="340" align="center" alignV="center" size="36" color="#ccffffff" text="Fully charged" visibility="eq(#battery_state,3)"/>
@@ -150,7 +150,7 @@ export const BASIC_BLOCKS: LockBlock[] = [
     hint: 'A circle outline; change sweep for a progress arc',
     w: 300,
     h: 300,
-    body: (n) => `<Arc name="${n}" x="{x}" y="{y}" w="300" h="300" startAngle="-90" sweep="360" strokeColor="#ccffffff" weight="16" strokeAlign="inner" cap="round"/>`,
+    body: (n) => `<Arc name="${n}" x="{cx}" y="{cy}" w="300" h="300" startAngle="-90" sweep="360" strokeColor="#ccffffff" weight="16" strokeAlign="inner" cap="round"/>`,
   },
   {
     id: 'line',

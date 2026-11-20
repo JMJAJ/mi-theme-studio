@@ -38,7 +38,7 @@ const TAGS: { name: string; info: string; attrs?: (string | { name: string; valu
   { name: 'Rectangle', info: 'A box. cornerRadius rounds it.', attrs: [...SHAPE, 'cornerRadius'] },
   { name: 'Circle', info: 'A circle. x / y is its centre, r its radius.', attrs: [...SHAPE, 'r'] },
   { name: 'Ellipse', info: 'An oval filling x / y / w / h.', attrs: SHAPE },
-  { name: 'Arc', info: 'Part of an oval: from startAngle (0 = 3 o’clock) through sweep degrees.', attrs: [...SHAPE, 'startAngle', 'sweep', BOOL('close')] },
+  { name: 'Arc', info: 'Part of an oval of size w / h centred on x / y: from startAngle (0 = 3 o’clock) through sweep degrees.', attrs: [...SHAPE, 'startAngle', 'sweep', BOOL('close')] },
   { name: 'Line', info: 'A straight line from x,y to x1,y1.', attrs: [...SHAPE, 'x1', 'y1', 'color'] },
   { name: 'Wallpaper', info: 'The lock screen wallpaper.', attrs: PLACE },
   { name: 'Video', info: 'A video from the theme’s files.', attrs: [...PLACE, 'src', BOOL('loop'), BOOL('autoPlay')] },

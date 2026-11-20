@@ -395,10 +395,13 @@ function renderNodes(parent: Element, ctx: Ctx): ReactNode[] {
       continue;
     }
     if (tag === 'Arc') {
-      // Part of the ellipse in x/y/w/h: from startAngle (0 = 3 o'clock, clockwise) through sweep degrees.
+      // Part of the ellipse of size w/h centred on x/y (as on the phone; align / alignV do not move it):
+      // from startAngle (0 = 3 o'clock, clockwise) through sweep degrees.
       const style = place(el, ctx, anim);
       const w = Number(style.width) || 0;
       const h = Number(style.height) || 0;
+      if (typeof style.transform === 'string') style.transform = style.transform.replace(/translate\([^)]*\)\s*/, '') || undefined;
+      Object.assign(style, { marginLeft: -w / 2, marginTop: -h / 2 });
       const weight = el.hasAttribute('strokeColor') ? evalNumber(el.getAttribute('weight'), ctx.vars, 1) : 0;
       const inset = el.getAttribute('strokeAlign') === 'inner' ? weight / 2 : el.getAttribute('strokeAlign') === 'outer' ? -weight / 2 : 0;
       const rx = Math.max(0, w / 2 - inset);
@@ -1721,7 +1724,7 @@ function resizeAttrs(el: Element, vars: Vars, sx: number, sy: number, p: { x: nu
   const tag = el.tagName;
   const next = { l: p.x + (e.l - p.x) * sx, t: p.y + (e.t - p.y) * sy, w: e.w * sx, h: e.h * sy };
   if (SCALED.has(tag)) return scaleAttrs(el, vars, sx, e, next);
-  const centered = tag === 'Circle';
+  const centered = tag === 'Circle' || tag === 'Arc';
   const align = centered ? 'center' : (el.getAttribute('align') ?? 'left');
   const alignV = centered ? 'center' : (el.getAttribute('alignV') ?? 'top');
   const ax = (b: Box) => (align === 'center' ? b.l + b.w / 2 : align === 'right' ? b.l + b.w : b.l);

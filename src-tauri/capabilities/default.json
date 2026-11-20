@@ -20,7 +20,8 @@
         { "url": "https://build.nvidia.com/*" },
         { "url": "https://openrouter.ai/*" },
         { "url": "https://aistudio.google.com/*" },
-        { "url": "https://console.groq.com/*" }
+        { "url": "https://console.groq.com/*" },
+        { "url": "https://github.com/JMJAJ/mi-theme-studio/commit/*" }
       ]
     },
     "updater:default",

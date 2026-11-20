@@ -507,6 +507,86 @@ function UpdatesRow() {
   );
 }
 
+type ChangelogCommit = {
+  sha: string;
+  html_url: string;
+  commit: { message: string; author?: { date?: string } | null; committer?: { date?: string } | null };
+};
+
+let changelogCache: ChangelogCommit[] | null = null;
+let changelogRequest: Promise<ChangelogCommit[]> | null = null;
+
+function loadChangelog() {
+  if (changelogCache) return Promise.resolve(changelogCache);
+  if (!changelogRequest) {
+    changelogRequest = fetch('https://api.github.com/repos/JMJAJ/mi-theme-studio/commits?per_page=10', {
+      headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' },
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`GitHub returned ${response.status}.`);
+        const commits = (await response.json()) as ChangelogCommit[];
+        changelogCache = commits;
+        return commits;
+      })
+      .finally(() => {
+        changelogRequest = null;
+      });
+  }
+  return changelogRequest;
+}
+
+function Changelog() {
+  const [commits, setCommits] = useState<ChangelogCommit[] | null>(changelogCache);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(!changelogCache);
+
+  const refresh = () => {
+    setLoading(true);
+    setError('');
+    void loadChangelog()
+      .then(setCommits)
+      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason)))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(refresh, []);
+
+  return (
+    <Group title="Changelog">
+      <div className="set-card changelog-card" aria-live="polite">
+        {loading && <div className="changelog-state">Loading recent changes…</div>}
+        {error && (
+          <div className="changelog-state changelog-error">
+            <span>Could not load the changelog: {error}</span>
+            <button className="btn btn-sm" onClick={refresh}>Retry</button>
+          </div>
+        )}
+        {commits?.map((entry) => {
+          const [title, ...body] = entry.commit.message.split('\n');
+          const date = entry.commit.author?.date ?? entry.commit.committer?.date;
+          return (
+            <button
+              key={entry.sha}
+              className="changelog-item"
+              onClick={() => void openUrl(entry.html_url)}
+              title="Open commit on GitHub"
+            >
+              <span className="changelog-copy">
+                <span className="changelog-title">{title}</span>
+                {body.join('\n').trim() && <span className="changelog-body">{body.join('\n').trim()}</span>}
+              </span>
+              <span className="changelog-meta">
+                {date && <time dateTime={date}>{new Date(date).toLocaleDateString()}</time>}
+                <code>{entry.sha.slice(0, 7)}</code>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </Group>
+  );
+}
+
 function About() {
   const info = useStore((s) => s.appInfo);
   const mirror = useStore((s) => s.mirror);
@@ -522,6 +602,7 @@ function About() {
       <Group title="Version">
         <UpdatesRow />
       </Group>
+      <Changelog />
       <Group title="About">
         <Row title="Independent tool" description="Not affiliated with or endorsed by Xiaomi. Contains no Xiaomi application code or assets; store data is loaded from the public Theme Manager service on request." />
         <Row title="License" description="MIT License." />

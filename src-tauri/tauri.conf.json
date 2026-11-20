@@ -25,7 +25,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: blob: themeres: http://themeres.localhost https://themeres.localhost https://*.mi-img.com; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost themeres: http://themeres.localhost https://ipwho.is https://ipapi.co https://api.open-meteo.com; font-src 'self' data: themeres: http://themeres.localhost; media-src 'self' themeres: http://themeres.localhost https://*.mi-img.com"
+      "csp": "default-src 'self'; img-src 'self' data: blob: themeres: http://themeres.localhost https://themeres.localhost https://*.mi-img.com; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost themeres: http://themeres.localhost https://ipwho.is https://ipapi.co https://api.open-meteo.com https://api.github.com; font-src 'self' data: themeres: http://themeres.localhost; media-src 'self' themeres: http://themeres.localhost https://*.mi-img.com"
     }
   },
   "plugins": {

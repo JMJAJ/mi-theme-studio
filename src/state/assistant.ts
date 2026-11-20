@@ -607,8 +607,8 @@ export async function rewindTo(itemId: string) {
 }
 
 /** Ask about something from elsewhere in the app ("Explain this file"). */
-export function askAssistant(text: string) {
+export function askAssistant(text: string): boolean {
   const state = appState();
   if (state.section !== 'assistant') updateLayout({ assistant: true });
-  sendMessage(text);
+  return sendMessage(text);
 }

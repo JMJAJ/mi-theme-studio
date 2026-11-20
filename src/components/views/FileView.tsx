@@ -7,16 +7,17 @@ import { openSearchPanel } from '@codemirror/search';
 import { findExtension, showReplace } from './findPanel';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
-import { AlertTriangle, Check, Download, FileQuestion, Maximize, Minus, Plus, RefreshCw, RotateCcw, Scan, Search } from 'lucide-react';
+import { AlertTriangle, Check, Download, FileQuestion, Maximize, Minus, Plus, RefreshCw, RotateCcw, Scan, Scissors, Search, Sparkles } from 'lucide-react';
 import { api, errorMessage, resourceUrl } from '../../lib/api';
 import { NinePatchEditor } from './NinePatchEditor';
 import { dimensions, formatBytes } from '../../lib/format';
 import { displayFolder, fileName, parentOf } from '../../lib/paths';
 import type { FileInfo, Slot } from '../../lib/types';
-import { useStore } from '../../state/store';
+import { toast, useStore } from '../../state/store';
 import * as A from '../../state/actions';
-import { Scissors } from 'lucide-react';
 import { openSoundTrim } from './SoundTrim';
+import { openContextMenu } from '../common/Menu';
+import { CodePrompt, type CodeReference } from '../assistant/CodePrompt';
 
 // ---------------------------------------------------------------- image
 
@@ -246,6 +247,7 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
   const readOnly = slot === 'ref';
   const view = useRef<EditorView | null>(null);
   const [editor, setEditor] = useState<EditorView | null>(null);
+  const [aiReference, setAiReference] = useState<CodeReference | null>(null);
   const reveal = useStore((s) => (slot === 'main' && s.reveal?.path === file.path ? s.reveal : null));
 
   useEffect(() => {
@@ -324,6 +326,96 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
       EditorView.lineWrapping,
       findExtension,
       revealLineField,
+      EditorView.domEventHandlers({
+        contextmenu(event, v) {
+          event.preventDefault();
+          event.stopPropagation();
+          const pos = v.posAtCoords({ x: event.clientX, y: event.clientY });
+          const selection = v.state.selection.main;
+          const useSelection = !selection.empty && pos !== null && pos >= selection.from && pos <= selection.to;
+          const range = useSelection ? selection : v.state.doc.lineAt(pos ?? selection.head);
+          const from = useSelection ? selection.from : range.from;
+          const to = useSelection ? selection.to : range.to;
+          const startLine = v.state.doc.lineAt(from).number;
+          const endLine = v.state.doc.lineAt(to > from ? to - 1 : to).number;
+          const selectedText = v.state.sliceDoc(from, to);
+          if (!useSelection && pos !== null) v.dispatch({ selection: { anchor: pos } });
+          const reference: CodeReference = {
+            path: file.path,
+            startLine,
+            endLine,
+            code: selectedText,
+            language: file.path.split('.').pop() || file.kind,
+            readOnly,
+          };
+          const hasSelection = useSelection && from !== to;
+          const clip = async (value: string) => {
+            try {
+              await navigator.clipboard.writeText(value);
+              return true;
+            } catch {
+              toast('error', 'Could not access the clipboard.');
+              return false;
+            }
+          };
+
+          openContextMenu(event, [
+            {
+              label: hasSelection ? 'Ask AI about selection' : `Ask AI about line ${startLine}`,
+              icon: Sparkles,
+              onSelect: () => setAiReference(reference),
+            },
+            'separator',
+            {
+              label: 'Cut',
+              shortcut: 'Ctrl+X',
+              icon: Scissors,
+              disabled: readOnly || !hasSelection,
+              onSelect: () => {
+                void clip(selectedText).then((copied) => {
+                  if (copied && !readOnly && hasSelection) {
+                    v.dispatch({ changes: { from, to, insert: '' }, selection: { anchor: from } });
+                    v.focus();
+                  }
+                });
+              },
+            },
+            {
+              label: 'Copy',
+              shortcut: 'Ctrl+C',
+              disabled: !hasSelection,
+              onSelect: () => void clip(selectedText),
+            },
+            {
+              label: 'Paste',
+              shortcut: 'Ctrl+V',
+              disabled: readOnly,
+              onSelect: () => {
+                void (async () => {
+                  try {
+                    const value = await navigator.clipboard.readText();
+                    const current = v.state.selection.main;
+                    v.dispatch({ changes: { from: current.from, to: current.to, insert: value }, selection: { anchor: current.from + value.length } });
+                    v.focus();
+                  } catch {
+                    toast('error', 'Could not access the clipboard.');
+                  }
+                })();
+              },
+            },
+            'separator',
+            {
+              label: 'Select all',
+              shortcut: 'Ctrl+A',
+              onSelect: () => {
+                v.dispatch({ selection: { anchor: 0, head: v.state.doc.length } });
+                v.focus();
+              },
+            },
+          ]);
+          return true;
+        },
+      }),
       keymap.of([
         {
           key: 'Mod-h',
@@ -342,7 +434,7 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
         },
       ]),
     ],
-    [isXml, isMaml, readOnly, file.path],
+    [isXml, isMaml, readOnly, file.path, file.kind, slot],
   );
 
   // A stable change handler: the editor component reconfigures itself whenever
@@ -432,6 +524,7 @@ function TextEditor({ file, slot }: { file: FileInfo; slot: Slot }) {
           onChange={onChange}
         />
       </div>
+      {aiReference && <CodePrompt reference={aiReference} onClose={() => setAiReference(null)} />}
     </div>
   );
 }

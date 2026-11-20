@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Bot,
+  Brain,
   Check,
   ChevronDown,
   ChevronUp,
@@ -46,12 +47,14 @@ import {
   openChat,
   rewindTo,
   setPermissionMode,
+  setReasoningEffort,
   sendMessage,
   stopAssistant,
   useAssistant,
   type ChatItem,
 } from '../../state/assistant';
 import { PERMISSION_INFO, PERMISSION_MODES, type PermissionMode } from '../../state/assistantPermissions';
+import { REASONING_EFFORTS, type ReasoningEffort } from '../../state/assistantReasoning';
 import { WRITE_TOOLS, type EditLocation } from '../../state/assistantTools';
 import { fileName } from '../../lib/paths';
 import { relativeTime } from '../../lib/format';
@@ -480,6 +483,28 @@ function PermissionPicker() {
   );
 }
 
+function ReasoningPicker() {
+  const effort = useAssistant((s) => s.reasoningEffort);
+  return (
+    <label
+      className="ai-reasoning-control"
+      title="Auto leaves reasoning to the model. Other levels are sent as reasoning_effort to compatible providers."
+    >
+      <Brain aria-hidden="true" />
+      <select
+        className="ai-reasoning-select"
+        aria-label="Reasoning effort"
+        value={effort}
+        onChange={(event) => setReasoningEffort(event.currentTarget.value as ReasoningEffort)}
+      >
+        {REASONING_EFFORTS.map((level) => (
+          <option key={level} value={level}>{level === 'auto' ? 'Auto' : level[0].toUpperCase() + level.slice(1)}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function Composer({ autoFocus }: { autoFocus?: boolean }) {
   const text = useAssistant((s) => s.draft);
   const setText = (draft: string) => useAssistant.setState({ draft });
@@ -516,6 +541,7 @@ function Composer({ autoFocus }: { autoFocus?: boolean }) {
         />
       <div className="ai-composer-foot">
         <PermissionPicker />
+        <ReasoningPicker />
         <span className="grow" />
         {running ? (
           <button className="btn btn-icon ai-send" title="Stop" aria-label="Stop" onClick={stopAssistant}>

@@ -11,6 +11,7 @@ import type { ProjectSnapshot } from '../lib/types';
 import { WRITE_TOOLS, runTool, toolLabel, toolsForPermissionMode, type EditLocation, type Proposal } from './assistantTools';
 import { THEME_KNOWLEDGE, themeContext } from './assistantContext';
 import { DEFAULT_PERMISSION_MODE, isPermissionMode, PERMISSION_INFO, type PermissionMode } from './assistantPermissions';
+import { DEFAULT_REASONING_EFFORT, isReasoningEffort, type ReasoningEffort } from './assistantReasoning';
 
 export type ChatItem =
   | {
@@ -78,6 +79,8 @@ interface AssistantState {
   /** Per-chat access level for theme changes and local terminal commands. */
   permissionMode: PermissionMode;
   permissionModeExplicit: boolean;
+  /** Requested model reasoning effort for this chat; Auto leaves the provider default. */
+  reasoningEffort: ReasoningEffort;
 }
 
 const OLD_CHAT_KEY = 'mts.assistant.chat.v1';
@@ -88,7 +91,7 @@ const MAX_STEPS = 30;
 /** Older tool results are shortened past this many characters of history. */
 const HISTORY_BUDGET = 160_000;
 
-type SavedChat = Pick<AssistantState, 'items' | 'messages'> & { permissionMode?: PermissionMode };
+type SavedChat = Pick<AssistantState, 'items' | 'messages'> & { permissionMode?: PermissionMode; reasoningEffort?: ReasoningEffort };
 
 const newChatId = () => `chat${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
@@ -101,14 +104,15 @@ function readJson<T>(key: string): T | null {
   }
 }
 
-function readChat(id: string): Pick<AssistantState, 'items' | 'messages' | 'permissionMode' | 'permissionModeExplicit'> {
+function readChat(id: string): Pick<AssistantState, 'items' | 'messages' | 'permissionMode' | 'permissionModeExplicit' | 'reasoningEffort'> {
   const saved = readJson<SavedChat>(chatKey(id));
-  if (!saved) return { items: [], messages: [], permissionMode: DEFAULT_PERMISSION_MODE, permissionModeExplicit: false };
+  if (!saved) return { items: [], messages: [], permissionMode: DEFAULT_PERMISSION_MODE, permissionModeExplicit: false, reasoningEffort: DEFAULT_REASONING_EFFORT };
   // A reload ends any run: unfinished steps cannot resume.
   const items = (saved.items ?? []).map((i): ChatItem => (i.role === 'tool' && (i.status === 'running' || i.status === 'pending') ? { ...i, status: 'declined' } : i.role === 'assistant' ? { ...i, streaming: false } : i));
   const savedMode = saved.permissionMode;
   const explicit = isPermissionMode(savedMode);
-  return { items, messages: saved.messages ?? [], permissionMode: explicit ? savedMode : DEFAULT_PERMISSION_MODE, permissionModeExplicit: explicit };
+  const reasoningEffort = isReasoningEffort(saved.reasoningEffort) ? saved.reasoningEffort : DEFAULT_REASONING_EFFORT;
+  return { items, messages: saved.messages ?? [], permissionMode: explicit ? savedMode : DEFAULT_PERMISSION_MODE, permissionModeExplicit: explicit, reasoningEffort };
 }
 
 function chatTitle(items: ChatItem[]): string {
@@ -117,7 +121,7 @@ function chatTitle(items: ChatItem[]): string {
   return text.length > 80 ? `${text.slice(0, 79)}…` : text || 'New chat';
 }
 
-function loadChats(): Pick<AssistantState, 'chatId' | 'chats' | 'items' | 'messages' | 'permissionMode' | 'permissionModeExplicit'> {
+function loadChats(): Pick<AssistantState, 'chatId' | 'chats' | 'items' | 'messages' | 'permissionMode' | 'permissionModeExplicit' | 'reasoningEffort'> {
   let chats = readJson<ChatSummary[]>(INDEX_KEY) ?? [];
   // Move the single chat older versions kept into the list.
   const old = readJson<SavedChat>(OLD_CHAT_KEY);
@@ -137,7 +141,7 @@ function loadChats(): Pick<AssistantState, 'chatId' | 'chats' | 'items' | 'messa
   const last = chats[0];
   return last
     ? { chatId: last.id, chats, ...readChat(last.id) }
-    : { chatId: newChatId(), chats, items: [], messages: [], permissionMode: DEFAULT_PERMISSION_MODE, permissionModeExplicit: false };
+    : { chatId: newChatId(), chats, items: [], messages: [], permissionMode: DEFAULT_PERMISSION_MODE, permissionModeExplicit: false, reasoningEffort: DEFAULT_REASONING_EFFORT };
 }
 
 const initialChats = loadChats();
@@ -185,7 +189,7 @@ function saveChat(s: AssistantState = get()) {
     }
     return;
   }
-  const data = JSON.stringify({ items: s.items.slice(-400), messages: trimmed(s.messages), ...(s.permissionModeExplicit ? { permissionMode: s.permissionMode } : {}) });
+  const data = JSON.stringify({ items: s.items.slice(-400), messages: trimmed(s.messages), reasoningEffort: s.reasoningEffort, ...(s.permissionModeExplicit ? { permissionMode: s.permissionMode } : {}) });
   // A huge chat simply is not remembered.
   if (data.length > 3_000_000) return;
   const previous = s.chats.find((c) => c.id === s.chatId);
@@ -216,7 +220,7 @@ function flushSave() {
   saveChat();
 }
 useAssistant.subscribe((s, prev) => {
-  if (s.chatId !== prev.chatId || (s.items === prev.items && s.messages === prev.messages && s.permissionMode === prev.permissionMode && s.permissionModeExplicit === prev.permissionModeExplicit)) return;
+  if (s.chatId !== prev.chatId || (s.items === prev.items && s.messages === prev.messages && s.permissionMode === prev.permissionMode && s.permissionModeExplicit === prev.permissionModeExplicit && s.reasoningEffort === prev.reasoningEffort)) return;
   window.clearTimeout(saveTimer);
   saveTimer = window.setTimeout(() => {
     saveTimer = undefined;
@@ -248,6 +252,10 @@ export async function updateAiSettings(patch: AiSettingsPatch) {
 
 export function setPermissionMode(permissionMode: PermissionMode) {
   set({ permissionMode, permissionModeExplicit: true });
+}
+
+export function setReasoningEffort(reasoningEffort: ReasoningEffort) {
+  set({ reasoningEffort });
 }
 
 /** Switch provider, filling in its preset address and model the first time. */
@@ -448,6 +456,7 @@ async function runTurn(content: string) {
   if (get().running) return;
   ensureListener();
   stopped = false;
+  const reasoningEffort = get().reasoningEffort;
   pushItem({ id: itemId(), role: 'user', text: content, at: Date.now(), checkpoint: checkpointNow() ?? undefined, msgIndex: get().messages.length });
   set((s) => ({ messages: [...s.messages, { role: 'user', content }], running: true, status: 'Thinking…' }));
 
@@ -460,7 +469,11 @@ async function runTurn(content: string) {
       const permissionMode = get().permissionMode;
       const availableTools = toolsForPermissionMode(permissionMode);
       const useTools = !get().noTools && availableTools.length > 0;
-      const body = { messages: [{ role: 'system', content: await systemPrompt() }, ...trimmed(get().messages)], ...(useTools ? { tools: availableTools } : {}) };
+      const body = {
+        messages: [{ role: 'system', content: await systemPrompt() }, ...trimmed(get().messages)],
+        ...(useTools ? { tools: availableTools } : {}),
+        ...(reasoningEffort === 'auto' ? {} : { reasoning_effort: reasoningEffort }),
+      };
       let reply;
       try {
         reply = await chatWithRetry(currentRequest, body);
@@ -548,7 +561,7 @@ async function whenIdle() {
   });
 }
 
-const emptyChat = () => ({ chatId: newChatId(), items: [], messages: [], noTools: false, status: null, permissionMode: DEFAULT_PERMISSION_MODE, permissionModeExplicit: true });
+const emptyChat = () => ({ chatId: newChatId(), items: [], messages: [], noTools: false, status: null, permissionMode: DEFAULT_PERMISSION_MODE, permissionModeExplicit: true, reasoningEffort: DEFAULT_REASONING_EFFORT });
 
 export async function newChat() {
   await whenIdle();

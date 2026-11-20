@@ -5,6 +5,7 @@ import { fileName } from '../../lib/paths';
 import { formatTime } from '../../lib/format';
 import type { FileInfo } from '../../lib/types';
 import { useStore } from '../../state/store';
+import { previewDate, usePreviewGlobals } from '../../state/previewGlobals';
 import * as A from '../../state/actions';
 import { useDeviceSummary } from '../shell/deviceSummary';
 import { MirrorButton } from '../common/MirrorButton';
@@ -15,11 +16,14 @@ import { HomeScreen, StatusBar, SystemLockClock, useHomeColors, usePageDots, use
 /** The current time, refreshed every 15 seconds so mock-up clocks keep up. */
 export function useClock() {
   const [now, setNow] = useState(() => new Date());
+  const timeMinutes = usePreviewGlobals((s) => s.timeMinutes);
   useEffect(() => {
+    if (timeMinutes !== null) return;
+    setNow(new Date());
     const id = window.setInterval(() => setNow(new Date()), 15000);
     return () => window.clearInterval(id);
-  }, []);
-  return now;
+  }, [timeMinutes]);
+  return previewDate(now, timeMinutes);
 }
 
 type Screen = 'lock' | 'home' | 'previews' | 'screenshot';

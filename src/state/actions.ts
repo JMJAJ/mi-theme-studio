@@ -651,6 +651,16 @@ export async function extractFile(path: string, slot: Slot = 'main') {
   if (ok) toast('success', `Exported ${fileName(path)}`);
 }
 
+/** Export selected files/folders, or the whole package when paths is empty. */
+export async function exportPaths(paths: string[], slot: Slot = 'main') {
+  const selection = [...new Set(paths)];
+  const title = selection.length ? `Export ${selection.length} selected item${selection.length === 1 ? '' : 's'}` : 'Export all package files';
+  const destination = await openDialog({ title, multiple: false, directory: true });
+  if (!destination || Array.isArray(destination)) return;
+  const result = await guard('Export files', () => api.filesExtract(selection, destination, slot), `Exporting ${selection.length || 'all'} files…`);
+  if (result) toast('success', `Exported ${plural(result.files, 'file', 'files')} (${formatBytes(result.bytes)}) to the selected folder`);
+}
+
 export async function createContainer(initial = '') {
   const name = await promptDialog({
     title: 'New component archive',

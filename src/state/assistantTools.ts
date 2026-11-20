@@ -81,6 +81,20 @@ export const TOOL_SPECS: ToolSpec[] = [
   {
     type: 'function',
     function: {
+      name: 'export_theme_files',
+      description: 'Export files or folders from the open theme to an existing local folder on this PC. Use list_files to identify paths. A path may be a package file or folder; nested component archives use paths like "lockscreen!/advance" and export as normal folders. Pass an empty paths array to export the whole package. Original theme folder structure is preserved under destination_directory. This writes files outside the theme and is not undoable; only available in Supervised or Full access. Supervised asks before writing and shows the paths.',
+      parameters: obj(
+        {
+          paths: { type: 'array', maxItems: 5000, items: { type: 'string', description: 'A file or folder path from list_files; use an empty array to export the whole package' } },
+          destination_directory: str('Absolute path to an existing local destination folder on this PC'),
+        },
+        ['paths', 'destination_directory'],
+      ),
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_theme_overview',
       description: 'Title, theme details (description.xml), parts present, file counts, the file open in the editor, and validation problems. Call this first when you need context.',
       parameters: obj({}),
@@ -177,12 +191,12 @@ export const TOOL_SPECS: ToolSpec[] = [
   },
 ];
 
-export const WRITE_TOOLS = new Set(['edit_file', 'write_file', 'delete_files', 'set_theme_details', 'colorize_image', 'import_local_files', 'run_terminal']);
+export const WRITE_TOOLS = new Set(['edit_file', 'write_file', 'delete_files', 'set_theme_details', 'colorize_image', 'import_local_files', 'export_theme_files', 'run_terminal']);
 
 export function toolsForPermissionMode(permissionMode: PermissionMode) {
   return TOOL_SPECS.filter(({ function: tool }) => {
     if (permissionMode === 'read-only') return !WRITE_TOOLS.has(tool.name);
-    if (permissionMode === 'workspace') return tool.name !== 'run_terminal';
+    if (permissionMode === 'workspace') return tool.name !== 'run_terminal' && tool.name !== 'export_theme_files';
     return true;
   });
 }
@@ -344,6 +358,9 @@ async function run(name: string, input: Record<string, unknown>, ctx: ToolContex
   if (name === 'run_terminal' && (ctx.permissionMode === 'read-only' || ctx.permissionMode === 'workspace')) {
     throw new Error('Terminal commands are disabled in this chat permission mode. Choose Supervised or Full access to enable them.');
   }
+  if (name === 'export_theme_files' && ctx.permissionMode !== 'supervised' && ctx.permissionMode !== 'full-access') {
+    throw new Error('Exporting theme files to your PC requires Supervised or Full access mode.');
+  }
   switch (name) {
     case 'list_local_images': {
       const folder = requireAbsolutePath(asString(input.folder, 'folder'), 'folder');
@@ -436,6 +453,27 @@ async function run(name: string, input: Record<string, unknown>, ctx: ToolContex
         ok: true,
         summary: `Imported ${response.result.written.length} local file${response.result.written.length === 1 ? '' : 's'}`,
         result: `Imported into ${folder || 'the theme root'}: ${response.result.written.join(', ') || 'no files'}. This theme change is undoable with Ctrl+Z.`,
+      };
+    }
+    case 'export_theme_files': {
+      needProject();
+      if (!Array.isArray(input.paths) || !input.paths.every((path) => typeof path === 'string')) {
+        throw new Error('paths must be an array of theme file or folder paths; use [] to export the whole package.');
+      }
+      const paths = input.paths as string[];
+      if (paths.length > 5000) throw new Error('Export at most 5,000 selected files or folders at once.');
+      const destination = requireAbsolutePath(asString(input.destination_directory, 'destination_directory'), 'destination_directory');
+      const displayPaths = paths.length ? paths : ['(entire package)'];
+      const proposal = {
+        title: `Export ${paths.length ? `${paths.length} selected item${paths.length === 1 ? '' : 's'}` : 'entire package'}`,
+        diff: [`Destination folder: ${destination}`, 'Files and folders:', ...displayPaths.map((path) => `+ ${path}`), 'Folder structure will be preserved. Local exported files are not undoable.'].join('\n'),
+      };
+      if (!(await ctx.approve(proposal))) return { ok: false, summary: 'Export declined', result: 'No local files were written.' };
+      const output = await api.filesExtract(paths, destination);
+      return {
+        ok: true,
+        summary: `Exported ${output.files} theme file${output.files === 1 ? '' : 's'}`,
+        result: [`Exported ${output.files} file${output.files === 1 ? '' : 's'} (${output.bytes.toLocaleString()} bytes) to ${destination}.`, ...output.paths.slice(0, 80)].join('\n'),
       };
     }
     case 'get_theme_overview': {
@@ -623,6 +661,8 @@ export function toolLabel(name: string, rawArgs: string): string {
       return `Running ${String(input.command ?? 'terminal command').slice(0, 70)}`;
     case 'import_local_files':
       return `Importing ${Array.isArray(input.paths) ? input.paths.length : 0} local file${Array.isArray(input.paths) && input.paths.length === 1 ? '' : 's'}`;
+    case 'export_theme_files':
+      return `Exporting ${Array.isArray(input.paths) && input.paths.length ? `${input.paths.length} selected item${input.paths.length === 1 ? '' : 's'}` : 'the theme'}`;
     case 'get_theme_overview':
       return 'Looking at the theme';
     case 'list_files':

@@ -2,7 +2,7 @@
 // phone frame, or the real connected phone (screenshot / live mirror).
 import { themeFontFile, usePackageFont } from '../common/themeFont';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Camera, ChevronLeft, ChevronRight, Circle, ExternalLink, LayoutGrid, Loader2, Lock, MonitorPlay, MonitorSmartphone, Send, Smartphone, Sparkles, Square, Usb, X } from 'lucide-react';
+import { Camera, ChevronLeft, ChevronRight, Circle, ExternalLink, LayoutGrid, Loader2, Lock, MonitorPlay, MonitorSmartphone, Plus, RotateCcw, Send, SlidersHorizontal, Smartphone, Sparkles, Square, Trash2, Usb, X } from 'lucide-react';
 import { resourceUrl, screenshotUrl } from '../../lib/api';
 import { fileName } from '../../lib/paths';
 import { findWallpaper, pickIcons, useClock } from '../views/PreviewView';
@@ -12,6 +12,7 @@ import { TryOnButton } from '../common/TryOnButton';
 import { attachCanvas, startStream, stopStream, streamKey, streamScroll, streamTouch, useMirrorStream } from '../../state/mirrorStream';
 import * as A from '../../state/actions';
 import { updateLayout, useStore } from '../../state/store';
+import { usePreviewGlobals } from '../../state/previewGlobals';
 import { useDeviceSummary } from './deviceSummary';
 
 type Mode = 'theme' | 'live';
@@ -116,6 +117,84 @@ function ThemeScreen({ screen, box, ratio, previewIndex, lockPage }: { screen: S
   );
 }
 
+function GlobalsPanel() {
+  const now = useClock();
+  const timeMinutes = usePreviewGlobals((s) => s.timeMinutes);
+  const variables = usePreviewGlobals((s) => s.variables);
+  const customVariables = usePreviewGlobals((s) => s.customVariables);
+  const setTimeMinutes = usePreviewGlobals((s) => s.setTimeMinutes);
+  const setVariable = usePreviewGlobals((s) => s.setVariable);
+  const addCustomVariable = usePreviewGlobals((s) => s.addCustomVariable);
+  const updateCustomVariable = usePreviewGlobals((s) => s.updateCustomVariable);
+  const removeCustomVariable = usePreviewGlobals((s) => s.removeCustomVariable);
+  const reset = usePreviewGlobals((s) => s.reset);
+  const selectedTime = timeMinutes ?? now.getHours() * 60 + now.getMinutes();
+  const timeLabel = new Date(2020, 0, 1, Math.floor(selectedTime / 60), selectedTime % 60).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+
+  return (
+    <aside id="phone-preview-globals" className="pp-globals" aria-label="Global preview variables">
+      <div className="pp-globals-head">
+        <div>
+          <strong>Preview globals</strong>
+          <span className="faint">Values shared by the theme preview</span>
+        </div>
+        <button className="tb-icon" title="Reset preview globals" aria-label="Reset preview globals" onClick={reset}>
+          <RotateCcw />
+        </button>
+      </div>
+
+      <label className="pp-global-control">
+        <span><span>Time</span><strong>{timeLabel}</strong></span>
+        <input type="range" min="0" max="1439" step="1" value={selectedTime} aria-label="Preview time" onChange={(e) => setTimeMinutes(Number(e.target.value))} />
+        <span className="pp-global-hint">Drag to test clocks and time-based layouts.</span>
+      </label>
+      {timeMinutes !== null && <button className="btn btn-sm btn-ghost pp-global-now" onClick={() => setTimeMinutes(null)}>Use current time</button>}
+
+      <label className="pp-global-control">
+        <span><span>Battery level</span><strong>{variables.battery_level}%</strong></span>
+        <input type="range" min="0" max="100" step="1" value={variables.battery_level} aria-label="Preview battery level" onChange={(e) => setVariable('battery_level', Number(e.target.value))} />
+      </label>
+      <label className="pp-global-control">
+        <span><span>Battery state</span><strong>{['Normal', 'Charging', 'Low', 'Full'][variables.battery_state] ?? 'Normal'}</strong></span>
+        <select value={variables.battery_state} aria-label="Preview battery state" onChange={(e) => setVariable('battery_state', Number(e.target.value))}>
+          <option value={0}>Normal</option>
+          <option value={1}>Charging</option>
+          <option value={2}>Low</option>
+          <option value={3}>Full</option>
+        </select>
+      </label>
+      <label className="pp-global-check">
+        <input type="checkbox" checked={variables.music_state === 1} onChange={(e) => setVariable('music_state', e.target.checked ? 1 : 0)} />
+        Music playing
+      </label>
+      <label className="pp-global-number">
+        <span>Unread messages</span>
+        <input type="number" min="0" max="99" value={variables.sms_unread_count} onChange={(e) => setVariable('sms_unread_count', Math.max(0, Number(e.target.value) || 0))} />
+      </label>
+      <label className="pp-global-number">
+        <span>Missed calls</span>
+        <input type="number" min="0" max="99" value={variables.call_missed_count} onChange={(e) => setVariable('call_missed_count', Math.max(0, Number(e.target.value) || 0))} />
+      </label>
+
+      <section className="pp-custom-globals" aria-label="Custom global variables">
+        <div className="pp-custom-head">
+          <strong>Custom variables</strong>
+          <button className="btn btn-sm btn-ghost" onClick={addCustomVariable}><Plus /> Add</button>
+        </div>
+        {customVariables.length === 0 ? (
+          <span className="faint pp-global-hint">Add a variable by name to override it in MAML previews.</span>
+        ) : customVariables.map((variable) => (
+          <div className="pp-custom-row" key={variable.id}>
+            <input aria-label="Variable name" value={variable.name} placeholder="variable_name" onChange={(e) => updateCustomVariable(variable.id, 'name', e.target.value)} />
+            <input aria-label={`Value for ${variable.name || 'custom variable'}`} value={variable.value} onChange={(e) => updateCustomVariable(variable.id, 'value', e.target.value)} />
+            <button className="tb-icon" aria-label={`Remove ${variable.name || 'custom variable'}`} title="Remove variable" onClick={() => removeCustomVariable(variable.id)}><Trash2 /></button>
+          </div>
+        ))}
+      </section>
+    </aside>
+  );
+}
+
 /** The decoded mirror; pointer and wheel input go back to the phone as touches and scrolls. */
 function LiveCanvas() {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -182,6 +261,7 @@ export function PhonePanel() {
   const [mode, setMode] = useState<Mode>('theme');
   const [screen, setScreen] = useState<Screen>('lock');
   const [previewIndex, setPreviewIndex] = useState(0);
+  const [globalsOpen, setGlobalsOpen] = useState(false);
   // Lock screens with several pages (a swipe or tap switches them on the phone).
   const lockPages = useLockPages();
   const [lockPageIndex, setLockPageIndex] = useState(0);
@@ -248,22 +328,30 @@ export function PhonePanel() {
 
       {effectiveMode === 'theme' ? (
         <>
-          <div className="pp-screens" role="tablist" aria-label="Screen">
-            <button role="tab" aria-selected={screen === 'lock'} onClick={() => setScreen('lock')}>
-              <Lock /> Lock
-            </button>
-            <button role="tab" aria-selected={screen === 'home'} onClick={() => setScreen('home')}>
-              <MonitorSmartphone /> Home
-            </button>
-            <button role="tab" aria-selected={screen === 'apps'} onClick={() => setScreen('apps')} title="The second launcher page: a full grid of the theme's icons">
-              <LayoutGrid /> Apps
-            </button>
-            <button role="tab" aria-selected={screen === 'previews'} onClick={() => setScreen('previews')} disabled={!previews.length}>
-              Previews{previews.length ? ` ${previews.length}` : ''}
+          <div className="pp-screenbar">
+            <div className="pp-screens" role="tablist" aria-label="Screen">
+              <button role="tab" aria-selected={screen === 'lock'} onClick={() => setScreen('lock')}>
+                <Lock /> Lock
+              </button>
+              <button role="tab" aria-selected={screen === 'home'} onClick={() => setScreen('home')}>
+                <MonitorSmartphone /> Home
+              </button>
+              <button role="tab" aria-selected={screen === 'apps'} onClick={() => setScreen('apps')} title="The second launcher page: a full grid of the theme's icons">
+                <LayoutGrid /> Apps
+              </button>
+              <button role="tab" aria-selected={screen === 'previews'} onClick={() => setScreen('previews')} disabled={!previews.length}>
+                Previews{previews.length ? ` ${previews.length}` : ''}
+              </button>
+            </div>
+            <button className="pp-globals-toggle" aria-pressed={globalsOpen} aria-expanded={globalsOpen} onClick={() => setGlobalsOpen((open) => !open)}>
+              <SlidersHorizontal /> Globals
             </button>
           </div>
-          <div className="pp-stage" ref={stageRef}>
-            <ThemeScreen screen={screen} box={box} ratio={ratio} previewIndex={previewIndex} lockPage={lockPage} />
+          <div className="pp-workspace">
+            <div className="pp-stage" ref={stageRef}>
+              <ThemeScreen screen={screen} box={box} ratio={ratio} previewIndex={previewIndex} lockPage={lockPage} />
+            </div>
+            {globalsOpen && <GlobalsPanel />}
           </div>
           <div className="pp-foot">
             {screen === 'previews' && previews.length > 0 ? (

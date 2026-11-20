@@ -7,6 +7,7 @@ use crate::adb::{
 use crate::store::{self, DownloadProgress, DownloadedTheme, StorePage, StoreQuery, ThemeDetail};
 use crate::error::{AppError, AppResult};
 use crate::package::archive::{self, Limits, WriteEntry};
+use crate::package::blob::BlobRef;
 use crate::package::metadata::{self, FieldUpdate, MetadataView, DESCRIPTION_PATH};
 use crate::package::ninepatch::{self, NinePatch, NinePatchUpdate};
 use crate::package::paths;
@@ -19,6 +20,7 @@ use crate::storage::{self, RecoveryInfo, Settings};
 use crate::validation::{self, ValidationReport};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -705,6 +707,146 @@ pub async fn file_extract(
                 })?
             };
         storage::atomic_write(Path::new(&destination), &data.data)
+    })
+    .await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilesExtractResult {
+    pub paths: Vec<String>,
+    pub files: usize,
+    pub bytes: u64,
+}
+
+/// Extract selected package files/folders to a local directory. Empty paths means the whole package.
+#[tauri::command]
+pub async fn files_extract(
+    app: AppHandle,
+    paths: Vec<String>,
+    destination: String,
+    slot: Option<String>,
+) -> AppResult<FilesExtractResult> {
+    if paths.len() > 5000 {
+        return Err(AppError::invalid("Select at most 5,000 files or folders to export at once."));
+    }
+    let destination = PathBuf::from(destination);
+    if !destination.is_absolute() {
+        return Err(AppError::invalid("Choose an absolute destination folder."));
+    }
+
+    blocking(app, move |state, _| {
+        let entries: Vec<(String, BlobRef)> = {
+            let guard = if slot.as_deref() == Some("ref") {
+                lock(&state.reference)
+            } else {
+                lock(&state.main)
+            };
+            let project = guard.as_ref().ok_or_else(AppError::no_project)?;
+            let mut selected_files = Vec::new();
+            if paths.is_empty() {
+                selected_files.extend(project.files.keys().cloned());
+            } else {
+                for selection in &paths {
+                    if selection.is_empty() {
+                        selected_files.extend(project.files.keys().cloned());
+                        continue;
+                    }
+                    if project.files.contains_key(selection) {
+                        selected_files.push(selection.clone());
+                        continue;
+                    }
+                    let prefix = if project.containers.contains_key(selection) {
+                        format!("{selection}!/")
+                    } else if selection.ends_with('/') {
+                        selection.clone()
+                    } else {
+                        format!("{selection}/")
+                    };
+                    let matches: Vec<String> = project.files.keys().filter(|path| path.starts_with(&prefix)).cloned().collect();
+                    if matches.is_empty() {
+                        return Err(AppError::not_found(format!("`{selection}` is not a file or folder in the package.")));
+                    }
+                    selected_files.extend(matches);
+                }
+            }
+            selected_files.sort();
+            selected_files.dedup();
+            if selected_files.is_empty() {
+                return Err(AppError::invalid("There are no files to export."));
+            }
+            selected_files.into_iter().map(|path| {
+                let blob = project.files.get(&path).cloned().ok_or_else(|| AppError::not_found(format!("`{path}` is not in the package.")))?;
+                Ok((path, blob))
+            }).collect::<AppResult<Vec<_>>>()?
+        };
+
+        let root = destination.canonicalize().map_err(|e| AppError::io("Could not open the export folder", e))?;
+        if !root.is_dir() {
+            return Err(AppError::invalid(format!("{} is not a folder.", root.display())));
+        }
+
+        let mut planned = Vec::with_capacity(entries.len());
+        let mut output_keys = BTreeSet::new();
+        for (source, blob) in entries {
+            let relative = PathBuf::from(source.replace(paths::NESTED_SEP, "/"));
+            if relative.is_absolute() || relative.components().any(|part| matches!(part, std::path::Component::CurDir | std::path::Component::ParentDir | std::path::Component::RootDir | std::path::Component::Prefix(_))) {
+                return Err(AppError::invalid("A package path could not be safely exported."));
+            }
+            let output_key = relative.to_string_lossy().replace('\\', "/").to_lowercase();
+            if !output_keys.insert(output_key.clone()) {
+                return Err(AppError::invalid(format!("Multiple package paths map to the same output path: {output_key}")));
+            }
+            planned.push((source, relative, blob));
+        }
+        for (_, relative, _) in &planned {
+            let mut parent = relative.parent();
+            while let Some(path) = parent {
+                if output_keys.contains(&path.to_string_lossy().replace('\\', "/").to_lowercase()) {
+                    return Err(AppError::invalid("The selected files contain a file/folder name conflict."));
+                }
+                parent = path.parent();
+            }
+        }
+
+        // Prepare and validate all output folders before writing any files. Resolve
+        // one segment at a time so a symlink inside the destination cannot escape it.
+        let mut targets = Vec::with_capacity(planned.len());
+        for (_, relative, _) in &planned {
+            let mut canonical_parent = root.clone();
+            if let Some(parent) = relative.parent() {
+                for component in parent.components() {
+                    let std::path::Component::Normal(name) = component else {
+                        return Err(AppError::invalid("A package path could not be safely exported."));
+                    };
+                    let next = canonical_parent.join(name);
+                    match std::fs::create_dir(&next) {
+                        Ok(()) => {}
+                        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                        Err(error) => return Err(AppError::io(format!("Could not create {}", next.display()), error)),
+                    }
+                    canonical_parent = next.canonicalize().map_err(|e| AppError::io("Could not resolve an export folder", e))?;
+                    if !canonical_parent.starts_with(&root) || !canonical_parent.is_dir() {
+                        return Err(AppError::invalid("An export path points outside the chosen destination folder."));
+                    }
+                }
+            }
+            let name = relative.file_name().ok_or_else(|| AppError::invalid("A package path has no file name."))?;
+            let target = canonical_parent.join(name);
+            if target.is_dir() {
+                return Err(AppError::invalid(format!("{} is a folder and cannot be replaced by an exported file.", target.display())));
+            }
+            targets.push(target);
+        }
+
+        let mut written = Vec::with_capacity(planned.len());
+        let mut bytes = 0u64;
+        for ((_, _, blob), target) in planned.iter().zip(targets) {
+            storage::atomic_write(&target, &blob.data)?;
+            bytes = bytes.saturating_add(blob.data.len() as u64);
+            written.push(target.to_string_lossy().into_owned());
+        }
+        Ok(FilesExtractResult { files: written.len(), paths: written, bytes })
     })
     .await
 }

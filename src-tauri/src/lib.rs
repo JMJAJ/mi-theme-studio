@@ -80,6 +80,7 @@ pub fn run() {
             commands::files_move,
             commands::files_duplicate,
             commands::file_extract,
+            commands::files_extract,
             commands::container_create,
             commands::folder_pack,
             commands::metadata_get,

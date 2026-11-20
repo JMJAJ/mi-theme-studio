@@ -18,6 +18,7 @@ import { openContextMenu } from '../common/Menu';
 import type { FileInfo, Slot } from '../../lib/types';
 import * as A from '../../state/actions';
 import { toast, useStore } from '../../state/store';
+import { previewDate, previewVariableOverrides, usePreviewGlobals } from '../../state/previewGlobals';
 import { itemReader, saveToInventory, slotReader, useInventory, type ByteReader, type InventoryItem } from '../../state/inventory';
 import { refreshDownloads, useThemeStore } from '../../state/themeStore';
 import { InventoryPanel } from './LockKit';
@@ -702,6 +703,8 @@ export interface SceneOptions {
   slot: Slot;
   config?: [string, string | number][];
   overrides?: Record<string, number | string> | null;
+  /** Variables supplied by the editor's Globals panel. */
+  globals?: Record<string, number | string>;
   /** Content provider columns (live weather) instead of the sample ones. */
   columns?: Record<string, string[]>;
   url?: (f: FileInfo) => string;
@@ -724,10 +727,21 @@ export function buildScene(doc: Document, ord: Map<Element, number>, o: SceneOpt
   collectVars(root, ctx);
   // Variables the wake-up commands set, then everything that depends on them.
   if (runWakeCommands(root, ctx)) collectVars(root, ctx);
+  if (o.globals) {
+    for (const [name, value] of Object.entries(o.globals)) ctx.vars.set(name, value);
+  }
   // A page or state picked in the editor (what a swipe or tap switches to on the phone).
   if (o.overrides) {
     for (const [name, value] of Object.entries(o.overrides)) ctx.vars.set(name, value);
+  }
+  if (o.globals || o.overrides) {
     collectVars(root, ctx);
+    if (o.globals) {
+      for (const [name, value] of Object.entries(o.globals)) ctx.vars.set(name, value);
+    }
+    if (o.overrides) {
+      for (const [name, value] of Object.entries(o.overrides)) ctx.vars.set(name, value);
+    }
   }
   const nodes = renderNodes(root, ctx);
   const hasWallpaper = lock && root.getElementsByTagName('Wallpaper').length > 0;
@@ -777,6 +791,10 @@ export function useMamlScene(
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [t, setT] = useState(0);
+  const globalTime = usePreviewGlobals((s) => s.timeMinutes);
+  const globalVariables = usePreviewGlobals((s) => s.variables);
+  const customVariables = usePreviewGlobals((s) => s.customVariables);
+  const globalOverrides = useMemo(() => previewVariableOverrides(globalVariables, customVariables), [globalVariables, customVariables]);
 
   // Clock, and the animation clock when playing.
   useEffect(() => {
@@ -860,8 +878,8 @@ export function useMamlScene(
   const scene = useMemo(() => {
     if (!good?.doc || !manifest || !('ord' in good) || !good.ord) return null;
     const phone = opts.ratio && opts.ratio > 1 ? opts.ratio : screen && screen.width && screen.height ? Math.max(screen.width, screen.height) / Math.min(screen.width, screen.height) : 20 / 9;
-    return buildScene(good.doc, good.ord, { phone, aspect: opts.aspect, dir: manifest.path.replace(/manifest\.xml$/i, ''), files, wallpaper: findWallpaper(projectFiles, true), now: opts.now ?? now, t: opts.animate ? t : null, slot, config, overrides, columns: opts.columns });
-  }, [good, manifest, files, now, opts.now, opts.columns, t, screen, projectFiles, opts.animate, opts.ratio, opts.aspect, slot, config, overrideKey]);
+    return buildScene(good.doc, good.ord, { phone, aspect: opts.aspect, dir: manifest.path.replace(/manifest\.xml$/i, ''), files, wallpaper: findWallpaper(projectFiles, true), now: opts.now ?? previewDate(now, globalTime), t: opts.animate ? t : null, slot, config, globals: globalOverrides, overrides, columns: opts.columns });
+  }, [good, manifest, files, now, opts.now, opts.columns, t, screen, projectFiles, opts.animate, opts.ratio, opts.aspect, slot, config, overrideKey, globalTime, globalOverrides]);
 
   /** Write a new manifest text: shown at once, then saved (undoable). */
   const apply = async (next: string) => {

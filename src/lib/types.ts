@@ -143,6 +143,12 @@ export interface BulkResult {
   overwritten: string[];
 }
 
+export interface FilesExtractResult {
+  paths: string[];
+  files: number;
+  bytes: number;
+}
+
 export interface CopyPlanItem {
   source: string;
   destination: string;

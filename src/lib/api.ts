@@ -32,6 +32,7 @@ import type { DeviceApp, TryOnResult,
   AppInfo,
   CachedDeviceTheme,
   BulkResult,
+  FilesExtractResult,
   ConflictPolicy,
   CopyPlanItem,
   DeviceDetails,
@@ -121,6 +122,8 @@ export const api = {
   filesDuplicate: (paths: string[]) => call<PathsResponse>('files_duplicate', { paths }),
   fileExtract: (path: string, destination: string, slot: Slot = 'main') =>
     call<void>('file_extract', { path, destination, slot }),
+  filesExtract: (paths: string[], destination: string, slot: Slot = 'main') =>
+    call<FilesExtractResult>('files_extract', { paths, destination, slot }),
   containerCreate: (name: string) => call<ProjectSnapshot>('container_create', { name }),
   folderPack: (folder: string) => call<ProjectSnapshot>('folder_pack', { folder }),
 

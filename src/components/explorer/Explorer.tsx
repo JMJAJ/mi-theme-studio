@@ -291,11 +291,25 @@ function FilesPanel() {
     if (node?.type === 'file') {
       items.push({ label: 'Open', icon: ExternalLink, onSelect: () => A.openFile(node.key) });
       items.push({ label: 'Replace…', icon: RefreshCw, disabled: keys.length > 1, onSelect: () => A.replaceFile(node.key) });
-      items.push({ label: 'Export file…', icon: Download, disabled: keys.length > 1, onSelect: () => A.extractFile(node.key) });
+      items.push({
+        label: keys.length > 1 ? `Export ${keys.length} selected items…` : 'Export file…',
+        icon: Download,
+        onSelect: () => (keys.length > 1 ? A.exportPaths(keys) : A.extractFile(node.key)),
+      });
       items.push('separator');
     }
+    if (node && node.type !== 'file') {
+      items.push({
+        label: keys.length > 1 ? `Export ${keys.length} selected items…` : `Export folder “${node.name}”…`,
+        icon: Download,
+        onSelect: () => A.exportPaths(keys),
+      });
+    }
     items.push({ label: `Add files to ${folder ? fileName(folder.replace(/!\/$/, '')) : 'root'}…`, icon: Plus, onSelect: () => A.addFilesDialog(folder) });
-    if (!node) items.push({ label: 'New component archive…', icon: FolderPlus, onSelect: () => A.createContainer() });
+    if (!node) {
+      items.push({ label: 'Export entire package…', icon: Download, onSelect: () => A.exportPaths([]) });
+      items.push({ label: 'New component archive…', icon: FolderPlus, onSelect: () => A.createContainer() });
+    }
     if (node?.type === 'folder' && !node.key.includes('/') && !node.key.includes('!/')) {
       items.push({ label: `Pack “${node.key}” as component archive`, icon: Package, onSelect: () => A.packFolder(node.key) });
     }
@@ -422,6 +436,9 @@ function ReferencePanel() {
         <button className="btn btn-sm" disabled={!selection.length} onClick={() => setState({ dialog: { type: 'copyPlan', paths: selection } })}>
           <Copy /> Copy {selection.length || ''} to project…
         </button>
+        <button className="btn btn-sm" onClick={() => void A.exportPaths(selection, 'ref')}>
+          <Download /> {selection.length ? `Export ${selection.length} selected…` : 'Export all files…'}
+        </button>
       </div>
       <TreeView
         slot="ref"
@@ -436,7 +453,11 @@ function ReferencePanel() {
           openContextMenu(event, [
             ...(node.type === 'file' ? [{ label: 'Open (read-only)', icon: ExternalLink, onSelect: () => A.openFile(node.key, 'ref') }] : []),
             { label: `Copy ${keys.length > 1 ? `${keys.length} items` : 'to project'}…`, icon: Copy, onSelect: () => setState({ dialog: { type: 'copyPlan', paths: keys } }) },
-            ...(node.type === 'file' ? [{ label: 'Export file…', icon: Download, onSelect: () => A.extractFile(node.key, 'ref') }] : []),
+            {
+              label: keys.length > 1 ? `Export ${keys.length} selected items…` : node.type === 'file' ? 'Export file…' : `Export folder “${node.name}”…`,
+              icon: Download,
+              onSelect: () => (keys.length === 1 && node.type === 'file' ? A.extractFile(node.key, 'ref') : A.exportPaths(keys, 'ref')),
+            },
           ]);
         }}
         emptyText="No files match."
@@ -448,6 +469,7 @@ function ReferencePanel() {
 export function Explorer() {
   const project = useStore((s) => s.project);
   const sideTab = useStore((s) => s.sideTab);
+  const selection = useStore((s) => s.selection);
   const reference = useStore((s) => s.reference);
 
   return (
@@ -467,6 +489,14 @@ export function Explorer() {
         <span className="grow" />
         {project && sideTab === 'files' && (
           <>
+            <button
+              className="btn btn-ghost btn-icon btn-sm"
+              title={selection.length ? `Export ${selection.length} selected file or folder${selection.length === 1 ? '' : 's'}` : 'Export entire package'}
+              aria-label={selection.length ? `Export ${selection.length} selected items` : 'Export entire package'}
+              onClick={() => void A.exportPaths(selection)}
+            >
+              <Download />
+            </button>
             <button className="btn btn-ghost btn-icon btn-sm" title="Add files" aria-label="Add files" onClick={() => void A.addFilesDialog('')}>
               <Plus />
             </button>

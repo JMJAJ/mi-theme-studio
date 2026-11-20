@@ -10,18 +10,18 @@ export function isPermissionMode(value: unknown): value is PermissionMode {
 export const PERMISSION_INFO: Record<PermissionMode, { label: string; description: string }> = {
   'read-only': {
     label: 'Read only',
-    description: 'Can inspect the theme and local image names. File changes and terminal commands are disabled.',
+    description: 'Can inspect the theme and local image names. File changes, exports, and terminal commands are disabled.',
   },
   workspace: {
     label: 'Theme edits',
-    description: 'Can change the open theme without asking. Terminal commands are disabled.',
+    description: 'Can change the open theme without asking. Local exports and terminal commands are disabled.',
   },
   supervised: {
     label: 'Supervised',
-    description: 'Ask before every theme change, local file import, and terminal command.',
+    description: 'Ask before every theme change, local import or export, and terminal command.',
   },
   'full-access': {
     label: 'Full access',
-    description: 'Theme changes and terminal commands run without approval, using your Windows account access.',
+    description: 'Theme changes, local exports, and terminal commands run without approval, using your Windows account access.',
   },
 };

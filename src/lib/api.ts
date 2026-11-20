@@ -216,6 +216,8 @@ export const api = {
   /** Streams `ai-stream` events tagged with requestId while it runs. */
   aiChat: (requestId: string, body: object) => call<AiChatReply>('ai_chat', { requestId, body }),
   aiCancel: (requestId: string) => call<void>('ai_cancel', { requestId }),
+  /** GET JSON for the playground's Live mode (a few fixed weather and location hosts). */
+  liveGetJson: (url: string) => call<string>('live_get_json', { url }),
 };
 
 // Windows/Android webviews reach custom protocols as http://<scheme>.localhost.

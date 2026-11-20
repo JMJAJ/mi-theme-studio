@@ -30,6 +30,7 @@ React UI ──invoke──▶ commands.rs ──▶ project / package / validat
 - `src-tauri/src/ai.rs` is one OpenAI-compatible chat client for every provider (local AIProxy/CLIProxyAPI pool, Pollinations, NVIDIA NIM, OpenRouter, Gemini, Groq, Ollama, custom). Provider settings live in `ai.json` in the config folder; API keys stay in the backend and the UI only sees `hasKey`. `ai_chat` streams `ai-stream` events and returns the assembled reply (text, reasoning, tool calls); `ai_cancel` stops it.
 - The agent loop runs in the UI (`state/assistant.ts`): it sends the conversation plus tool definitions, runs the tools the model calls (`state/assistantTools.ts`: list/read/search files, edit/write/delete files, theme details, validation, the MAML guide), and repeats. Every change goes through the normal commands, so it is one undoable step; changes are shown as a diff for approval unless auto-apply is on.
 - UI: a side panel next to any section (Ctrl+Shift+A) or the full-screen Assistant section (Ctrl+8); setup is in Settings → AI assistant.
+- Chats are saved in `localStorage` (an index plus one key per chat, newest 60). Each prompt records a checkpoint: the theme's last applied history step. Rewinding to a prompt calls `history_goto` with that step (when the same theme is open and the step still exists), drops the prompt and everything after it, and puts the prompt back in the message box.
 
 ## Safety rules
 

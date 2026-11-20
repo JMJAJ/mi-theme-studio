@@ -2141,3 +2141,59 @@ pub async fn ai_chat(app: AppHandle, request_id: String, body: serde_json::Value
 pub fn ai_cancel(request_id: String) {
     crate::ai::cancel(&request_id);
 }
+
+// ----- Live weather for the Try it playground -------------------------------
+
+/// Hosts the playground's Live mode may ask (location from the IP address, then the weather).
+const LIVE_HOSTS: &[&str] = &["ipwho.is", "ipapi.co", "ipinfo.io", "api.open-meteo.com"];
+
+fn live_host(url: &str) -> Option<&'static str> {
+    let rest = url.strip_prefix("https://")?;
+    let host = rest.split(['/', '?', '#']).next()?;
+    LIVE_HOSTS.iter().copied().find(|h| *h == host)
+}
+
+/// GET a JSON answer for Live mode. Done here rather than in the window, where the
+/// request can fail with "Failed to fetch" (cross-origin rules, proxies, blocked origins).
+#[tauri::command]
+pub async fn live_get_json(app: AppHandle, url: String) -> AppResult<String> {
+    blocking(app, move |_, app| {
+        let host = live_host(&url).ok_or_else(|| AppError::new("invalid_input", "That address is not one Live mode uses."))?;
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .timeout_global(Some(std::time::Duration::from_secs(12)))
+            .http_status_as_error(false)
+            .user_agent(user_agent(app))
+            .build()
+            .into();
+        let mut response = agent
+            .get(&url)
+            .header("Accept", "application/json")
+            .call()
+            .map_err(|e| AppError::new("network", format!("Could not reach {host}: {e}")))?;
+        let status = response.status().as_u16();
+        if !response.status().is_success() {
+            return Err(AppError::new("network", format!("{host} answered {status}")));
+        }
+        response
+            .body_mut()
+            .with_config()
+            .limit(1 << 20)
+            .read_to_string()
+            .map_err(|e| AppError::new("network", format!("Could not read the answer from {host}: {e}")))
+    })
+    .await
+}
+
+#[cfg(test)]
+mod live_tests {
+    use super::live_host;
+
+    #[test]
+    fn only_known_https_hosts() {
+        assert_eq!(live_host("https://api.open-meteo.com/v1/forecast?x=1"), Some("api.open-meteo.com"));
+        assert_eq!(live_host("https://ipwho.is/?fields=city"), Some("ipwho.is"));
+        assert_eq!(live_host("http://ipwho.is/"), None);
+        assert_eq!(live_host("https://ipwho.is.evil.com/"), None);
+        assert_eq!(live_host("https://evil.com/?h=ipwho.is"), None);
+    }
+}

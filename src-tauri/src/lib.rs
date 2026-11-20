@@ -155,6 +155,7 @@ pub fn run() {
             commands::ai_models,
             commands::ai_chat,
             commands::ai_cancel,
+            commands::live_get_json,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Mi Theme Studio")

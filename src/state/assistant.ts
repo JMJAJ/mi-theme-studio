@@ -5,12 +5,23 @@ import { listen } from '@tauri-apps/api/event';
 import { api, errorCode, errorMessage, newOpId } from '../lib/api';
 import type { AiSettings, AiSettingsPatch, AiStreamDelta, AiToolCall } from '../lib/types';
 import { chatModels, providerPreset } from '../lib/aiProviders';
-import { getState as appState, setState as setAppState, updateLayout } from './store';
+import { confirmDialog, getState as appState, setState as setAppState, updateLayout } from './store';
+import { historyGoto } from './actions';
+import type { ProjectSnapshot } from '../lib/types';
 import { TOOL_SPECS, WRITE_TOOLS, runTool, toolLabel, type EditLocation, type Proposal } from './assistantTools';
 import { THEME_KNOWLEDGE, themeContext } from './assistantContext';
 
 export type ChatItem =
-  | { id: string; role: 'user'; text: string }
+  | {
+      id: string;
+      role: 'user';
+      text: string;
+      /** When it was sent, and where the theme's undo history stood then. */
+      at?: number;
+      checkpoint?: Checkpoint;
+      /** Index in `messages` of this prompt, so a rewind can cut the model's history too. */
+      msgIndex?: number;
+    }
   | { id: string; role: 'assistant'; text: string; reasoning: string; streaming: boolean; model?: string }
   | {
       id: string;
@@ -25,6 +36,21 @@ export type ChatItem =
     }
   | { id: string; role: 'error'; text: string };
 
+/** The theme's state just before a prompt: the last applied history step. */
+export interface Checkpoint {
+  project: string;
+  /** null = the package as it was opened. */
+  id: number | null;
+  atMs: number | null;
+}
+
+export interface ChatSummary {
+  id: string;
+  title: string;
+  updatedAt: number;
+  project?: string;
+}
+
 /** OpenAI chat message. */
 type ApiMessage =
   | { role: 'user'; content: string }
@@ -36,8 +62,13 @@ interface AssistantState {
   models: string[];
   modelsLoading: boolean;
   modelsError: string | null;
+  /** The open conversation and the saved ones, newest first. */
+  chatId: string;
+  chats: ChatSummary[];
   items: ChatItem[];
   messages: ApiMessage[];
+  /** Text in the message box (kept here so a rewind can put a prompt back). */
+  draft: string;
   running: boolean;
   /** Short status under the conversation ("Thinking…", "Waiting for your OK"). */
   status: string | null;
@@ -45,24 +76,60 @@ interface AssistantState {
   noTools: boolean;
 }
 
-const CHAT_KEY = 'mts.assistant.chat.v1';
+const OLD_CHAT_KEY = 'mts.assistant.chat.v1';
+const INDEX_KEY = 'mts.assistant.chats.v2';
+const chatKey = (id: string) => `mts.assistant.chat.v2.${id}`;
+const MAX_CHATS = 60;
 const MAX_STEPS = 30;
 /** Older tool results are shortened past this many characters of history. */
 const HISTORY_BUDGET = 160_000;
 
-function loadChat(): Pick<AssistantState, 'items' | 'messages'> {
+type SavedChat = Pick<AssistantState, 'items' | 'messages'>;
+
+const newChatId = () => `chat${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
+function readJson<T>(key: string): T | null {
   try {
-    const raw = localStorage.getItem(CHAT_KEY);
-    if (raw) {
-      const saved = JSON.parse(raw) as Pick<AssistantState, 'items' | 'messages'>;
-      // A reload ends any run: unfinished steps cannot resume.
-      const items = saved.items.map((i): ChatItem => (i.role === 'tool' && (i.status === 'running' || i.status === 'pending') ? { ...i, status: 'declined' } : i.role === 'assistant' ? { ...i, streaming: false } : i));
-      return { items, messages: saved.messages };
-    }
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
   } catch {
-    /* ignore */
+    return null;
   }
-  return { items: [], messages: [] };
+}
+
+function readChat(id: string): SavedChat {
+  const saved = readJson<SavedChat>(chatKey(id));
+  if (!saved) return { items: [], messages: [] };
+  // A reload ends any run: unfinished steps cannot resume.
+  const items = (saved.items ?? []).map((i): ChatItem => (i.role === 'tool' && (i.status === 'running' || i.status === 'pending') ? { ...i, status: 'declined' } : i.role === 'assistant' ? { ...i, streaming: false } : i));
+  return { items, messages: saved.messages ?? [] };
+}
+
+function chatTitle(items: ChatItem[]): string {
+  const first = items.find((i) => i.role === 'user');
+  const text = first?.role === 'user' ? first.text.replace(/\s+/g, ' ').trim() : '';
+  return text.length > 80 ? `${text.slice(0, 79)}…` : text || 'New chat';
+}
+
+function loadChats(): Pick<AssistantState, 'chatId' | 'chats' | 'items' | 'messages'> {
+  let chats = readJson<ChatSummary[]>(INDEX_KEY) ?? [];
+  // Move the single chat older versions kept into the list.
+  const old = readJson<SavedChat>(OLD_CHAT_KEY);
+  if (old) {
+    try {
+      localStorage.removeItem(OLD_CHAT_KEY);
+      if (old.items?.length) {
+        const id = newChatId();
+        localStorage.setItem(chatKey(id), JSON.stringify(old));
+        chats = [{ id, title: chatTitle(old.items), updatedAt: Date.now() }, ...chats];
+        localStorage.setItem(INDEX_KEY, JSON.stringify(chats));
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  const last = chats[0];
+  return last ? { chatId: last.id, chats, ...readChat(last.id) } : { chatId: newChatId(), chats, items: [], messages: [] };
 }
 
 export const useAssistant = create<AssistantState>(() => ({
@@ -70,7 +137,8 @@ export const useAssistant = create<AssistantState>(() => ({
   models: [],
   modelsLoading: false,
   modelsError: null,
-  ...loadChat(),
+  ...loadChats(),
+  draft: '',
   running: false,
   status: null,
   noTools: false,
@@ -79,20 +147,73 @@ export const useAssistant = create<AssistantState>(() => ({
 const get = useAssistant.getState;
 const set = useAssistant.setState;
 
+function writeIndex(chats: ChatSummary[]) {
+  try {
+    localStorage.setItem(INDEX_KEY, JSON.stringify(chats));
+  } catch {
+    /* ignore */
+  }
+}
+
+function forget(id: string) {
+  try {
+    localStorage.removeItem(chatKey(id));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Save the open chat and move it to the top of the list. */
+function saveChat(s: AssistantState = get()) {
+  if (!s.items.length) {
+    // Rewound to nothing: it is no longer a saved chat.
+    if (s.chats.some((c) => c.id === s.chatId)) {
+      forget(s.chatId);
+      const chats = s.chats.filter((c) => c.id !== s.chatId);
+      writeIndex(chats);
+      set({ chats });
+    }
+    return;
+  }
+  const data = JSON.stringify({ items: s.items.slice(-400), messages: trimmed(s.messages) });
+  // A huge chat simply is not remembered.
+  if (data.length > 3_000_000) return;
+  const previous = s.chats.find((c) => c.id === s.chatId);
+  const summary: ChatSummary = { id: s.chatId, title: chatTitle(s.items), updatedAt: Date.now(), project: appState().project?.title || previous?.project };
+  let chats = [summary, ...s.chats.filter((c) => c.id !== s.chatId)];
+  for (const dropped of chats.slice(MAX_CHATS)) forget(dropped.id);
+  chats = chats.slice(0, MAX_CHATS);
+  // Out of space: forget the oldest chats until it fits.
+  for (;;) {
+    try {
+      localStorage.setItem(chatKey(s.chatId), data);
+      break;
+    } catch {
+      const oldest = chats.length > 1 ? chats.pop() : undefined;
+      if (!oldest) return;
+      forget(oldest.id);
+    }
+  }
+  writeIndex(chats);
+  set({ chats });
+}
+
 let saveTimer: number | undefined;
+function flushSave() {
+  if (saveTimer === undefined) return;
+  window.clearTimeout(saveTimer);
+  saveTimer = undefined;
+  saveChat();
+}
 useAssistant.subscribe((s, prev) => {
-  if (s.items === prev.items && s.messages === prev.messages) return;
+  if (s.chatId !== prev.chatId || (s.items === prev.items && s.messages === prev.messages)) return;
   window.clearTimeout(saveTimer);
   saveTimer = window.setTimeout(() => {
-    try {
-      const data = JSON.stringify({ items: s.items.slice(-300), messages: s.messages });
-      // Keep the saved chat small; a huge one simply is not remembered.
-      if (data.length < 3_000_000) localStorage.setItem(CHAT_KEY, data);
-    } catch {
-      /* ignore */
-    }
+    saveTimer = undefined;
+    saveChat();
   }, 400);
 });
+window.addEventListener('beforeunload', flushSave);
 
 // ---- settings ----
 
@@ -300,7 +421,7 @@ async function runTurn(content: string) {
   if (get().running) return;
   ensureListener();
   stopped = false;
-  pushItem({ id: itemId(), role: 'user', text: content });
+  pushItem({ id: itemId(), role: 'user', text: content, at: Date.now(), checkpoint: checkpointNow() ?? undefined, msgIndex: get().messages.length });
   set((s) => ({ messages: [...s.messages, { role: 'user', content }], running: true, status: 'Thinking…' }));
 
   try {
@@ -378,9 +499,111 @@ export function stopAssistant() {
   approvals.clear();
 }
 
-export function newChat() {
-  if (get().running) stopAssistant();
-  set({ items: [], messages: [], noTools: false });
+/** Stop any run and wait until it has wound down. */
+async function whenIdle() {
+  if (!get().running) return;
+  stopAssistant();
+  await new Promise<void>((resolve) => {
+    const off = useAssistant.subscribe((s) => {
+      if (!s.running) {
+        off();
+        resolve();
+      }
+    });
+  });
+}
+
+const emptyChat = () => ({ chatId: newChatId(), items: [], messages: [], noTools: false, status: null });
+
+export async function newChat() {
+  await whenIdle();
+  flushSave();
+  set(emptyChat());
+}
+
+export async function openChat(id: string) {
+  if (id === get().chatId) return;
+  await whenIdle();
+  flushSave();
+  set({ chatId: id, ...readChat(id), noTools: false, status: null });
+}
+
+export async function deleteChat(id: string) {
+  if (id === get().chatId) await whenIdle();
+  window.clearTimeout(saveTimer);
+  saveTimer = undefined;
+  forget(id);
+  const chats = get().chats.filter((c) => c.id !== id);
+  writeIndex(chats);
+  set({ chats, ...(id === get().chatId ? emptyChat() : {}) });
+}
+
+// ---- checkpoints ----
+
+const projectKey = (p: ProjectSnapshot) => p.sourcePath || p.name;
+
+function checkpointNow(): Checkpoint | null {
+  const project = appState().project;
+  if (!project) return null;
+  const top = [...project.history].reverse().find((h) => h.done);
+  return { project: projectKey(project), id: top?.id ?? null, atMs: top?.atMs ?? null };
+}
+
+/**
+ * Theme changes made since a prompt was sent, or null when the theme can no
+ * longer go back there (another theme is open, or that step is gone).
+ */
+export function changesSince(item: Extract<ChatItem, { role: 'user' }>, project: ProjectSnapshot | null = appState().project): string[] | null {
+  const cp = item.checkpoint;
+  if (!project || !cp || cp.project !== projectKey(project)) return null;
+  const history = project.history;
+  let from: number;
+  if (cp.id === null) {
+    // "As opened" only means this session if every step came after the prompt.
+    if (history.some((h) => h.atMs < (item.at ?? 0) - 1000)) return null;
+    from = 0;
+  } else {
+    const at = history.findIndex((h) => h.id === cp.id && h.atMs === cp.atMs);
+    if (at < 0) return null;
+    from = at + 1;
+  }
+  return history.slice(from).filter((h) => h.done).map((h) => h.label);
+}
+
+/**
+ * Rewind to just before a prompt: undo the theme changes made since, drop the
+ * prompt and everything after it, and put its text back in the message box.
+ */
+export async function rewindTo(itemId: string) {
+  const index = get().items.findIndex((i) => i.id === itemId);
+  const item = get().items[index];
+  if (!item || item.role !== 'user') return;
+  await whenIdle();
+  const changes = changesSince(item);
+  const count = changes?.length ?? 0;
+  const ok = await confirmDialog({
+    title: 'Rewind to this message?',
+    message: [
+      count
+        ? `${count} change${count === 1 ? '' : 's'} made to the theme since you sent it will be undone. You can redo them from History.`
+        : changes
+          ? 'The theme has not changed since you sent it.'
+          : item.checkpoint
+            ? 'The theme cannot go back to this point (another theme is open, or that history is gone), so only the chat rewinds.'
+            : 'No theme checkpoint was saved with this message, so only the chat rewinds.',
+      'This message and everything after it leave the chat, and the message goes back into the box to change and send again.',
+    ].join(' '),
+    detail: count ? changes!.slice(-10).reverse() : undefined,
+    confirmLabel: count ? 'Undo changes and rewind' : 'Rewind chat',
+    danger: count > 0,
+  });
+  if (!ok) return;
+  if (count && item.checkpoint && !(await historyGoto(item.checkpoint.id))) return;
+  set((s) => ({
+    items: s.items.slice(0, index),
+    messages: s.messages.slice(0, item.msgIndex ?? s.messages.length),
+    draft: item.text,
+  }));
 }
 
 /** Ask about something from elsewhere in the app ("Explain this file"). */

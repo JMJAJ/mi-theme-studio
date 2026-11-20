@@ -8,15 +8,19 @@ import {
   Copy,
   CornerDownRight,
   FileSearch,
+  History,
   Loader2,
   Maximize2,
   Minimize2,
   PenLine,
   Plus,
+  RotateCcw,
+  Search,
   Send,
   Settings2,
   Sparkles,
   Square,
+  Trash2,
   TriangleAlert,
   Wrench,
   X,
@@ -26,9 +30,24 @@ import { parseInline, parseMarkdown, type Inline } from '../../lib/markdown';
 import { providerPreset } from '../../lib/aiProviders';
 import { getState, setState, toast, updateLayout, useStore } from '../../state/store';
 import { goTo, openFile, revealInExplorer, revealInFile } from '../../state/actions';
-import { answerApproval, isConfigured, loadAiSettings, newChat, sendMessage, stopAssistant, updateAiSettings, useAssistant, type ChatItem } from '../../state/assistant';
+import {
+  answerApproval,
+  changesSince,
+  deleteChat,
+  isConfigured,
+  loadAiSettings,
+  newChat,
+  openChat,
+  rewindTo,
+  sendMessage,
+  stopAssistant,
+  updateAiSettings,
+  useAssistant,
+  type ChatItem,
+} from '../../state/assistant';
 import { WRITE_TOOLS, type EditLocation } from '../../state/assistantTools';
 import { fileName } from '../../lib/paths';
+import { relativeTime } from '../../lib/format';
 
 const openAiSettings = () => setState({ dialog: { type: 'settings', section: 'ai' } });
 
@@ -71,21 +90,27 @@ function Inlines({ nodes }: { nodes: Inline[] }) {
 
 const Md = ({ src }: { src: string }) => <Inlines nodes={parseInline(src)} />;
 
-function CodeBlock({ lang, text }: { lang: string; text: string }) {
+function useCopy(text: string) {
   const [copied, setCopied] = useState(false);
+  const copy = () => {
+    void navigator.clipboard.writeText(text).then(
+      () => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1400);
+      },
+      () => toast('error', 'Could not copy to the clipboard.'),
+    );
+  };
+  return [copied, copy] as const;
+}
+
+function CodeBlock({ lang, text }: { lang: string; text: string }) {
+  const [copied, copy] = useCopy(text);
   return (
     <div className="ai-code">
       <div className="ai-code-head">
         <span>{lang || 'code'}</span>
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={() => {
-            void navigator.clipboard.writeText(text).then(() => {
-              setCopied(true);
-              window.setTimeout(() => setCopied(false), 1400);
-            });
-          }}
-        >
+        <button className="btn btn-ghost btn-sm" onClick={copy}>
           {copied ? <Check /> : <Copy />} {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
@@ -240,10 +265,47 @@ function ToolCard({ item }: { item: Extract<ChatItem, { role: 'tool' }> }) {
   );
 }
 
+function CopyAction({ text, label }: { text: string; label: string }) {
+  const [copied, copy] = useCopy(text);
+  return (
+    <button className="ai-act" title={copied ? 'Copied' : label} aria-label={label} onClick={copy}>
+      {copied ? <Check /> : <Copy />}
+    </button>
+  );
+}
+
+function UserMessage({ item }: { item: Extract<ChatItem, { role: 'user' }> }) {
+  const running = useAssistant((s) => s.running);
+  const project = useStore((s) => s.project);
+  const changes = changesSince(item, project);
+  const rewindTitle = changes?.length
+    ? `Rewind to here: undo ${changes.length} theme change${changes.length === 1 ? '' : 's'} made since, and edit this message`
+    : 'Rewind the chat to here and edit this message';
+  return (
+    <div className="ai-user-wrap">
+      <div className="ai-msg ai-user">{item.text}</div>
+      <div className="ai-acts">
+        {item.at && <span className="faint">{relativeTime(item.at)}</span>}
+        <CopyAction text={item.text} label="Copy prompt" />
+        <button
+          className={`ai-act ${changes?.length ? 'has-changes' : ''}`}
+          title={rewindTitle}
+          aria-label="Rewind to this message"
+          disabled={running}
+          onClick={() => void rewindTo(item.id).then(() => document.querySelector<HTMLTextAreaElement>('.ai-composer textarea')?.focus())}
+        >
+          <RotateCcw />
+          {!!changes?.length && <span>{changes.length}</span>}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Message({ item }: { item: ChatItem }) {
   switch (item.role) {
     case 'user':
-      return <div className="ai-msg ai-user">{item.text}</div>;
+      return <UserMessage item={item} />;
     case 'assistant':
       return (
         <div className="ai-msg ai-bot">
@@ -254,6 +316,11 @@ function Message({ item }: { item: ChatItem }) {
             </details>
           )}
           {item.text ? <Markdown text={item.text} /> : item.streaming && !item.reasoning ? <span className="ai-dots"><i /><i /><i /></span> : null}
+          {item.text && !item.streaming && (
+            <div className="ai-acts ai-acts-bot">
+              <CopyAction text={item.text} label="Copy answer" />
+            </div>
+          )}
         </div>
       );
     case 'tool':
@@ -312,7 +379,8 @@ function Welcome({ onPick }: { onPick: (text: string) => void }) {
 // ---------- composer ----------
 
 function Composer({ autoFocus }: { autoFocus?: boolean }) {
-  const [text, setText] = useState('');
+  const text = useAssistant((s) => s.draft);
+  const setText = (draft: string) => useAssistant.setState({ draft });
   const running = useAssistant((s) => s.running);
   const ref = useRef<HTMLTextAreaElement>(null);
   useLayoutEffect(() => {
@@ -372,7 +440,7 @@ function ModelChip() {
   );
 }
 
-function Header({ mode }: { mode: 'side' | 'full' }) {
+function Header({ mode, history, onHistory }: { mode: 'side' | 'full'; history: boolean; onHistory: () => void }) {
   const hasItems = useAssistant((s) => s.items.length > 0);
   const autoApply = useAssistant((s) => !!s.settings?.autoApply);
   return (
@@ -389,7 +457,10 @@ function Header({ mode }: { mode: 'side' | 'full' }) {
       >
         <PenLine />
       </button>
-      <button className="tb-icon" title="New chat" aria-label="New chat" disabled={!hasItems} onClick={newChat}>
+      <button className={`tb-icon ${history ? 'is-on' : ''}`} aria-pressed={history} title="Chat history" aria-label="Chat history" onClick={onHistory}>
+        <History />
+      </button>
+      <button className="tb-icon" title="New chat" aria-label="New chat" disabled={!hasItems && !history} onClick={() => void newChat().then(() => history && onHistory())}>
         <Plus />
       </button>
       {mode === 'side' ? (
@@ -434,8 +505,42 @@ function Status() {
   );
 }
 
+function ChatHistory({ onClose }: { onClose: () => void }) {
+  const chats = useAssistant((s) => s.chats);
+  const current = useAssistant((s) => s.chatId);
+  const [filter, setFilter] = useState('');
+  const query = filter.trim().toLowerCase();
+  const shown = query ? chats.filter((c) => `${c.title} ${c.project ?? ''}`.toLowerCase().includes(query)) : chats;
+  return (
+    <div className="ai-history">
+      <div className="ai-history-search">
+        <Search />
+        <input autoFocus value={filter} placeholder="Search chats" aria-label="Search chats" onChange={(e) => setFilter(e.target.value)} onKeyDown={(e) => e.key === 'Escape' && onClose()} />
+      </div>
+      <div className="ai-history-list">
+        {!shown.length && <div className="ai-history-empty">{chats.length ? 'No chats match.' : 'No saved chats yet. Chats are kept here as you go.'}</div>}
+        {shown.map((c) => (
+          <div key={c.id} className={`ai-history-row ${c.id === current ? 'is-current' : ''}`}>
+            <button className="ai-history-open" onClick={() => void openChat(c.id).then(onClose)}>
+              <span className="ellipsis">{c.title}</span>
+              <span className="faint ellipsis">
+                {c.project ? `${c.project} · ` : ''}
+                {relativeTime(c.updatedAt)}
+              </span>
+            </button>
+            <button className="ai-act" title="Delete chat" aria-label={`Delete chat ${c.title}`} onClick={() => void deleteChat(c.id)}>
+              <Trash2 />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function AssistantChat({ mode }: { mode: 'side' | 'full' }) {
   const items = useAssistant((s) => s.items);
+  const [history, setHistory] = useState(false);
   const list = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   useEffect(() => {
@@ -448,21 +553,32 @@ export function AssistantChat({ mode }: { mode: 'side' | 'full' }) {
   const body: ReactNode = items.length ? items.map((item) => <Message key={item.id} item={item} />) : <Welcome onPick={(t) => sendMessage(t)} />;
   return (
     <div className={`ai-panel ai-${mode}`}>
-      <Header mode={mode} />
-      <div
-        className="ai-list"
-        ref={list}
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-        }}
-      >
-        <div className="ai-list-inner">{body}</div>
-      </div>
-      <div className="ai-foot">
-        <Status />
-        <Composer autoFocus={mode === 'full'} />
-      </div>
+      <Header mode={mode} history={history} onHistory={() => setHistory((v) => !v)} />
+      {history ? (
+        <ChatHistory
+          onClose={() => {
+            stick.current = true;
+            setHistory(false);
+          }}
+        />
+      ) : (
+        <>
+          <div
+            className="ai-list"
+            ref={list}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+            }}
+          >
+            <div className="ai-list-inner">{body}</div>
+          </div>
+          <div className="ai-foot">
+            <Status />
+            <Composer autoFocus={mode === 'full'} />
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -72,7 +72,7 @@ Tips:
 - **Shows now** works the formula out as you type, as the phone would show it at this moment.
 - **Hints** appear under the field for common mistakes: `<` or `>` instead of `{` `}`, `&&` instead of `**`, double quotes, an unclosed quote or bracket, a variable that doesn't exist, text read with `#`.
 - **Snippets** (top right of the field) lists ready-made formulas with what each would show; **Insert** writes one in. For a date, **Patterns** lists date patterns with today's result.
-- **Try** opens the formula in the Guide's Try it page, to see it at other times, battery levels and weather.
+- **Try** opens the formula in the Guide's Try it page, to see it at other times, battery levels and weather. Turn **Live** on there to use weather shared by a connected phone, or the online weather fallback when the phone has none; see [weather variables](variables.md#live-weather-in-the-guide).
 - **Enter** or clicking away writes the change; **Esc** puts the old value back.
 
 ### Turn a plain text into a formula

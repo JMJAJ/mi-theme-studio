@@ -62,6 +62,7 @@ Everything runs locally. Packages are edited in memory, saves are atomic and bac
 
 - Home and lock screen on a phone frame, at your connected phone's resolution or a preset, following the part you are editing.
 - Still preview of MAML lock screens, clocks and widgets. It is an approximation, not the phone's runtime.
+- The MAML Guide's **Try it** page can use live weather from a connected phone, or an online weather lookup when the phone does not share it.
 - Live screen mirroring and screenshots of a connected phone.
 
 ### Theme store

@@ -397,12 +397,14 @@ const STATES: [number, string][] = [
   [1, 'Charging'],
   [3, 'Full'],
 ];
-const WEATHER: [string, number][] = [
-  ['Clear', 18],
-  ['Rain', 9],
-  ['Cloudy', 14],
-  ['Snow', -2],
+// Description, temperature and condition number (0 clear, 1 cloudy, 2 rain, 3 snow), as the Weather app would share them.
+const WEATHER: [string, number, number][] = [
+  ['Clear', 18, 0],
+  ['Rain', 9, 2],
+  ['Cloudy', 14, 1],
+  ['Snow', -2, 3],
 ];
+const simRange = (t: number) => `${t - 4}℃~${t + 3}℃`;
 
 export function TryPlayground() {
   const { tryText, nonce } = useGuide();
@@ -495,8 +497,8 @@ export function TryPlayground() {
 
   const now = useMemo(() => (live ? (phone.data ? phoneClock(phone.data, clock.getTime()) : clock) : new Date(2026, 2, 17, hour, minute, 7)), [live, clock, hour, minute, phone.data]);
   const simVars = useMemo(() => {
-    const [desc, temp] = WEATHER[weather];
-    const sim = { battery_level: battery, battery_state: state, weather_description: desc, weather_temperature: `${temp}℃`, weather_temp: temp };
+    const [desc, temp, type] = WEATHER[weather];
+    const sim = { battery_level: battery, battery_state: state, weather_description: desc, weather_temperature: `${temp}℃`, weather_temp: temp, weather_type: type, weather_range: simRange(temp) };
     if (!live) return sim;
     const out: Record<string, string | number> = { ...sim, ...(liveData ? liveVars(liveData) : {}) };
     if (realBattery) {
@@ -506,10 +508,14 @@ export function TryPlayground() {
     return phone.data ? { ...out, ...phoneVars(phone.data) } : out;
   }, [battery, state, weather, live, liveData, realBattery, phone.data]);
   const columns = useMemo(() => {
-    if (!live) return SAMPLE_COLUMNS;
+    // Without Live, a <ContentProviderBinder> for weather reads the weather picked in the top bar.
+    if (!live) {
+      const [desc, temp, type] = WEATHER[weather];
+      return { ...SAMPLE_COLUMNS, description: [desc], temperature: [`${temp}℃`], temperature_range: [simRange(temp)], weather_type: [String(type), ...SAMPLE_COLUMNS.weather_type.slice(1)] };
+    }
     const net = liveData ? liveColumns(liveData) : {};
     return { ...SAMPLE_COLUMNS, ...(phoneWeather ? {} : net), ...(phone.data ? phoneColumns(phone.data) : {}) };
-  }, [live, liveData, phone.data, phoneWeather]);
+  }, [live, liveData, phone.data, phoneWeather, weather]);
   // The open theme's lock screen: its variables (#qq, #AQI…) and its pictures (src="sj.png").
   const lock = useThemeLock(now, columns);
   const base = useMemo(() => sampleVars(now, { ...lock.vars, ...simVars }), [now, simVars, lock.vars]);

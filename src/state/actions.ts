@@ -453,9 +453,10 @@ export async function redo() {
   }
 }
 
-export async function historyGoto(id: number | null) {
+export async function historyGoto(id: number | null): Promise<boolean> {
   const snapshot = await guard('History', () => api.historyGoto(id));
   if (snapshot) applySnapshot(snapshot);
+  return !!snapshot;
 }
 
 // ---------------------------------------------------------------------------

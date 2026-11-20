@@ -102,9 +102,45 @@ Columns the editor knows and fills with sample values in the preview:
 | `pressure` | 1013 | |
 | `aqilevel` | 60 | air quality index |
 | `temperature_unit` | 1 | which unit the user picked |
-| `tmphighs`, `tmplows` | 21, 22, 19… | daily forecast highs / lows, as a list (`type="int[]"`): `#forecast_high[1]` |
+| `tmphighs`, `tmplows` | 21, 22, 19… | daily forecast highs / lows; bind as `int[]` to read each day, for example `#forecast_high[0]` |
 | `forecast_type` | 0, 1, 1… | daily forecast conditions as numbers |
 | `weathernamesfrom` | Clear, Cloudy… | daily forecast conditions in words |
+
+Those names in the first column are provider **columns**. To use a forecast column in a formula, bind it to a variable name. Array indexes start at 0 in the editor preview, so `[0]` is the first day and `[1]` the next:
+
+```xml
+<Variable name="forecast_high" type="int[]" column="tmphighs"/>
+<Variable name="forecast_low" type="int[]" column="tmplows"/>
+<Variable name="forecast_type" type="int[]" column="forecast_type"/>
+<Variable name="forecast_words" type="string[]" column="weathernamesfrom"/>
+```
+
+For example, `@forecast_words[0]+' · '+#forecast_high[0]+'℃'` shows `Clear · 21℃` with the sample data. `@` reads a word; `#` reads a number.
+
+### Weather words and condition numbers
+
+`description` is a short condition such as *Clear* or *Rain*. From Xiaomi Weather, it is text in the phone's language, so exact words can differ by language and provider. Read it with `@weather_description`. The forecast word column `weathernamesfrom` works the same way when bound as a string array.
+
+In **Guide → Try it → Live**, the internet fallback uses these English labels for Open-Meteo weather codes:
+
+| Condition words | Open-Meteo codes |
+| --- | --- |
+| Clear, Mostly clear, Partly cloudy, Cloudy | 0, 1, 2, 3 |
+| Fog | 45, 48 |
+| Drizzle | 51–57 |
+| Rain | 61–67 |
+| Snow | 71–77 |
+| Showers | 80–82 |
+| Snow showers | 85, 86 |
+| Thunderstorm | 95 and above |
+
+The Live fallback also groups those conditions into rough icon categories: `weather_type` 0 = clear, 1 = cloudy, 2 = rain or drizzle, 3 = snow, 4 = thunderstorm, 5 = fog. This small mapping applies to the Guide's internet fallback only. Xiaomi Weather supplies its own `weather_type` number; treat that as a provider value, not a universal condition code. For a phone theme, use the icon numbering and image set that match the Weather app or an existing theme.
+
+### Live weather in the Guide
+
+The **Live** switch is on the Guide's **Try it** page. With a connected phone, Try it uses weather data the phone shares through Xiaomi Weather. If the phone does not share weather, it looks up an approximate city from the computer's IP address and gets weather from Open-Meteo. That lookup needs an internet connection; it is not GPS location. The result is cached for up to 30 minutes, and the refresh button requests it again.
+
+If the online lookup fails, Try it reports the error and uses sample weather. Turn Live off to use the Clear, Rain, Cloudy and Snow controls. These are preview inputs only: a saved lock screen still reads the Weather app through its binder on the phone.
 
 ## Steps
 

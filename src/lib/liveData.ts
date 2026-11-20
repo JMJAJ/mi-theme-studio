@@ -1,8 +1,11 @@
 // Real data for the Try it playground, only when the user switches Live on:
-// the approximate city from the IP address (ipwho.is, falling back to ipapi.co)
-// and its weather (Open-Meteo). No keys, nothing else is sent. The results are
+// the approximate city from the IP address (ipwho.is, falling back to ipapi.co
+// and ipinfo.io) and its weather (Open-Meteo). In the app the
+// requests go through Rust (live_get_json), so the window's cross-origin rules
+// cannot block them. No keys, nothing else is sent. The results are
 // turned into the same columns the Weather app's provider gives a lock screen.
 
+import { invoke } from '@tauri-apps/api/core';
 import type { Value } from './maml';
 import type { PhoneLiveState } from './types';
 
@@ -95,7 +98,24 @@ interface Place {
   lon: number;
 }
 
+const inApp = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
+function message(e: unknown): string {
+  if (e && typeof e === 'object' && 'message' in e) return String((e as { message: unknown }).message);
+  return String(e);
+}
+
 async function getJson(url: string, signal?: AbortSignal): Promise<unknown> {
+  if (inApp()) {
+    signal?.throwIfAborted();
+    let body: string;
+    try {
+      body = await invoke<string>('live_get_json', { url });
+    } catch (e) {
+      throw new Error(message(e));
+    }
+    return JSON.parse(body);
+  }
   const res = await fetch(url, { signal, headers: { Accept: 'application/json' } });
   if (!res.ok) throw new Error(`${new URL(url).host} answered ${res.status}`);
   return res.json();
@@ -112,6 +132,19 @@ export function placeFromIpapi(j: unknown): Place | null {
   if (!o || o.error || typeof o.latitude !== 'number' || typeof o.longitude !== 'number') return null;
   return { city: o.city || 'Your city', country: o.country_name ?? '', lat: o.latitude, lon: o.longitude };
 }
+
+export function placeFromIpinfo(j: unknown): Place | null {
+  const o = j as { city?: string; country?: string; loc?: string };
+  const [lat, lon] = (o?.loc ?? '').split(',').map(Number);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || !o.loc) return null;
+  return { city: o.city || 'Your city', country: o.country ?? '', lat, lon };
+}
+
+const PLACES: [string, (j: unknown) => Place | null][] = [
+  ['https://ipwho.is/?fields=success,city,country,latitude,longitude', placeFromIpwho],
+  ['https://ipapi.co/json/', placeFromIpapi],
+  ['https://ipinfo.io/json', placeFromIpinfo],
+];
 
 export function weatherFromOpenMeteo(place: Place, j: unknown, now = Date.now()): LiveData {
   const o = j as {
@@ -155,13 +188,17 @@ export function cachedLiveData(): LiveData | null {
 /** Ask for the city and its weather. Throws with a readable message when offline or refused. */
 export async function fetchLiveData(signal?: AbortSignal): Promise<LiveData> {
   let place: Place | null = null;
-  try {
-    place = placeFromIpwho(await getJson('https://ipwho.is/?fields=success,city,country,latitude,longitude', signal));
-  } catch {
-    place = null;
+  let lastError = '';
+  for (const [url, read] of PLACES) {
+    try {
+      place = read(await getJson(url, signal));
+      if (place) break;
+    } catch (e) {
+      if (signal?.aborted) throw e;
+      lastError = message(e);
+    }
   }
-  if (!place) place = placeFromIpapi(await getJson('https://ipapi.co/json/', signal));
-  if (!place) throw new Error('Could not work out a location from this connection');
+  if (!place) throw new Error(`Could not work out a location from this connection${lastError ? ` (${lastError})` : ''}`);
   const q = new URLSearchParams({
     latitude: place.lat.toFixed(2),
     longitude: place.lon.toFixed(2),

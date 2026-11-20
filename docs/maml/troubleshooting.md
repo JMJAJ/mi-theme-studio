@@ -12,6 +12,7 @@
 ## It's blank
 
 - **The data hasn't arrived.** Weather and steps need their binder, and the app on the phone. Before the data comes the variables are empty; hide the piece until then with `visibility="#has_weather"` (the binder's `countName`).
+- **Try it says “Sample weather.”** In Guide → Try it, turn **Live** on. It uses the connected phone's Weather app data when available; otherwise it needs an internet connection for its approximate IP-based city and Open-Meteo lookup. Use the refresh button to retry. The lock-screen canvas uses sample weather; Live is a Try it preview option.
 - **`visibility` is 0, or `alpha` is 0.** Select the piece in the **Pieces** list and look at **Visibility**.
 - **It's covered.** Pieces later in the file are drawn on top. Pick it from the **Pieces** list, or move it after the covering piece in the code.
 - **It's off screen.** Check **X**/**Y**; a formula's current value is shown next to the label.
@@ -43,7 +44,7 @@ The preview is a still approximation of the phone's renderer. Known differences:
 | On the phone | In the preview |
 | --- | --- |
 | Real time, battery, notifications, music | Frozen sample: battery 82%, nothing unread, no music; the clock is your PC's |
-| Real weather and steps | Sample values (*Your city*, *Clear*, *18℃*, 6532 steps) |
+| Real weather and steps in the still lock-screen preview | Sample values (*Your city*, *Clear*, *18℃*, 6532 steps). Guide → Try it can use Live phone data or an online weather lookup. |
 | Weekday/month names in the phone's language | English |
 | Chinese lunar date letters (`N`, `e`) | Empty |
 | Colour formulas (`@var`, `argb(…)`) | Drawn white |

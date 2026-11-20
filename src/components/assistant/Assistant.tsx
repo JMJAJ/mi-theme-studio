@@ -14,6 +14,7 @@ import {
   Loader2,
   Maximize2,
   Minimize2,
+  PanelRight,
   PenLine,
   Pencil,
   Plus,
@@ -547,12 +548,22 @@ function ModelChip() {
 
 function Header({ mode, history, onHistory }: { mode: 'side' | 'full'; history: boolean; onHistory: () => void }) {
   const hasItems = useAssistant((s) => s.items.length > 0);
+  const phoneOpen = useStore((s) => s.layout.phone);
   return (
     <header className="ai-head">
       <Bot className="ai-head-icon" />
       <strong>Assistant</strong>
       <ModelChip />
       <span className="grow" />
+      <button
+        className={`tb-icon ${phoneOpen ? 'is-on' : ''}`}
+        aria-pressed={phoneOpen}
+        title={phoneOpen ? 'Hide phone preview' : 'Show phone preview'}
+        aria-label={phoneOpen ? 'Hide phone preview' : 'Show phone preview'}
+        onClick={() => updateLayout({ phone: !phoneOpen })}
+      >
+        <PanelRight />
+      </button>
       <button className={`tb-icon ${history ? 'is-on' : ''}`} aria-pressed={history} title="Chat history" aria-label="Chat history" onClick={onHistory}>
         <History />
       </button>

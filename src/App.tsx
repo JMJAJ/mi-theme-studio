@@ -337,7 +337,7 @@ export function App() {
             </div>
           </div>
         )}
-        {layout.phone && !(section === 'phone' && !deviceReady) && section !== 'assistant' && (
+        {layout.phone && !(section === 'phone' && !deviceReady) && (
           <div className="phone-dock">
             <Splitter orientation="vertical" label="Resize phone preview" value={layout.phoneWidth} min={280} max={620} direction={-1} onChange={(phoneWidth) => updateLayout({ phoneWidth })} />
             {/* Scales with the window: never more than about a third of it. */}

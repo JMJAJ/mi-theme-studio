@@ -35,6 +35,7 @@ pub struct RunOutput {
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
     pub duration: Duration,
+    pub truncated: bool,
 }
 
 impl RunOutput {
@@ -109,12 +110,51 @@ pub fn run(
     timeout: Duration,
     cancel: Option<Arc<AtomicBool>>,
 ) -> Result<RunOutput, RunError> {
+    run_inner(program, args, None, timeout, cancel, MAX_OUTPUT, 1024 * 1024, true, false)
+}
+
+/// Run a PowerShell (Windows) or POSIX shell (macOS/Linux) command in a chosen folder.
+/// Output is capped but returned with a truncation flag instead of failing the command.
+pub fn run_shell(
+    command: &str,
+    directory: &Path,
+    timeout: Duration,
+    cancel: Option<Arc<AtomicBool>>,
+) -> Result<RunOutput, RunError> {
+    #[cfg(windows)]
+    {
+        let shell = Path::new("powershell.exe");
+        let args = ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command];
+        run_inner(shell, &args, Some(directory), timeout, cancel, 1024 * 1024, 256 * 1024, false, true)
+    }
+    #[cfg(not(windows))]
+    {
+        let shell = Path::new("/bin/sh");
+        let args = ["-c", command];
+        run_inner(shell, &args, Some(directory), timeout, cancel, 1024 * 1024, 256 * 1024, false, true)
+    }
+}
+
+fn run_inner(
+    program: &Path,
+    args: &[&str],
+    directory: Option<&Path>,
+    timeout: Duration,
+    cancel: Option<Arc<AtomicBool>>,
+    stdout_limit: usize,
+    stderr_limit: usize,
+    reject_overflow: bool,
+    kill_tree: bool,
+) -> Result<RunOutput, RunError> {
     let mut command = Command::new(program);
     command
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    if let Some(directory) = directory {
+        command.current_dir(directory);
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -125,8 +165,8 @@ pub fn run(
     let mut child = command
         .spawn()
         .map_err(|e| RunError::Spawn(e.to_string()))?;
-    let stdout = drain(child.stdout.take().expect("piped stdout"), MAX_OUTPUT);
-    let stderr = drain(child.stderr.take().expect("piped stderr"), 1024 * 1024);
+    let stdout = drain(child.stdout.take().expect("piped stdout"), stdout_limit);
+    let stderr = drain(child.stderr.take().expect("piped stderr"), stderr_limit);
     let outcome = loop {
         match child.try_wait() {
             Ok(Some(status)) => break Ok(status.code()),
@@ -134,13 +174,11 @@ pub fn run(
             Err(e) => break Err(RunError::Spawn(e.to_string())),
         }
         if cancel.as_ref().is_some_and(|c| c.load(Ordering::Relaxed)) {
-            let _ = child.kill();
-            let _ = child.wait();
+            terminate(&mut child, kill_tree);
             break Err(RunError::Cancelled);
         }
         if started.elapsed() >= timeout {
-            let _ = child.kill();
-            let _ = child.wait();
+            terminate(&mut child, kill_tree);
             break Err(RunError::Timeout);
         }
         thread::sleep(Duration::from_millis(15));
@@ -152,8 +190,9 @@ pub fn run(
         Err(error) => return Err(error),
     };
     let (stdout, overflow) = collect(&stdout, Duration::from_millis(1500));
-    let (stderr, _) = collect(&stderr, Duration::from_millis(300));
-    if overflow {
+    let (stderr, stderr_overflow) = collect(&stderr, Duration::from_millis(300));
+    let truncated = overflow || stderr_overflow;
+    if truncated && reject_overflow {
         return Err(RunError::OutputTooLarge);
     }
     Ok(RunOutput {
@@ -161,7 +200,30 @@ pub fn run(
         stdout,
         stderr,
         duration: started.elapsed(),
+        truncated,
     })
+}
+
+fn terminate(child: &mut std::process::Child, kill_tree: bool) {
+    #[cfg(windows)]
+    if kill_tree {
+        use std::os::windows::process::CommandExt;
+        let mut taskkill_path = std::env::var_os("SystemRoot")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("C:\\Windows"));
+        taskkill_path.push("System32");
+        taskkill_path.push("taskkill.exe");
+        let mut taskkill = Command::new(taskkill_path);
+        taskkill
+            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .creation_flags(0x0800_0000);
+        let _ = taskkill.status();
+    }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 #[cfg(all(test, windows))]

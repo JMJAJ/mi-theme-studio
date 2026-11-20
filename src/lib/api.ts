@@ -3,6 +3,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { DeviceApp, TryOnResult,
   LicenceReport,
+  LocalImageData, LocalImageListing, TerminalResult,
   LicenseOutcome,
   ThemeCompatibility,
   RootApplyResult,
@@ -106,6 +107,11 @@ export const api = {
     call<ProjectSnapshot>('file_write_text', { path, text, allowInvalidXml }),
   filesImport: (sources: string[], folder: string, policy: ConflictPolicy, names?: string[]) =>
     call<BulkResponse>('files_import', { sources, folder, policy, names: names ?? null }),
+  localImagesList: (folder: string) => call<LocalImageListing>('local_images_list', { folder }),
+  localImageRead: (path: string) => call<LocalImageData>('local_image_read', { path }),
+  terminalRun: (runId: string, command: string, workingDirectory: string, timeoutSeconds: number) =>
+    call<TerminalResult>('terminal_run', { runId, command, workingDirectory, timeoutSeconds }),
+  terminalCancel: (runId: string) => call<boolean>('terminal_cancel', { runId }),
   /** Files made in the app (cropped wallpaper, generated icons): one undoable change, overwrites. */
   filesWrite: (files: { path: string; data: number[] }[], label: string) => call<BulkResponse>('files_write', { files, label }),
   fileReplace: (path: string, source: string) => call<ProjectSnapshot>('file_replace', { path, source }),

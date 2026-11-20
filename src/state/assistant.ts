@@ -8,8 +8,9 @@ import { chatModels, providerPreset } from '../lib/aiProviders';
 import { confirmDialog, getState as appState, setState as setAppState, updateLayout } from './store';
 import { historyGoto } from './actions';
 import type { ProjectSnapshot } from '../lib/types';
-import { TOOL_SPECS, WRITE_TOOLS, runTool, toolLabel, type EditLocation, type Proposal } from './assistantTools';
+import { WRITE_TOOLS, runTool, toolLabel, toolsForPermissionMode, type EditLocation, type Proposal } from './assistantTools';
 import { THEME_KNOWLEDGE, themeContext } from './assistantContext';
+import { DEFAULT_PERMISSION_MODE, isPermissionMode, PERMISSION_INFO, type PermissionMode } from './assistantPermissions';
 
 export type ChatItem =
   | {
@@ -74,6 +75,9 @@ interface AssistantState {
   status: string | null;
   /** Tools turned off for this chat after the model refused them. */
   noTools: boolean;
+  /** Per-chat access level for theme changes and local terminal commands. */
+  permissionMode: PermissionMode;
+  permissionModeExplicit: boolean;
 }
 
 const OLD_CHAT_KEY = 'mts.assistant.chat.v1';
@@ -84,7 +88,7 @@ const MAX_STEPS = 30;
 /** Older tool results are shortened past this many characters of history. */
 const HISTORY_BUDGET = 160_000;
 
-type SavedChat = Pick<AssistantState, 'items' | 'messages'>;
+type SavedChat = Pick<AssistantState, 'items' | 'messages'> & { permissionMode?: PermissionMode };
 
 const newChatId = () => `chat${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
@@ -97,12 +101,14 @@ function readJson<T>(key: string): T | null {
   }
 }
 
-function readChat(id: string): SavedChat {
+function readChat(id: string): Pick<AssistantState, 'items' | 'messages' | 'permissionMode' | 'permissionModeExplicit'> {
   const saved = readJson<SavedChat>(chatKey(id));
-  if (!saved) return { items: [], messages: [] };
+  if (!saved) return { items: [], messages: [], permissionMode: DEFAULT_PERMISSION_MODE, permissionModeExplicit: false };
   // A reload ends any run: unfinished steps cannot resume.
   const items = (saved.items ?? []).map((i): ChatItem => (i.role === 'tool' && (i.status === 'running' || i.status === 'pending') ? { ...i, status: 'declined' } : i.role === 'assistant' ? { ...i, streaming: false } : i));
-  return { items, messages: saved.messages ?? [] };
+  const savedMode = saved.permissionMode;
+  const explicit = isPermissionMode(savedMode);
+  return { items, messages: saved.messages ?? [], permissionMode: explicit ? savedMode : DEFAULT_PERMISSION_MODE, permissionModeExplicit: explicit };
 }
 
 function chatTitle(items: ChatItem[]): string {
@@ -111,7 +117,7 @@ function chatTitle(items: ChatItem[]): string {
   return text.length > 80 ? `${text.slice(0, 79)}…` : text || 'New chat';
 }
 
-function loadChats(): Pick<AssistantState, 'chatId' | 'chats' | 'items' | 'messages'> {
+function loadChats(): Pick<AssistantState, 'chatId' | 'chats' | 'items' | 'messages' | 'permissionMode' | 'permissionModeExplicit'> {
   let chats = readJson<ChatSummary[]>(INDEX_KEY) ?? [];
   // Move the single chat older versions kept into the list.
   const old = readJson<SavedChat>(OLD_CHAT_KEY);
@@ -129,15 +135,19 @@ function loadChats(): Pick<AssistantState, 'chatId' | 'chats' | 'items' | 'messa
     }
   }
   const last = chats[0];
-  return last ? { chatId: last.id, chats, ...readChat(last.id) } : { chatId: newChatId(), chats, items: [], messages: [] };
+  return last
+    ? { chatId: last.id, chats, ...readChat(last.id) }
+    : { chatId: newChatId(), chats, items: [], messages: [], permissionMode: DEFAULT_PERMISSION_MODE, permissionModeExplicit: false };
 }
+
+const initialChats = loadChats();
 
 export const useAssistant = create<AssistantState>(() => ({
   settings: null,
   models: [],
   modelsLoading: false,
   modelsError: null,
-  ...loadChats(),
+  ...initialChats,
   draft: '',
   running: false,
   status: null,
@@ -175,7 +185,7 @@ function saveChat(s: AssistantState = get()) {
     }
     return;
   }
-  const data = JSON.stringify({ items: s.items.slice(-400), messages: trimmed(s.messages) });
+  const data = JSON.stringify({ items: s.items.slice(-400), messages: trimmed(s.messages), ...(s.permissionModeExplicit ? { permissionMode: s.permissionMode } : {}) });
   // A huge chat simply is not remembered.
   if (data.length > 3_000_000) return;
   const previous = s.chats.find((c) => c.id === s.chatId);
@@ -206,7 +216,7 @@ function flushSave() {
   saveChat();
 }
 useAssistant.subscribe((s, prev) => {
-  if (s.chatId !== prev.chatId || (s.items === prev.items && s.messages === prev.messages)) return;
+  if (s.chatId !== prev.chatId || (s.items === prev.items && s.messages === prev.messages && s.permissionMode === prev.permissionMode && s.permissionModeExplicit === prev.permissionModeExplicit)) return;
   window.clearTimeout(saveTimer);
   saveTimer = window.setTimeout(() => {
     saveTimer = undefined;
@@ -221,6 +231,9 @@ export async function loadAiSettings() {
   try {
     const settings = await api.aiSettings();
     set({ settings });
+    // Carry forward the previous global auto-apply preference for old chats that
+    // do not have a saved per-chat permission level yet.
+    if (settings.autoApply && !get().permissionModeExplicit) setPermissionMode('workspace');
     return settings;
   } catch {
     return null;
@@ -231,6 +244,10 @@ export async function updateAiSettings(patch: AiSettingsPatch) {
   const settings = await api.aiSettingsUpdate(patch);
   set({ settings });
   return settings;
+}
+
+export function setPermissionMode(permissionMode: PermissionMode) {
+  set({ permissionMode, permissionModeExplicit: true });
 }
 
 /** Switch provider, filling in its preset address and model the first time. */
@@ -300,6 +317,7 @@ function pushItem(item: ChatItem) {
 
 let currentRequest: string | null = null;
 let streamTarget: string | null = null;
+let currentTerminalRunId: string | null = null;
 let stopped = false;
 const approvals = new Map<string, (ok: boolean) => void>();
 
@@ -322,18 +340,24 @@ function ensureListener() {
 }
 
 async function systemPrompt(): Promise<string> {
-  const autoApply = !!get().settings?.autoApply;
+  const permissionMode = get().permissionMode;
+  const permission = PERMISSION_INFO[permissionMode];
   return [
     'You are the assistant inside Mi Theme Studio, a desktop app for making MIUI/HyperOS theme packages (.mtz).',
-    'You help the person design, explain, fix and build their theme. You can read and change the open theme with your tools.',
+    'You help the person design, explain, fix and build their theme. You can read and change the open theme with your tools and transform supported local raster images on this PC.',
     '',
     THEME_KNOWLEDGE,
     '',
     'Rules:',
     '- The theme summary below is current; use it to find the right files. Read a file before editing it, and copy text exactly for edit_file (the "12| " line numbers in the summary are not part of the file).',
     '- Keep XML well-formed. Prefer small edit_file changes over rewriting whole files; keep the file\'s own style.',
-    '- You cannot create or edit images, fonts or sounds; say so and point to the app feature (Design section) instead.',
-    `- ${autoApply ? 'Changes apply right away' : 'Each change is shown to the person for approval before it applies'}; every change is undoable with Ctrl+Z. Saving the package is the person's job (Ctrl+S).`,
+    '- For local image work, use list_local_images to find raster files in the folder the person named, then use colorize_image when its luminance mapping fits. For custom processing, use run_terminal in Supervised or Full access mode and import the generated files with import_local_files. If multiple source files or destinations are plausible, ask which one. Local image bytes stay on this PC; describe each import destination before applying it.',
+    '- For image operations other than the available local luminance colorization, explain what the app can do and ask before promising edits. Do not claim you can create or edit fonts or sounds.',
+    `- Current chat permission: ${permission.label}. ${permission.description}`,
+    '- In Supervised mode, call tools normally; the app asks before each theme change, import, or terminal command. Do not try to bypass a declined action.',
+    "- In Full access mode, run only commands needed for the request. Commands use the user's account rights. Prefer working in the folder the person named, and use import_local_files to add generated files to the theme. Terminal writes are outside theme undo history; importing through the app is undoable.",
+    '- Theme changes made by app tools are undoable with Ctrl+Z. Saving the package is the person’s job (Ctrl+S).',
+    '- For terminal work, pass an absolute working_directory and a useful timeout. Explain the command and destination briefly. If the command creates an asset for the theme, import it with import_local_files after checking its output.',
     '- After a large XML change, run check_theme. When you finish, say briefly what you changed and where.',
     '- Answer in the language the person writes in. Be brief and practical; use Markdown with code blocks for XML.',
     '',
@@ -357,8 +381,11 @@ function trimmed(messages: ApiMessage[]): ApiMessage[] {
   return out;
 }
 
-function approve(toolItem: string, proposal: Proposal): Promise<boolean> {
-  if (get().settings?.autoApply) return Promise.resolve(true);
+function approve(toolItem: string, proposal: Proposal, permissionMode: PermissionMode): Promise<boolean> {
+  if (permissionMode === 'workspace' || permissionMode === 'full-access') {
+    patchItem(toolItem, { proposal } as Partial<ChatItem>);
+    return Promise.resolve(true);
+  }
   patchItem(toolItem, { status: 'pending', proposal } as Partial<ChatItem>);
   set({ status: 'Waiting for your OK' });
   return new Promise((resolve) => approvals.set(toolItem, resolve));
@@ -430,8 +457,10 @@ async function runTurn(content: string) {
       pushItem({ id: answerId, role: 'assistant', text: '', reasoning: '', streaming: true });
       streamTarget = answerId;
       currentRequest = newOpId('ai');
-      const useTools = !get().noTools;
-      const body = { messages: [{ role: 'system', content: await systemPrompt() }, ...trimmed(get().messages)], ...(useTools ? { tools: TOOL_SPECS } : {}) };
+      const permissionMode = get().permissionMode;
+      const availableTools = toolsForPermissionMode(permissionMode);
+      const useTools = !get().noTools && availableTools.length > 0;
+      const body = { messages: [{ role: 'system', content: await systemPrompt() }, ...trimmed(get().messages)], ...(useTools ? { tools: availableTools } : {}) };
       let reply;
       try {
         reply = await chatWithRetry(currentRequest, body);
@@ -470,7 +499,12 @@ async function runTurn(content: string) {
         } else {
           pushItem({ id: toolId, role: 'tool', name: call.name, label: toolLabel(call.name, call.arguments), status: 'running' });
           set({ status: toolLabel(call.name, call.arguments) });
-          outcome = await runTool(call.name, call.arguments, { approve: (p) => approve(toolId, p) });
+          const permissionMode = get().permissionMode;
+          outcome = await runTool(call.name, call.arguments, {
+            permissionMode,
+            approve: (p) => approve(toolId, p, permissionMode),
+            onTerminalRun: (runId) => { currentTerminalRunId = runId; },
+          });
           const declined = WRITE_TOOLS.has(call.name) && !outcome.ok && /declined/i.test(outcome.summary);
           patchItem(toolId, { status: declined ? 'declined' : outcome.ok ? 'done' : 'error', summary: outcome.summary, locations: outcome.locations } as Partial<ChatItem>);
         }
@@ -492,6 +526,7 @@ async function runTurn(content: string) {
 export function stopAssistant() {
   stopped = true;
   if (currentRequest) void api.aiCancel(currentRequest).catch(() => undefined);
+  if (currentTerminalRunId) void api.terminalCancel(currentTerminalRunId).catch(() => undefined);
   for (const [id, resolve] of approvals) {
     patchItem(id, { status: 'declined' } as Partial<ChatItem>);
     resolve(false);
@@ -513,7 +548,7 @@ async function whenIdle() {
   });
 }
 
-const emptyChat = () => ({ chatId: newChatId(), items: [], messages: [], noTools: false, status: null });
+const emptyChat = () => ({ chatId: newChatId(), items: [], messages: [], noTools: false, status: null, permissionMode: DEFAULT_PERMISSION_MODE, permissionModeExplicit: true });
 
 export async function newChat() {
   await whenIdle();
@@ -525,7 +560,12 @@ export async function openChat(id: string) {
   if (id === get().chatId) return;
   await whenIdle();
   flushSave();
-  set({ chatId: id, ...readChat(id), noTools: false, status: null });
+  const chat = readChat(id);
+  if (!chat.permissionModeExplicit && get().settings?.autoApply) {
+    chat.permissionMode = 'workspace';
+    chat.permissionModeExplicit = true;
+  }
+  set({ chatId: id, ...chat, noTools: false, status: null });
 }
 
 export async function deleteChat(id: string) {

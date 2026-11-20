@@ -445,9 +445,7 @@ function AiSection() {
         {note && <Row title={note.tone === 'ok' ? 'Done' : 'Problem'} description={<span className={note.tone === 'err' ? 'ai-err-text' : ''}>{note.text}</span>} />}
       </Group>
       <Group title="Editing">
-        <Row title="Apply edits without asking" description="Off: each file change shows as a diff to approve first. Either way every change is undoable with Ctrl+Z, and nothing is saved to the package until you save.">
-          <Switch checked={settings.autoApply} onChange={(v) => void updateAiSettings({ autoApply: v })} label="Apply edits without asking" />
-        </Row>
+        <Row title="Chat permissions" description="Choose Read only, Theme edits, Supervised, or Full access from the permission control beside the assistant message box. Full access runs local commands with your account permissions." />
         <Row title="Open the assistant" description="As a side panel next to any section, or full screen.">
           <div style={{ display: 'flex', gap: 6 }}>
             <button

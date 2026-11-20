@@ -20,6 +20,32 @@ export interface FileInfo {
   compression: 'stored' | 'deflated';
 }
 
+export interface LocalImageEntry {
+  path: string;
+  name: string;
+  bytes: number;
+}
+
+export interface LocalImageListing {
+  folder: string;
+  images: LocalImageEntry[];
+  truncated: boolean;
+}
+
+export interface LocalImageData {
+  data: number[];
+  width: number;
+  height: number;
+}
+
+export interface TerminalResult {
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+  truncated: boolean;
+}
+
 export interface ContainerInfo {
   name: string;
   component: string;

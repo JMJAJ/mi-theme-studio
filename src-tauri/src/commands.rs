@@ -21,12 +21,17 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 
 pub const MAX_PACKAGE_BYTES: u64 = 1024 * 1024 * 1024;
 pub const MAX_ASSET_BYTES: u64 = 256 * 1024 * 1024;
 pub const MAX_TEXT_BYTES: usize = 24 * 1024 * 1024;
+const MAX_LOCAL_IMAGE_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_LOCAL_IMAGE_PIXELS: usize = 24_000_000;
+const MAX_TERMINAL_COMMAND_BYTES: usize = 16 * 1024;
+static TERMINAL_CANCELLATION: std::sync::Mutex<Option<(String, Arc<AtomicBool>)>> =
+    std::sync::Mutex::new(None);
 
 static NEXT_SHOT_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -339,6 +344,214 @@ pub async fn files_import(
         })
     })
     .await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalImageEntry {
+    pub path: String,
+    pub name: String,
+    pub bytes: u64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalImageListing {
+    pub folder: String,
+    pub images: Vec<LocalImageEntry>,
+    pub truncated: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalImageData {
+    pub data: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+}
+
+fn is_supported_local_image(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str(),
+        "jpg" | "jpeg" | "png" | "webp" | "gif" | "bmp"
+    )
+}
+
+/// List image files directly inside a user-specified local folder.
+#[tauri::command]
+pub async fn local_images_list(app: AppHandle, folder: String) -> AppResult<LocalImageListing> {
+    blocking(app, move |_, _| {
+        let folder = PathBuf::from(folder)
+            .canonicalize()
+            .map_err(|e| AppError::io("Could not open the image folder", e))?;
+        if !folder.is_dir() {
+            return Err(AppError::invalid(format!(
+                "{} is not a folder.",
+                folder.display()
+            )));
+        }
+        let mut images = Vec::new();
+        for entry in std::fs::read_dir(&folder)
+            .map_err(|e| AppError::io(format!("Could not list {}", folder.display()), e))?
+        {
+            let entry = entry.map_err(|e| AppError::io("Could not read an image folder entry", e))?;
+            if !entry
+                .file_type()
+                .map_err(|e| AppError::io("Could not inspect an image folder entry", e))?
+                .is_file()
+                || !is_supported_local_image(&entry.path())
+            {
+                continue;
+            }
+            let metadata = entry
+                .metadata()
+                .map_err(|e| AppError::io("Could not inspect an image file", e))?;
+            images.push(LocalImageEntry {
+                path: entry.path().to_string_lossy().into_owned(),
+                name: file_name_of(&entry.path()),
+                bytes: metadata.len(),
+            });
+        }
+        images.sort_by_key(|image| image.name.to_ascii_lowercase());
+        let truncated = images.len() > 100;
+        images.truncate(100);
+        Ok(LocalImageListing {
+            folder: folder.to_string_lossy().into_owned(),
+            images,
+            truncated,
+        })
+    })
+    .await
+}
+
+/// Read a local raster image for processing inside the desktop app.
+#[tauri::command]
+pub async fn local_image_read(app: AppHandle, path: String) -> AppResult<LocalImageData> {
+    blocking(app, move |_, _| {
+        let path = PathBuf::from(path)
+            .canonicalize()
+            .map_err(|e| AppError::io("Could not open the image", e))?;
+        if !is_supported_local_image(&path) {
+            return Err(AppError::invalid(
+                "Choose a JPG, PNG, WEBP, GIF, or BMP image.",
+            ));
+        }
+        let data = read_limited(&path, MAX_LOCAL_IMAGE_BYTES, &file_name_of(&path))?;
+        let size = imagesize::blob_size(&data)
+            .map_err(|e| AppError::invalid(format!("Could not read image dimensions: {e}")))?;
+        let width = u32::try_from(size.width)
+            .map_err(|_| AppError::invalid("The image width is too large to process."))?;
+        let height = u32::try_from(size.height)
+            .map_err(|_| AppError::invalid("The image height is too large to process."))?;
+        if width > 32_767
+            || height > 32_767
+            || size.width.saturating_mul(size.height) > MAX_LOCAL_IMAGE_PIXELS
+        {
+            return Err(AppError::invalid(format!(
+                "The image is {width}×{height}; local colorization is limited to 24 megapixels."
+            )));
+        }
+        Ok(LocalImageData { data, width, height })
+    })
+    .await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalResult {
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+    pub duration_ms: u64,
+    pub truncated: bool,
+}
+
+/// Run a local shell command in a user-selected working directory.
+#[tauri::command]
+pub async fn terminal_run(
+    app: AppHandle,
+    run_id: String,
+    command: String,
+    working_directory: String,
+    timeout_seconds: Option<u64>,
+) -> AppResult<TerminalResult> {
+    let command = command.trim().to_string();
+    if command.is_empty() {
+        return Err(AppError::invalid("Enter a terminal command."));
+    }
+    if command.len() > MAX_TERMINAL_COMMAND_BYTES {
+        return Err(AppError::invalid("The terminal command is too long (maximum 16 KB)."));
+    }
+    if run_id.is_empty() || run_id.len() > 80 {
+        return Err(AppError::invalid("The terminal run id is invalid."));
+    }
+    let timeout_seconds = timeout_seconds.unwrap_or(60);
+    if !(1..=300).contains(&timeout_seconds) {
+        return Err(AppError::invalid("Terminal timeout must be between 1 and 300 seconds."));
+    }
+    let directory = PathBuf::from(working_directory)
+        .canonicalize()
+        .map_err(|e| AppError::io("Could not open the terminal working directory", e))?;
+    if !directory.is_dir() {
+        return Err(AppError::invalid(format!(
+            "{} is not a folder.",
+            directory.display()
+        )));
+    }
+
+    let cancellation = Arc::new(AtomicBool::new(false));
+    {
+        let mut active = TERMINAL_CANCELLATION.lock().unwrap_or_else(|e| e.into_inner());
+        if active.is_some() {
+            return Err(AppError::conflict("A terminal command is already running."));
+        }
+        *active = Some((run_id.clone(), cancellation.clone()));
+    }
+
+    let timeout = Duration::from_secs(timeout_seconds);
+    let process_cancel = cancellation.clone();
+    let result = blocking(app, move |_, _| {
+        match crate::adb::runner::run_shell(&command, &directory, timeout, Some(process_cancel)) {
+            Ok(output) => Ok(TerminalResult {
+                exit_code: output.code,
+                stdout: output.stdout_text(),
+                stderr: output.stderr_text(),
+                duration_ms: output.duration.as_millis().min(u64::MAX as u128) as u64,
+                truncated: output.truncated,
+            }),
+            Err(crate::adb::runner::RunError::Timeout) => Err(AppError::new(
+                "terminal_timeout",
+                format!("The terminal command timed out after {timeout_seconds} seconds."),
+            )),
+            Err(crate::adb::runner::RunError::Cancelled) => {
+                Err(AppError::new("cancelled", "The terminal command was stopped."))
+            }
+            Err(error) => Err(AppError::new("terminal", error.to_string())),
+        }
+    })
+    .await;
+
+    let mut active = TERMINAL_CANCELLATION.lock().unwrap_or_else(|e| e.into_inner());
+    if active.as_ref().is_some_and(|(id, _)| id == &run_id) {
+        *active = None;
+    }
+    result
+}
+
+#[tauri::command]
+pub fn terminal_cancel(run_id: String) -> bool {
+    let active = TERMINAL_CANCELLATION.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((id, cancellation)) = active.as_ref() {
+        if id == &run_id {
+            cancellation.store(true, Ordering::Relaxed);
+            return true;
+        }
+    }
+    false
 }
 
 /// A file produced inside the app (a cropped wallpaper, a generated icon).

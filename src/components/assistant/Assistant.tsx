@@ -5,18 +5,23 @@ import {
   Bot,
   Check,
   ChevronDown,
+  ChevronUp,
   Copy,
   CornerDownRight,
   FileSearch,
   History,
+  LockKeyhole,
   Loader2,
   Maximize2,
   Minimize2,
   PenLine,
+  Pencil,
   Plus,
   RotateCcw,
   Search,
   Send,
+  ShieldCheck,
+  ShieldOff,
   Settings2,
   Sparkles,
   Square,
@@ -39,12 +44,13 @@ import {
   newChat,
   openChat,
   rewindTo,
+  setPermissionMode,
   sendMessage,
   stopAssistant,
-  updateAiSettings,
   useAssistant,
   type ChatItem,
 } from '../../state/assistant';
+import { PERMISSION_INFO, PERMISSION_MODES, type PermissionMode } from '../../state/assistantPermissions';
 import { WRITE_TOOLS, type EditLocation } from '../../state/assistantTools';
 import { fileName } from '../../lib/paths';
 import { relativeTime } from '../../lib/format';
@@ -364,7 +370,7 @@ function Welcome({ onPick }: { onPick: (text: string) => void }) {
     <div className="ai-welcome">
       <Sparkles className="ai-welcome-icon" />
       <h3>How can I help with your theme?</h3>
-      <p>{project ? 'I can read, explain and edit the open theme. You approve each change, and Ctrl+Z undoes it.' : 'Open or create a theme to let me edit it. I can still answer questions.'}</p>
+      <p>{project ? 'I can read and edit the open theme, process local images, and use terminal tools when the chat permission allows it. Theme changes are undoable with Ctrl+Z.' : 'Open or create a theme to let me edit it and import local files. Choose chat permissions beside the message box.'}</p>
       <div className="ai-suggest">
         {SUGGESTIONS.map((s) => (
           <button key={s} className="ai-chip" onClick={() => onPick(s)}>
@@ -376,7 +382,102 @@ function Welcome({ onPick }: { onPick: (text: string) => void }) {
   );
 }
 
-// ---------- composer ----------
+// ---------- permission picker and composer ----------
+
+function PermissionGlyph({ mode }: { mode: PermissionMode }) {
+  if (mode === 'read-only') return <LockKeyhole />;
+  if (mode === 'workspace') return <Pencil />;
+  if (mode === 'supervised') return <ShieldCheck />;
+  return <ShieldOff />;
+}
+
+function PermissionPicker() {
+  const mode = useAssistant((s) => s.permissionMode);
+  const [open, setOpen] = useState(false);
+  const [previewMode, setPreviewMode] = useState<PermissionMode | null>(null);
+  const host = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const selected = PERMISSION_INFO[previewMode ?? mode];
+
+  useEffect(() => {
+    if (!open) return;
+    const outside = (event: PointerEvent) => {
+      if (!host.current?.contains(event.target as Node)) {
+        setOpen(false);
+        setPreviewMode(null);
+      }
+    };
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+        setPreviewMode(null);
+        trigger.current?.focus();
+      }
+    };
+    window.addEventListener('pointerdown', outside, true);
+    window.addEventListener('keydown', keydown);
+    return () => {
+      window.removeEventListener('pointerdown', outside, true);
+      window.removeEventListener('keydown', keydown);
+    };
+  }, [open]);
+
+  return (
+    <div className="ai-permissions" ref={host}>
+      {open && (
+        <div className="ai-permission-popover" role="dialog" aria-label="Assistant permissions">
+          <strong className="ai-permission-title">Permissions</strong>
+          <div className="ai-permission-options" role="group" aria-label="Choose assistant permissions">
+            {PERMISSION_MODES.map((option) => (
+              <button
+                key={option}
+                type="button"
+                className={mode === option ? 'is-selected' : ''}
+                aria-label={PERMISSION_INFO[option].label}
+                aria-pressed={mode === option}
+                title={PERMISSION_INFO[option].label}
+                onMouseEnter={() => setPreviewMode(option)}
+                onMouseLeave={(event) => {
+                  if (document.activeElement !== event.currentTarget) setPreviewMode(null);
+                }}
+                onFocus={() => setPreviewMode(option)}
+                onBlur={(event) => {
+                  if (!event.currentTarget.parentElement?.contains(event.relatedTarget as Node | null)) setPreviewMode(null);
+                }}
+                onClick={() => {
+                  setPermissionMode(option);
+                  setPreviewMode(null);
+                  setOpen(false);
+                }}
+              >
+                <PermissionGlyph mode={option} />
+              </button>
+            ))}
+          </div>
+          <div className="ai-permission-detail">
+            <strong>{selected.label}</strong>
+            <p>{selected.description}</p>
+          </div>
+        </div>
+      )}
+      <button
+        ref={trigger}
+        className={`ai-permission-trigger ${mode === 'full-access' ? 'is-full' : ''}`}
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => {
+          setPreviewMode(null);
+          setOpen((value) => !value);
+        }}
+      >
+        <PermissionGlyph mode={mode} />
+        <span>{selected.label}</span>
+        <ChevronUp className={open ? 'is-open' : ''} />
+      </button>
+    </div>
+  );
+}
 
 function Composer({ autoFocus }: { autoFocus?: boolean }) {
   const text = useAssistant((s) => s.draft);
@@ -399,28 +500,32 @@ function Composer({ autoFocus }: { autoFocus?: boolean }) {
   return (
     <div className="ai-composer">
       <textarea
-        ref={ref}
-        rows={1}
-        value={text}
-        placeholder="Ask for help, or describe a change…"
-        aria-label="Message the assistant"
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-            e.preventDefault();
-            send();
-          }
-        }}
-      />
-      {running ? (
-        <button className="btn btn-icon ai-send" title="Stop" aria-label="Stop" onClick={stopAssistant}>
-          <Square />
-        </button>
-      ) : (
-        <button className="btn btn-primary btn-icon ai-send" title="Send (Enter)" aria-label="Send" disabled={!text.trim()} onClick={send}>
-          <Send />
-        </button>
-      )}
+          ref={ref}
+          rows={1}
+          value={text}
+          placeholder="Ask for help, or describe a change…"
+          aria-label="Message the assistant"
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              send();
+            }
+          }}
+        />
+      <div className="ai-composer-foot">
+        <PermissionPicker />
+        <span className="grow" />
+        {running ? (
+          <button className="btn btn-icon ai-send" title="Stop" aria-label="Stop" onClick={stopAssistant}>
+            <Square />
+          </button>
+        ) : (
+          <button className="btn btn-primary btn-icon ai-send" title="Send (Enter)" aria-label="Send" disabled={!text.trim()} onClick={send}>
+            <Send />
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -442,21 +547,12 @@ function ModelChip() {
 
 function Header({ mode, history, onHistory }: { mode: 'side' | 'full'; history: boolean; onHistory: () => void }) {
   const hasItems = useAssistant((s) => s.items.length > 0);
-  const autoApply = useAssistant((s) => !!s.settings?.autoApply);
   return (
     <header className="ai-head">
       <Bot className="ai-head-icon" />
       <strong>Assistant</strong>
       <ModelChip />
       <span className="grow" />
-      <button
-        className={`tb-icon ${autoApply ? 'is-on' : ''}`}
-        aria-pressed={autoApply}
-        title={autoApply ? 'Edits apply right away (click to ask first)' : 'Asks before each edit (click to apply right away)'}
-        onClick={() => void updateAiSettings({ autoApply: !autoApply })}
-      >
-        <PenLine />
-      </button>
       <button className={`tb-icon ${history ? 'is-on' : ''}`} aria-pressed={history} title="Chat history" aria-label="Chat history" onClick={onHistory}>
         <History />
       </button>

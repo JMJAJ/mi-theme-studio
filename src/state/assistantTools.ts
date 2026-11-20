@@ -1,11 +1,12 @@
 // Tools the assistant can call. Each one reads or changes the open theme
 // through the same native commands the editors use, so every change is one
 // undoable step. Changes ask for approval unless auto-apply is on.
-import { api, errorCode, errorMessage } from '../lib/api';
-import { fileName } from '../lib/paths';
+import { api, errorCode, errorMessage, newOpId } from '../lib/api';
+import { fileName, joinPath } from '../lib/paths';
 import { getState, setState } from './store';
 import * as A from './actions';
 import { applyEdits, lineDiff, lineSpan, locate, parseToolArgs, type EditLocation } from '../lib/aiEdits';
+import type { PermissionMode } from './assistantPermissions';
 
 export type { EditLocation };
 
@@ -14,6 +15,7 @@ const GUIDE_PAGES = new Map(Object.entries(GUIDES).map(([path, src]) => [path.re
 
 const MAX_READ = 40_000;
 const MAX_RESULT = 24_000;
+const DEFAULT_IMAGE_PALETTE = ['#26110E', '#773426', '#C24A1D', '#E68A23', '#F4D36A'];
 
 export interface ToolSpec {
   type: 'function';
@@ -24,6 +26,58 @@ const obj = (properties: Record<string, object>, required: string[] = []) => ({ 
 const str = (description: string) => ({ type: 'string', description });
 
 export const TOOL_SPECS: ToolSpec[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'list_local_images',
+      description: 'List raster image files directly inside a local folder on this PC. Use this to find a source image when the person gives you a folder path. It returns names, paths and sizes only; image contents stay local.',
+      parameters: obj({ folder: str('Absolute path to a local folder on this PC') }, ['folder']),
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'colorize_image',
+      description: 'Read a local JPG, PNG, WEBP, GIF or BMP image, convert each pixel to Rec. 709 grayscale luminance, map that luminance through an evenly spaced dark-to-light color palette, preserve alpha, encode a PNG, and add it to the open theme at target_path. Processing happens locally in the desktop app; source pixels are never sent to the AI provider. Omit palette to use dark brown → reddish brown → burnt orange → amber → gold. target_path must end in .png. The result is added as one undoable theme change and asks for approval unless auto-apply is enabled.',
+      parameters: obj(
+        {
+          source_path: str('Absolute local path to the source raster image'),
+          target_path: str('Destination PNG path inside the open theme, e.g. "lockscreen!/advance/cd/weather_tint.png"'),
+          palette: { type: 'array', minItems: 2, maxItems: 8, items: { type: 'string', description: 'A six-digit hex color, darkest first and lightest last, e.g. #26110E' } },
+        },
+        ['source_path', 'target_path'],
+      ),
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'run_terminal',
+      description: 'Run a PowerShell command on Windows (or sh on macOS/Linux) in a local working directory. Use it for local tools such as Python. Only available in Supervised or Full access mode. Supervised asks the person to approve the exact command and directory first; Full access runs without that approval. Commands have a timeout of at most 300 seconds and bounded output.',
+      parameters: obj(
+        {
+          command: str('The shell command to run, such as "python colorize.py input.jpg output.png"'),
+          working_directory: str('Absolute local folder path to run the command in'),
+          timeout_seconds: { type: 'integer', minimum: 1, maximum: 300, description: 'Optional timeout; defaults to 60 seconds' },
+        },
+        ['command', 'working_directory'],
+      ),
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'import_local_files',
+      description: 'Import files created on this PC into the open theme. Use after local tools such as Python generate an asset. The files are copied into the theme through the app and become one undoable change. The destination folder is inside the theme; use an archive path like "lockscreen!/advance/cd" or an empty string for the theme root.',
+      parameters: obj(
+        {
+          paths: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'string', description: 'Absolute path to a local file' } },
+          folder: str('Destination folder inside the open theme; use an empty string for the root'),
+        },
+        ['paths'],
+      ),
+    },
+  },
   {
     type: 'function',
     function: {
@@ -123,7 +177,15 @@ export const TOOL_SPECS: ToolSpec[] = [
   },
 ];
 
-export const WRITE_TOOLS = new Set(['edit_file', 'write_file', 'delete_files', 'set_theme_details']);
+export const WRITE_TOOLS = new Set(['edit_file', 'write_file', 'delete_files', 'set_theme_details', 'colorize_image', 'import_local_files', 'run_terminal']);
+
+export function toolsForPermissionMode(permissionMode: PermissionMode) {
+  return TOOL_SPECS.filter(({ function: tool }) => {
+    if (permissionMode === 'read-only') return !WRITE_TOOLS.has(tool.name);
+    if (permissionMode === 'workspace') return tool.name !== 'run_terminal';
+    return true;
+  });
+}
 
 /** A change waiting for the person's yes. */
 export interface Proposal {
@@ -135,6 +197,8 @@ export interface Proposal {
 export interface ToolContext {
   /** Resolves true when the change may go ahead. */
   approve: (proposal: Proposal) => Promise<boolean>;
+  permissionMode: PermissionMode;
+  onTerminalRun?: (runId: string | null) => void;
 }
 
 export interface ToolOutcome {
@@ -166,6 +230,15 @@ const asString = (v: unknown, name: string) => {
   return v.trim();
 };
 
+function requireAbsolutePath(path: string, name: string) {
+  if (!/^(?:[a-z]:[\\/]|\\\\|\/)/i.test(path)) throw new Error(`"${name}" must be an absolute local path.`);
+  return path;
+}
+
+function localBasename(path: string) {
+  return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || 'file';
+}
+
 async function currentText(path: string): Promise<string | null> {
   const draft = getState().drafts[path];
   if (draft) return draft.text;
@@ -186,8 +259,185 @@ async function writeText(path: string, text: string): Promise<string | null> {
   }
 }
 
+interface Rgb {
+  r: number;
+  g: number;
+  b: number;
+}
+
+function imagePalette(input: unknown): { colors: Rgb[]; labels: string[] } {
+  const values = input === undefined || input === null ? DEFAULT_IMAGE_PALETTE : input;
+  if (!Array.isArray(values) || values.length < 2 || values.length > 8) {
+    throw new Error('palette must contain 2–8 six-digit hex colors, ordered from darkest to lightest.');
+  }
+  const labels = values.map((value) => {
+    if (typeof value !== 'string' || !/^#?[\da-f]{6}$/i.test(value.trim())) {
+      throw new Error('Each palette color must be a six-digit hex color such as #C24A1D.');
+    }
+    const hex = value.trim().replace(/^#/, '').toUpperCase();
+    return `#${hex}`;
+  });
+  const colors = labels.map((hex) => ({
+    r: Number.parseInt(hex.slice(1, 3), 16),
+    g: Number.parseInt(hex.slice(3, 5), 16),
+    b: Number.parseInt(hex.slice(5, 7), 16),
+  }));
+  return { colors, labels };
+}
+
+async function colorizeLocalImage(sourcePath: string, colors: Rgb[]): Promise<{ data: number[]; width: number; height: number }> {
+  const local = await api.localImageRead(sourcePath);
+  const sourceBuffer = new ArrayBuffer(local.data.length);
+  new Uint8Array(sourceBuffer).set(local.data);
+  const extension = sourcePath.split('.').pop()?.toLowerCase();
+  const mime = extension === 'jpg' || extension === 'jpeg' ? 'image/jpeg'
+    : extension === 'png' ? 'image/png'
+      : extension === 'webp' ? 'image/webp'
+        : extension === 'gif' ? 'image/gif'
+          : 'image/bmp';
+  const bitmap = await createImageBitmap(new Blob([sourceBuffer], { type: mime }));
+  try {
+    if (bitmap.width !== local.width || bitmap.height !== local.height) {
+      throw new Error('The image decoder returned unexpected dimensions; nothing was imported.');
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) throw new Error('The local image canvas is unavailable.');
+    context.drawImage(bitmap, 0, 0);
+    const pixels = context.getImageData(0, 0, bitmap.width, bitmap.height);
+    const data = pixels.data;
+    const segments = colors.length - 1;
+    for (let y = 0; y < bitmap.height; y++) {
+      for (let x = 0; x < bitmap.width; x++) {
+        const at = (y * bitmap.width + x) * 4;
+        const luminance = (0.2126 * data[at] + 0.7152 * data[at + 1] + 0.0722 * data[at + 2]) / 255;
+        const scaled = luminance * segments;
+        const lower = Math.min(Math.floor(scaled), segments - 1);
+        const mix = scaled - lower;
+        const a = colors[lower];
+        const b = colors[lower + 1];
+        data[at] = Math.round(a.r + (b.r - a.r) * mix);
+        data[at + 1] = Math.round(a.g + (b.g - a.g) * mix);
+        data[at + 2] = Math.round(a.b + (b.b - a.b) * mix);
+      }
+      if ((y & 127) === 127) await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    }
+    context.putImageData(pixels, 0, 0);
+    const png = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Could not encode the colorized PNG.')), 'image/png');
+    });
+    const output = new Uint8Array(await png.arrayBuffer());
+    canvas.width = 0;
+    canvas.height = 0;
+    return { data: Array.from(output), width: bitmap.width, height: bitmap.height };
+  } finally {
+    bitmap.close();
+  }
+}
+
 async function run(name: string, input: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutcome> {
+  if (WRITE_TOOLS.has(name) && ctx.permissionMode === 'read-only') {
+    throw new Error('This chat is in Read only mode. Switch to a mode that allows changes before using this tool.');
+  }
+  if (name === 'run_terminal' && (ctx.permissionMode === 'read-only' || ctx.permissionMode === 'workspace')) {
+    throw new Error('Terminal commands are disabled in this chat permission mode. Choose Supervised or Full access to enable them.');
+  }
   switch (name) {
+    case 'list_local_images': {
+      const folder = requireAbsolutePath(asString(input.folder, 'folder'), 'folder');
+      const listing = await api.localImagesList(folder);
+      const rows = listing.images.map((image) => `${image.name}\t${image.bytes.toLocaleString()} bytes\t${image.path}`);
+      return {
+        ok: true,
+        summary: `Found ${listing.images.length} local image${listing.images.length === 1 ? '' : 's'}`,
+        result: [`Folder: ${listing.folder}`, ...(rows.length ? rows : ['No supported raster images found.']), ...(listing.truncated ? ['… more than 100 images; narrow the folder'] : [])].join('\n'),
+      };
+    }
+    case 'colorize_image': {
+      needProject();
+      const sourcePath = requireAbsolutePath(asString(input.source_path, 'source_path'), 'source_path');
+      const targetPath = asString(input.target_path, 'target_path').replace(/\\/g, '/');
+      if (!/\.png$/i.test(targetPath)) throw new Error('target_path must end in .png because the generated asset is encoded as PNG.');
+      const palette = imagePalette(input.palette);
+      const image = await colorizeLocalImage(sourcePath, palette.colors);
+      const replacesExisting = getState().fileIndex.has(targetPath);
+      const details = [
+        `Source image: ${sourcePath}`,
+        `Theme asset: ${targetPath}`,
+        `Theme action: ${replacesExisting ? 'replace the existing file' : 'create a new file'}`,
+        `Image size: ${image.width}×${image.height}`,
+        'Processing: per-pixel Rec. 709 grayscale luminance mapped to the palette; source alpha preserved.',
+        `Dark-to-light palette: ${palette.labels.join(' → ')}`,
+      ].join('\n');
+      if (!(await ctx.approve({ title: `${replacesExisting ? 'Replace' : 'Add'} colorized image ${targetPath}`, diff: details }))) {
+        return { ok: false, summary: 'Colorized image import declined', result: 'No theme files were changed.' };
+      }
+      const response = await api.filesWrite([{ path: targetPath, data: image.data }], 'AI colorize image');
+      A.applySnapshot(response.snapshot);
+      return {
+        ok: true,
+        summary: `Imported ${fileName(targetPath)}`,
+        result: `Colorized the local source image and imported it into ${targetPath} (${image.width}×${image.height}, PNG). Source pixels stayed on this PC; the new asset is undoable with Ctrl+Z.`,
+      };
+    }
+    case 'run_terminal': {
+      if (ctx.permissionMode !== 'supervised' && ctx.permissionMode !== 'full-access') {
+        throw new Error('Terminal commands require Supervised or Full access mode.');
+      }
+      const command = asString(input.command, 'command');
+      const workingDirectory = requireAbsolutePath(asString(input.working_directory, 'working_directory'), 'working_directory');
+      const timeoutSeconds = input.timeout_seconds === undefined ? 60 : Number(input.timeout_seconds);
+      if (!Number.isInteger(timeoutSeconds) || timeoutSeconds < 1 || timeoutSeconds > 300) throw new Error('timeout_seconds must be between 1 and 300.');
+      const proposal = {
+        title: 'Run terminal command',
+        diff: [`Working directory: ${workingDirectory}`, `Timeout: ${timeoutSeconds} seconds`, 'Command:', command].join('\n'),
+      };
+      if (!(await ctx.approve(proposal))) return { ok: false, summary: 'Terminal command declined', result: 'The command was not run.' };
+      const runId = newOpId('terminal');
+      ctx.onTerminalRun?.(runId);
+      try {
+        const output = await api.terminalRun(runId, command, workingDirectory, timeoutSeconds);
+        const status = output.exitCode === 0 ? 'completed successfully' : `exited with code ${output.exitCode ?? 'unknown'}`;
+        const sections = [
+          `Command ${status} in ${output.durationMs} ms.`,
+          `Working directory: ${workingDirectory}`,
+          `Command: ${command}`,
+          `Exit code: ${output.exitCode ?? 'unknown'}`,
+          output.stdout ? `stdout:\n${output.stdout}` : '',
+          output.stderr ? `stderr:\n${output.stderr}` : '',
+          output.truncated ? 'Output was truncated after the local capture limit.' : '',
+        ].filter(Boolean);
+        return {
+          ok: output.exitCode === 0,
+          summary: `Terminal ${status}: ${command.slice(0, 80)}`,
+          result: sections.join('\n\n'),
+        };
+      } finally {
+        ctx.onTerminalRun?.(null);
+      }
+    }
+    case 'import_local_files': {
+      needProject();
+      const sourcePaths = Array.isArray(input.paths)
+        ? input.paths.filter((path): path is string => typeof path === 'string' && !!path.trim()).map((path) => requireAbsolutePath(path.trim(), 'paths item'))
+        : [];
+      if (!sourcePaths.length) throw new Error('paths needs one or more absolute local file paths.');
+      if (sourcePaths.length > 20) throw new Error('Import at most 20 files at a time.');
+      const folder = typeof input.folder === 'string' ? input.folder.trim().replace(/\\/g, '/') : '';
+      const destinations = sourcePaths.map((path) => joinPath(folder, localBasename(path)));
+      const details = sourcePaths.map((path, index) => `+ ${destinations[index]}${getState().fileIndex.has(destinations[index]) ? ' (replace existing)' : ''}\n  ← ${path}`);
+      const proposal = { title: `Import ${sourcePaths.length} local file${sourcePaths.length === 1 ? '' : 's'}`, diff: details.join('\n') };
+      if (!(await ctx.approve(proposal))) return { ok: false, summary: 'Local file import declined', result: 'No theme files were changed.' };
+      const response = await api.filesImport(sourcePaths, folder, 'overwrite');
+      A.applySnapshot(response.snapshot);
+      return {
+        ok: true,
+        summary: `Imported ${response.result.written.length} local file${response.result.written.length === 1 ? '' : 's'}`,
+        result: `Imported into ${folder || 'the theme root'}: ${response.result.written.join(', ') || 'no files'}. This theme change is undoable with Ctrl+Z.`,
+      };
+    }
     case 'get_theme_overview': {
       const state = getState();
       const project = needProject();
@@ -365,6 +615,14 @@ export function toolLabel(name: string, rawArgs: string): string {
   }
   const path = typeof input.path === 'string' ? fileName(input.path) : '';
   switch (name) {
+    case 'list_local_images':
+      return `Listing images in ${localBasename(String(input.folder ?? 'local folder'))}`;
+    case 'colorize_image':
+      return `Colorizing ${localBasename(String(input.source_path ?? 'local image'))}`;
+    case 'run_terminal':
+      return `Running ${String(input.command ?? 'terminal command').slice(0, 70)}`;
+    case 'import_local_files':
+      return `Importing ${Array.isArray(input.paths) ? input.paths.length : 0} local file${Array.isArray(input.paths) && input.paths.length === 1 ? '' : 's'}`;
     case 'get_theme_overview':
       return 'Looking at the theme';
     case 'list_files':

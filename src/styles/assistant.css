@@ -84,12 +84,31 @@
 .ai-full .ai-foot { width: 100%; max-width: 860px; margin: 0 auto; padding: 6px 24px 20px; }
 .ai-status { display: flex; align-items: center; gap: 6px; padding: 0 2px 6px; color: var(--faint); font-size: var(--fs-xs); }
 .ai-status svg { width: 13px; height: 13px; }
-.ai-composer { display: flex; align-items: flex-end; gap: 6px; padding: 6px; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--bg-2); }
+.ai-composer { display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 8px; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--bg-2); }
 .ai-composer:focus-within { border-color: var(--accent-line); box-shadow: var(--focus); }
 .ai-composer textarea, .ai-composer textarea:focus, .ai-composer textarea:focus-visible { box-shadow: none; }
-.ai-composer textarea { flex: 1; min-height: 28px; max-height: 220px; padding: 4px 6px; border: 0; outline: none; resize: none; background: transparent; color: var(--text); font: inherit; font-size: var(--fs-sm); line-height: 1.5; }
+.ai-composer textarea { width: 100%; flex: none; min-height: 28px; max-height: 220px; padding: 4px 6px; border: 0; outline: none; resize: none; background: transparent; color: var(--text); font: inherit; font-size: var(--fs-sm); line-height: 1.5; }
 .ai-composer textarea::placeholder { color: var(--faint); }
-.ai-send { width: 30px; height: 30px; border-radius: 9px; flex: none; }
+.ai-composer-foot { display: flex; align-items: center; gap: 8px; min-height: 30px; }
+.ai-send { width: 30px; height: 30px; border-radius: 50%; flex: none; }
+.ai-send svg { width: 16px; height: 16px; }
+.ai-permissions { position: relative; flex: none; }
+.ai-permission-trigger { display: inline-flex; align-items: center; gap: 6px; max-width: 210px; height: 29px; padding: 0 9px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.ai-permission-trigger:hover, .ai-permission-trigger[aria-expanded="true"] { background: var(--bg-3); color: var(--text); }
+.ai-permission-trigger.is-full { color: var(--warn); }
+.ai-permission-trigger svg { width: 15px; height: 15px; flex: none; }
+.ai-permission-trigger svg:last-child { width: 13px; height: 13px; color: var(--faint); transition: transform 0.12s; }
+.ai-permission-trigger svg:last-child.is-open { transform: rotate(180deg); }
+.ai-permission-trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-permission-popover { position: absolute; z-index: 55; bottom: calc(100% + 9px); left: 0; width: min(420px, calc(100vw - 32px)); padding: 15px 16px 14px; border: 1px solid var(--line-strong); border-radius: 13px; background: var(--bg-1); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.62); }
+.ai-permission-title { display: block; margin-bottom: 9px; color: var(--text-2); font-size: var(--fs-sm); font-weight: 600; }
+.ai-permission-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; margin-bottom: 10px; padding: 3px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg-2); }
+.ai-permission-options button { display: flex; align-items: center; justify-content: center; height: 35px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }
+.ai-permission-options button:hover { background: var(--bg-hover); color: var(--text); }
+.ai-permission-options button.is-selected { background: var(--bg-4); color: var(--text); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.ai-permission-options button svg { width: 17px; height: 17px; }
+.ai-permission-detail strong { display: block; margin-bottom: 2px; color: var(--text); font-size: var(--fs); font-weight: 600; }
+.ai-permission-detail p { color: var(--muted); font-size: var(--fs-sm); line-height: 1.45; }
 .ai-side .ai-model .faint { display: none; }
 
 /* Prompt opened from a code editor context menu. */

@@ -250,6 +250,7 @@ export function HomeScreen({
   clock,
   dots,
   onIcon,
+  grid: gridOverride,
 }: {
   w: number;
   h: number;
@@ -261,12 +262,14 @@ export function HomeScreen({
   clock?: string | null;
   dots?: { on: FileInfo; off: FileInfo } | null;
   onIcon?: (path: string) => void;
+  /** Icons for the grid instead of the page's usual slice (the dock keeps the first four). */
+  grid?: HomeIcon[];
 }) {
   const size = w * M.icon;
   const rows = gridRows(w, h);
   const dock = icons.slice(0, 4);
   const rest = icons.slice(12, 12 + rows * 4);
-  const grid = page === 'home' ? icons.slice(4, 12) : rest.length ? rest : icons.slice(4, 4 + rows * 4);
+  const grid = gridOverride ? gridOverride.slice(0, (page === 'home' ? 2 : rows) * 4) : page === 'home' ? icons.slice(4, 12) : rest.length ? rest : icons.slice(4, 4 + rows * 4);
   // Centre of a row counted from the top of the page.
   const rowY = (row: number) => h - w * M.lastRow - (rows - 1 - row) * w * M.rowPitch;
   const firstRow = page === 'home' ? rows - 2 : 0;

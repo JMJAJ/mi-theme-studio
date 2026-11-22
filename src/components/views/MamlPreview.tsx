@@ -345,7 +345,7 @@ function renderNodes(parent: Element, ctx: Ctx): ReactNode[] {
     if (tag === 'Wallpaper') {
       const b = el.hasAttribute('blur') ? evalNumber(el.getAttribute('blur'), ctx.vars) : 0;
       const a = el.hasAttribute('alpha') ? Math.min(1, Math.max(0, evalNumber(el.getAttribute('alpha'), ctx.vars, 255) / 255)) : 1;
-      if (ctx.wallpaper) out.push(<img key={key} data-mk={mk} data-mt={tag} {...fx(el, ctx)} src={urlOf(ctx, ctx.wallpaper)} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: b > 0 ? `blur(${blurPx(b)}px)` : undefined, opacity: a < 1 ? a : undefined }} draggable={false} />);
+      if (ctx.wallpaper) out.push(<img crossOrigin="anonymous" key={key} data-mk={mk} data-mt={tag} {...fx(el, ctx)} src={urlOf(ctx, ctx.wallpaper)} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', filter: b > 0 ? `blur(${blurPx(b)}px)` : undefined, opacity: a < 1 ? a : undefined }} draggable={false} />);
       continue;
     }
     if (CONTAINERS.has(tag)) {
@@ -369,13 +369,13 @@ function renderNodes(parent: Element, ctx: Ctx): ReactNode[] {
     if (tag === 'Image') {
       const src = imageSource(el, ctx, anim);
       const file = src ? fileFor(ctx, src) : undefined;
-      if (file) out.push(<img key={key} data-mk={mk} data-mt={tag} {...fx(el, ctx)} src={urlOf(ctx, file)} alt="" style={place(el, ctx, anim)} draggable={false} />);
+      if (file) out.push(<img crossOrigin="anonymous" key={key} data-mk={mk} data-mt={tag} {...fx(el, ctx)} src={urlOf(ctx, file)} alt="" style={place(el, ctx, anim)} draggable={false} />);
       continue;
     }
     if (tag === 'Video') {
       const src = el.getAttribute('src') ?? '';
       const file = src ? fileFor(ctx, src) : undefined;
-      if (file) out.push(<video key={key} data-mk={mk} data-mt={tag} src={urlOf(ctx, file)} muted loop autoPlay playsInline style={{ ...place(el, ctx, anim), objectFit: 'cover' }} />);
+      if (file) out.push(<video crossOrigin="anonymous" key={key} data-mk={mk} data-mt={tag} src={urlOf(ctx, file)} muted loop autoPlay playsInline style={{ ...place(el, ctx, anim), objectFit: 'cover' }} />);
       continue;
     }
     if (tag === 'Rectangle' || tag === 'Circle' || tag === 'Ellipse') {
@@ -470,7 +470,7 @@ function renderNodes(parent: Element, ctx: Ctx): ReactNode[] {
         <div key={key} data-mk={mk} data-mt={tag} {...fx(el, ctx)} style={{ ...place(el, ctx, anim), display: 'flex', gap: evalNumber(el.getAttribute('space'), ctx.vars) }}>
           {[...text].map((ch, j) => {
             const f = fileFor(ctx, digitFile(base, ch));
-            return f ? <img key={j} src={urlOf(ctx, f)} alt="" draggable={false} /> : null;
+            return f ? <img crossOrigin="anonymous" key={j} src={urlOf(ctx, f)} alt="" draggable={false} /> : null;
           })}
         </div>,
       );
@@ -1540,7 +1540,7 @@ export function MamlCanvas({
       onPointerLeave={() => !drag.current && setHover(null)}
     >
       {scene.lock && !scene.hasWallpaper && scene.wallpaper && (
-        <img src={resourceUrl(scene.slot, scene.wallpaper.path, scene.wallpaper.rev)} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} draggable={false} />
+        <img crossOrigin="anonymous" src={resourceUrl(scene.slot, scene.wallpaper.path, scene.wallpaper.rev)} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} draggable={false} />
       )}
       {scene.nodes}
       {editable && boxes.hover && !drag.current && <div className="maml-hover" style={{ left: boxes.hover.l, top: boxes.hover.t, width: boxes.hover.w, height: boxes.hover.h, borderWidth: 1.5 * inv }} />}

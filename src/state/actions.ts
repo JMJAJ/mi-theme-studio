@@ -814,6 +814,28 @@ export async function writeGenerated(files: { path: string; bytes: Uint8Array }[
 }
 
 /**
+ * Save generated preview pictures into preview/. A file with the same name but
+ * another extension is removed so Theme Manager does not show it twice;
+ * `removeOthers` clears every other preview picture first.
+ */
+export async function savePreviewImages(files: { path: string; bytes: Uint8Array }[], removeOthers: boolean) {
+  const project = getState().project;
+  if (!project || !files.length) return false;
+  const stemOf = (p: string) => p.slice(0, p.lastIndexOf('.')).toLowerCase();
+  const stems = new Set(files.map((f) => stemOf(f.path)));
+  const paths = new Set(files.map((f) => f.path.toLowerCase()));
+  const stale = project.files
+    .filter((f) => f.component === 'previews' && !f.path.includes('!/') && !paths.has(f.path.toLowerCase()) && (removeOthers ? f.kind === 'image' : stems.has(stemOf(f.path))))
+    .map((f) => f.path);
+  if (stale.length) {
+    const snapshot = await guard('Replace previews', () => api.filesDelete(stale));
+    if (!snapshot) return false;
+    applySnapshot(snapshot);
+  }
+  return writeGenerated(files, 'Generate previews', `${files.length} preview picture${files.length === 1 ? '' : 's'} added to preview/`);
+}
+
+/**
  * Take the open reference theme's home and/or lock wallpaper into this theme,
  * as wallpaper/default_wallpaper.* and wallpaper/default_lock_wallpaper.*.
  * Only the chosen screen changes; a theme with one picture gives it to both.

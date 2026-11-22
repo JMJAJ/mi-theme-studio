@@ -5,7 +5,7 @@
 // rasterized to JPEG, shown for review, and only saved when asked.
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { toJpeg } from 'html-to-image';
-import { Check, Images, Loader2, RefreshCw } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Images, Loader2, RefreshCw } from 'lucide-react';
 import { resourceUrl } from '../../lib/api';
 import { fileName } from '../../lib/paths';
 import type { FileInfo } from '../../lib/types';
@@ -200,12 +200,12 @@ function RecentCard({ w, title, kind, font }: { w: number; title: string; kind: 
 
 function RecentsScreen({ w, h, icons, wallpaper, font, time, clearIcon }: { w: number; h: number; icons: HomeIcon[]; wallpaper: FileInfo | undefined; font?: string; time: string; clearIcon: HomeIcon | undefined }) {
   const family = font ? `${font}, ${SYSTEM_FONT}` : SYSTEM_FONT;
-  const apps: { label: string; title: string; kind: 'clock' | 'list' | 'search' }[] = [
-    { label: 'Clock', title: 'Alarm', kind: 'clock' },
-    { label: 'Contacts', title: 'Contacts', kind: 'list' },
-    { label: 'Messages', title: 'Messaging', kind: 'search' },
-    { label: 'Settings', title: 'Settings', kind: 'search' },
-  ];
+  // The first four chosen apps, each card filled with a stand-in that suits it.
+  const apps = icons.slice(0, 4).map((ic, i) => ({
+    ic,
+    title: ic.label === 'Clock' ? 'Alarm' : ic.label === 'Messages' ? 'Messaging' : ic.label,
+    kind: (ic.label === 'Clock' ? 'clock' : ic.label === 'Contacts' || i % 2 ? 'list' : 'search') as 'clock' | 'list' | 'search',
+  }));
   const cardW = w * 0.433;
   const cardH = h * 0.425;
   const cols = [w * 0.044, w * 0.523];
@@ -219,12 +219,12 @@ function RecentsScreen({ w, h, icons, wallpaper, font, time, clearIcon }: { w: n
       {apps.map((app, i) => {
         const x = cols[i % 2];
         const y = rows[Math.floor(i / 2)];
-        const ic = iconFor(icons, app.label, i);
+        const ic = app.ic;
         return (
-          <div key={app.label} style={{ position: 'absolute', left: x, top: y - icon * 1.6, width: cardW, fontFamily: family, zIndex: 2 }}>
+          <div key={ic.file.path} style={{ position: 'absolute', left: x, top: y - icon * 1.6, width: cardW, fontFamily: family, zIndex: 2 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: w * 0.028, height: icon, marginLeft: w * 0.027, marginBottom: icon * 0.6 }}>
-              {ic && <img src={resourceUrl('main', ic.file.path, ic.file.rev)} alt="" style={{ width: icon, height: icon, objectFit: 'contain' }} />}
-              <span style={{ color: '#fff', fontSize: w * 0.032 }}>{ic?.label === app.label ? app.label : ic?.label ?? app.label}</span>
+              <img src={resourceUrl('main', ic.file.path, ic.file.rev)} alt="" style={{ width: icon, height: icon, objectFit: 'contain' }} />
+              <span style={{ color: '#fff', fontSize: w * 0.032 }}>{ic.label}</span>
             </div>
             <div style={{ position: 'relative', width: cardW, height: cardH }}>
               <RecentCard w={w} title={app.title} kind={app.kind} font={family} />
@@ -375,7 +375,29 @@ export function PreviewGenerator({ res: size, wallPath = null, onClose, onSaved 
 
   const homeWall = (wallPath && files.find((f) => f.path === wallPath)) || findWallpaper(files, false);
   const lockWall = (wallPath && files.find((f) => f.path === wallPath)) || findWallpaper(files, true);
-  const icons = useMemo(() => pickIcons(files), [files]);
+  // Every theme icon with an app name; the user picks which are shown, in order.
+  const candidates = useMemo(() => pickIcons(files, 1000), [files]);
+  const storeKey = `mts-preview-apps:${project?.title ?? ''}`;
+  const [order, setOrder] = useState<string[]>(() => {
+    const fallback = pickIcons(files).map((i) => i.file.path);
+    try {
+      const saved = JSON.parse(localStorage.getItem(storeKey) ?? 'null');
+      if (Array.isArray(saved) && saved.length) return saved.filter((p): p is string => typeof p === 'string');
+    } catch {
+      /* no saved choice */
+    }
+    return fallback;
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(storeKey, JSON.stringify(order));
+    } catch {
+      /* storage unavailable */
+    }
+  }, [order, storeKey]);
+  const icons = useMemo(() => order.map((p) => candidates.find((c) => c.file.path === p)).filter((c): c is HomeIcon => !!c), [order, candidates]);
+  const [showApps, setShowApps] = useState(false);
+  const toggleApp = (path: string) => setOrder((prev) => (prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path]));
   const colors = useHomeColors(files);
   const tone = useWallpaperTone(homeWall, h / w);
   const lockTone = useWallpaperTone(lockWall, h / w);
@@ -385,7 +407,7 @@ export function PreviewGenerator({ res: size, wallPath = null, onClose, onSaved 
   const hasLock = useHasLockLayout();
   const now = useClock();
   const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
-  const accent = useIconAccent(iconFor(icons, 'Messages', 1)?.file, '#f5a623');
+  const accent = useIconAccent(iconFor(candidates, 'Messages', 1)?.file, '#f5a623');
   const clearIcon = useMemo(() => {
     const hit = files.find((f) => f.kind === 'image' && (f.component === 'home' || f.component === 'systemui') && /(clear_all|recent[^/]*clear|clear[^/]*recent|btn_clear)[^/]*\.png$/i.test(f.path) && !/(pressed|_p\.png$)/i.test(f.path));
     return hit ? { file: hit, label: 'clear' } : undefined;
@@ -454,12 +476,18 @@ export function PreviewGenerator({ res: size, wallPath = null, onClose, onSaved 
   const nodes = useRef(new Map<string, HTMLDivElement>());
   const shotsRef = useRef(shots);
   shotsRef.current = shots;
+  const orderKey = icons.map((i) => i.file.path).join('|');
+  const orderKeyRef = useRef(orderKey);
+  orderKeyRef.current = orderKey;
+  const [drawnKey, setDrawnKey] = useState(orderKey);
+  const stale = !rendering && drawnKey !== orderKey;
 
   useEffect(() => {
     let cancelled = false;
     setRendering(true);
     setProgress(0);
     setError(null);
+    setDrawnKey(orderKeyRef.current);
     (async () => {
       // Let the font and the lock screen layout load before the first capture.
       await new Promise((r) => setTimeout(r, 300));
@@ -526,13 +554,13 @@ export function PreviewGenerator({ res: size, wallPath = null, onClose, onSaved 
           <label className="check" style={{ marginRight: 'auto' }} title="Deletes every other picture in preview/, e.g. covers that still show the theme this one was remixed from.">
             <input type="checkbox" checked={removeOld} disabled={!existing} onChange={(e) => setRemoveOld(e.target.checked)} /> Remove the other {existing || ''} preview picture{existing === 1 ? '' : 's'}
           </label>
-          <button className="btn" disabled={rendering || saving} onClick={() => setRun((r) => r + 1)}>
-            <RefreshCw /> Draw again
+          <button className={`btn ${stale ? 'btn-primary' : ''}`} disabled={rendering || saving} onClick={() => setRun((r) => r + 1)}>
+            <RefreshCw /> {stale ? 'Redraw with these apps' : 'Draw again'}
           </button>
           <button className="btn" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn btn-primary" disabled={rendering || saving || !chosen.size} onClick={() => void save()}>
+          <button className={`btn ${stale ? '' : 'btn-primary'}`} disabled={rendering || saving || !chosen.size} onClick={() => void save()}>
             {saving ? <Loader2 className="spin" /> : <Check />} Add {chosen.size} to theme
           </button>
         </>
@@ -541,6 +569,52 @@ export function PreviewGenerator({ res: size, wallPath = null, onClose, onSaved 
       <p className="faint" style={{ fontSize: 12.5, margin: 0 }}>
         Drawn at {w} × {h} from the theme's wallpaper, icons, font, launcher colours and lock screen, saved as preview/{prefix}*.jpg. Files with the same names are replaced. The recent apps and Messages screens are generic stand-ins showing the theme's icons, font and wallpaper.
       </p>
+      <div>
+        <button className="btn btn-sm btn-ghost" style={{ paddingLeft: 0 }} aria-expanded={showApps} onClick={() => setShowApps((v) => !v)}>
+          {showApps ? <ChevronDown /> : <ChevronRight />} Apps shown · {icons.length} of {candidates.length}
+        </button>
+        {showApps && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
+            <p className="faint" style={{ fontSize: 12.5, margin: 0 }}>
+              Click apps in the order you want them. The first 4 go in the dock and on the recent apps screen, the next 8 on the first home page, and the rest fill the apps and icon pages.
+            </p>
+            <div className="row" style={{ gap: 6 }}>
+              <button className="btn btn-sm" disabled={rendering} onClick={() => setOrder(pickIcons(files).map((i) => i.file.path))}>
+                Default
+              </button>
+              <button className="btn btn-sm" disabled={rendering} onClick={() => setOrder(candidates.map((i) => i.file.path))}>
+                All
+              </button>
+              <button className="btn btn-sm" disabled={rendering} onClick={() => setOrder([])}>
+                None
+              </button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(64px, 1fr))', gap: 6, maxHeight: 220, overflow: 'auto', padding: 2 }}>
+              {candidates.map((c) => {
+                const at = order.indexOf(c.file.path);
+                const on = at >= 0;
+                return (
+                  <button
+                    key={c.file.path}
+                    type="button"
+                    disabled={rendering}
+                    aria-pressed={on}
+                    title={`${c.label} · ${c.file.path}`}
+                    onClick={() => toggleApp(c.file.path)}
+                    style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '6px 2px', borderRadius: 8, border: on ? '1.5px solid var(--accent)' : '1px solid var(--line)', background: 'transparent', opacity: on ? 1 : 0.5, cursor: 'pointer', color: 'inherit' }}
+                  >
+                    <img src={resourceUrl('main', c.file.path, c.file.rev)} alt="" loading="lazy" style={{ width: 34, height: 34, objectFit: 'contain' }} />
+                    <span style={{ fontSize: 10.5, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.label}</span>
+                    {on && (
+                      <span style={{ position: 'absolute', top: 2, right: 3, fontSize: 9.5, fontWeight: 600, minWidth: 14, height: 14, lineHeight: '14px', borderRadius: 7, background: 'var(--accent)', color: '#fff', textAlign: 'center' }}>{at + 1}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
       {rendering ? (
         <div className="row" style={{ gap: 8, padding: '24px 0', justifyContent: 'center' }}>
           <Loader2 className="spin" /> Drawing {Math.min(progress + 1, shots.length)} of {shots.length}…

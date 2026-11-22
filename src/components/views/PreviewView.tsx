@@ -63,7 +63,8 @@ function stem(path: string) {
   return fileName(path).replace(/\.(png|webp|jpg|jpeg)$/i, '');
 }
 
-export function pickIcons(files: FileInfo[]) {
+/** Theme icons with readable app names, best-known apps first; `limit` caps the list. */
+export function pickIcons(files: FileInfo[], limit = 40) {
   const icons = files.filter((f) => f.component === 'icons' && f.kind === 'image' && !f.ninePatch);
   const byStem = new Map<string, FileInfo>();
   // Prefer the highest density variant of each icon.
@@ -83,7 +84,7 @@ export function pickIcons(files: FileInfo[]) {
     }
   }
   for (const [key, file] of byStem) {
-    if (matched.length >= 40) break;
+    if (matched.length >= limit) break;
     if (!used.has(key) && key.startsWith('com.')) {
       // A readable name from the package, once per name, skipping system pieces that are not apps.
       const last = key.split('.').slice(-1)[0].replace(/\d+d?$/i, '');

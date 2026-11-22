@@ -3,7 +3,7 @@
 // view with the part's assets next to the details panel.
 import { TryOnButton } from '../common/TryOnButton';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Download, FolderTree, PackageCheck, Palette, Pencil, Plus, Repeat } from 'lucide-react';
+import { ArrowLeft, Download, FolderTree, Images, PackageCheck, Palette, Pencil, Plus, Repeat } from 'lucide-react';
 import { api, resourceUrl } from '../../lib/api';
 import { formatBytes, plural } from '../../lib/format';
 import type { ComponentDef, FileInfo, MetadataView } from '../../lib/types';
@@ -18,12 +18,13 @@ import { findWallpaper } from './PreviewView';
 import { PART_COPY, PART_ORDER, PartThumb } from './PartArt';
 import { openSwap } from './SwapPart';
 import { ColorsView } from './ColorsView';
+import { PreviewGenerator } from './PreviewGenerator';
 
 function field(view: MetadataView | null, name: string) {
   return view?.fields.find((f) => f.name === name && f.attributes.length === 0)?.value || null;
 }
 
-function PartCard({ def, files, previews, onOpen, onSwap }: { def: ComponentDef; files: FileInfo[]; previews: FileInfo[]; onOpen: () => void; onSwap: () => void }) {
+function PartCard({ def, files, previews, onOpen, onSwap, onGenerate }: { def: ComponentDef; files: FileInfo[]; previews: FileInfo[]; onOpen: () => void; onSwap: () => void; onGenerate?: () => void }) {
   const changed = files.filter((f) => f.status !== 'original').length;
   const bytes = files.reduce((n, f) => n + f.size, 0);
   const empty = files.length === 0;
@@ -48,6 +49,11 @@ function PartCard({ def, files, previews, onOpen, onSwap }: { def: ComponentDef;
             <Plus /> Files
           </button>
         )}
+        {empty && onGenerate && (
+          <button className="pc-action" onClick={onGenerate} title="Draw preview pictures from this theme's home screen, lock screen, icons, recent apps and Messages">
+            <Images /> Generate
+          </button>
+        )}
       </div>
     </div>
   );
@@ -56,6 +62,7 @@ function PartCard({ def, files, previews, onOpen, onSwap }: { def: ComponentDef;
 function Overview() {
   const project = useStore((s) => s.project)!;
   const validation = useStore((s) => s.validation);
+  const [generating, setGenerating] = useState(false);
   const [meta, setMeta] = useState<MetadataView | null>(null);
   const descRev = project.files.find((f) => f.path === 'description.xml')?.rev;
   useEffect(() => {
@@ -102,6 +109,9 @@ function Overview() {
                 <PackageCheck />
                 {validation ? (validation.errors ? `${plural(validation.errors, 'problem')}` : validation.warnings ? plural(validation.warnings, 'warning') : 'Ready to export') : 'Check'}
               </button>
+              <button className="btn" onClick={() => setGenerating(true)} title="Draw preview pictures for Theme Manager from this theme's home screen, lock screen, icons, recent apps and Messages">
+                <Images /> Generate previews
+              </button>
               <TryOnButton className="btn" />
               <button className="btn btn-ghost" onClick={() => runCommand('file.exportCopy')}>
                 <Download /> Export .mtz
@@ -135,12 +145,13 @@ function Overview() {
             </div>
             <div className="part-grid">
               {missing.map((d) => (
-                <PartCard key={d.id} def={d} files={[]} previews={[]} onOpen={() => A.goTo('design', d.id)} onSwap={() => openSwap({ part: d.id })} />
+                <PartCard key={d.id} def={d} files={[]} previews={[]} onOpen={() => A.goTo('design', d.id)} onSwap={() => openSwap({ part: d.id })} onGenerate={d.id === 'previews' ? () => setGenerating(true) : undefined} />
               ))}
             </div>
           </>
         )}
       </div>
+      {generating && <PreviewGenerator onClose={() => setGenerating(false)} onSaved={() => A.goTo('design', 'previews')} />}
     </div>
   );
 }

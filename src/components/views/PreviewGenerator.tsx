@@ -355,8 +355,11 @@ function MessagesChat({ w, h, font, time, accent }: { w: number; h: number; font
 
 // ---------- the dialog ----------
 
-export function PreviewGenerator({ res, wallPath, onClose, onSaved }: { res: { w: number; h: number }; wallPath: string | null; onClose: () => void; onSaved?: () => void }) {
+export function PreviewGenerator({ res: size, wallPath = null, onClose, onSaved }: { res?: { w: number; h: number }; wallPath?: string | null; onClose: () => void; onSaved?: () => void }) {
   const project = useStore((s) => s.project);
+  // The connected phone's screen when known, else a common 20:9 size.
+  const screen = useStore((s) => (s.selectedSerial ? (s.deviceDetails[s.selectedSerial]?.screenOverride ?? s.deviceDetails[s.selectedSerial]?.screen) : null));
+  const res = size ?? (screen ? { w: screen.width, h: screen.height } : { w: 1080, h: 2400 });
   const files = useMemo(() => project?.files ?? [], [project]);
   const fontFile = useMemo(() => themeFontFile(files), [files]);
   const font = usePackageFont(fontFile).family ?? undefined;

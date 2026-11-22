@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Camera, Images, Info, Maximize, RefreshCw, Save, Smartphone } from 'lucide-react';
+import { Camera, Info, Maximize, RefreshCw, Save, Smartphone } from 'lucide-react';
 import { resourceUrl, screenshotUrl } from '../../lib/api';
 import { fileName } from '../../lib/paths';
 import { formatTime } from '../../lib/format';
@@ -11,7 +11,6 @@ import { useDeviceSummary } from '../shell/deviceSummary';
 import { MirrorButton } from '../common/MirrorButton';
 import { themeFontFile, usePackageFont } from '../common/themeFont';
 import { PhoneLockScreen, useClockWidgetPath, useHasLockLayout, useLockPages } from './MamlPreview';
-import { PreviewGenerator } from './PreviewGenerator';
 import { HomeScreen, StatusBar, SystemLockClock, useHomeColors, usePageDots, useWallpaperTone, type HomePage } from './PhoneMock';
 
 /** The current time, refreshed every 15 seconds so mock-up clocks keep up. */
@@ -122,7 +121,6 @@ export function PreviewView() {
   const [shotId, setShotId] = useState<number | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [capturing, setCapturing] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
   const [stageSize, setStageSize] = useState({ w: 600, h: 700 });
 
@@ -172,8 +170,6 @@ export function PreviewView() {
   if (screen === 'screenshot' && shot?.width && shot.height) res = { id: 'shot', label: 'Screenshot', w: shot.width, h: shot.height };
   else if (profile === 'auto' && deviceSize) res = { id: 'device', label: 'Device', w: deviceSize.width, h: deviceSize.height };
   else res = PRESETS.find((p) => p.id === profile) ?? PRESETS[0];
-  // Generated preview pictures use the chosen profile, never a screenshot's size.
-  const genRes = profile === 'auto' && deviceSize ? { w: deviceSize.width, h: deviceSize.height } : PRESETS.find((p) => p.id === profile) ?? PRESETS[0];
 
   const pad = frame ? 22 : 0;
   // The home screen shows both launcher pages side by side, like theme store pictures.
@@ -225,9 +221,6 @@ export function PreviewView() {
       <div className="empty" style={{ height: '100%' }}>
         <Info />
         <p>This package has no preview/ images.</p>
-        <button className="btn btn-sm btn-primary" onClick={() => setGenerating(true)}>
-          <Images /> Generate previews
-        </button>
       </div>
     );
     label = <span className="badge badge-outline">Package preview image{current ? ` · ${fileName(current.path)}` : ''}</span>;
@@ -316,11 +309,6 @@ export function PreviewView() {
             <input type="checkbox" checked={frame} onChange={(e) => setFrame(e.target.checked)} /> Device frame
           </label>
           <span className="grow" />
-          {project && screen !== 'screenshot' && (
-            <button className="btn btn-sm btn-primary" onClick={() => setGenerating(true)} title="Draw the home screen, lock screen, icons, recent apps and Messages as preview/ pictures for Theme Manager, at the resolution chosen on the right">
-              <Images /> Generate previews
-            </button>
-          )}
           {screen === 'screenshot' && (
             <>
               <label className="check" title="Captures a new screenshot every 5 seconds while this view is open. This is not a live video mirror.">
@@ -451,17 +439,6 @@ export function PreviewView() {
           </div>
         )}
       </aside>
-      {generating && project && (
-        <PreviewGenerator
-          res={genRes}
-          wallPath={wallPath}
-          onClose={() => setGenerating(false)}
-          onSaved={() => {
-            setPreviewIndex(0);
-            setScreen('previews');
-          }}
-        />
-      )}
     </div>
   );
 }

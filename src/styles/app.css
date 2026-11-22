@@ -1081,3 +1081,40 @@ button.catalog-card:hover, button.icon-link:hover { border-color: var(--line-str
 .try-live-phone { color: var(--ok); font-weight: 500; }
 .try-pic { height: 22px; max-width: 44px; object-fit: contain; border-radius: 4px; background: repeating-conic-gradient(var(--line) 0 25%, transparent 0 50%) 0 0 / 8px 8px; flex-shrink: 0; }
 .try-live-phone.is-err { color: var(--warn); }
+
+/* Home screen layout editor (Generate previews) */
+.hl-editor { display: flex; gap: 16px; align-items: flex-start; min-height: 0; }
+.hl-left { display: flex; flex-direction: column; gap: 10px; align-items: center; flex: none; }
+.hl-left .segmented button { padding-inline: 8px; }
+.hl-phone { position: relative; overflow: hidden; border-radius: 20px; background: linear-gradient(160deg, #2b2f3a, #141519); box-shadow: 0 0 0 5px #000, 0 0 0 6px var(--line-strong); user-select: none; }
+.hl-wall { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.hl-phone::after { content: ''; position: absolute; inset: 0; background: rgba(0, 0, 0, 0.18); pointer-events: none; }
+.hl-grid { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; justify-content: flex-end; padding: 34px 6px 12px; gap: 4px; }
+.hl-clock { flex: 1; max-height: 96px; margin: 0 4px 4px; border: 1px dashed rgba(255, 255, 255, 0.45); border-radius: 12px; display: grid; place-items: center; color: rgba(255, 255, 255, 0.8); font-size: 11px; }
+.hl-rows { display: flex; flex-direction: column; gap: 4px; }
+.hl-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; }
+.hl-dock { margin-top: 12px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.12); }
+.hl-slot { position: relative; height: 50px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: pointer; touch-action: none; }
+.hl-dock .hl-slot { height: 40px; }
+.hl-slot i { width: 30px; height: 30px; border-radius: 9px; border: 1.5px dashed rgba(255, 255, 255, 0.4); }
+.hl-slot:hover i { border-color: #fff; background: rgba(255, 255, 255, 0.08); }
+.hl-slot img { width: 32px; height: 32px; object-fit: contain; pointer-events: none; }
+.hl-slot span { max-width: 100%; font-size: 8.5px; line-height: 1.1; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 2px; }
+.hl-slot.is-filled { cursor: grab; }
+.hl-slot.is-filled:hover { background: rgba(255, 255, 255, 0.1); }
+.hl-slot.is-selected { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-soft); }
+.hl-remove { position: absolute; top: -3px; right: 0; width: 16px; height: 16px; border-radius: 50%; border: 0; padding: 0; display: none; place-items: center; background: #000; color: #fff; cursor: pointer; }
+.hl-remove svg { width: 10px; height: 10px; }
+.hl-slot.is-filled:hover .hl-remove, .hl-slot.is-selected .hl-remove { display: grid; }
+.hl-right { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.hl-search { position: relative; display: block; }
+.hl-search svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); width: 14px; color: var(--faint); pointer-events: none; }
+.hl-search .input { width: 100%; padding-left: 30px; }
+.hl-catalogue { display: grid; grid-template-columns: repeat(auto-fill, minmax(66px, 1fr)); gap: 4px; max-height: 360px; overflow: auto; padding: 2px; align-content: start; }
+.hl-item { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 2px; border-radius: 8px; cursor: grab; user-select: none; touch-action: none; }
+.hl-item:hover { background: var(--bg-hover); }
+.hl-item img { width: 36px; height: 36px; object-fit: contain; pointer-events: none; }
+.hl-item span { max-width: 100%; font-size: 10.5px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hl-item.is-used { opacity: 0.45; }
+.hl-ghost { position: fixed; z-index: 200; width: 44px; height: 44px; object-fit: contain; transform: translate(-50%, -50%); pointer-events: none; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5)); }
+@media (max-width: 700px) { .hl-editor { flex-direction: column; align-items: stretch; } }

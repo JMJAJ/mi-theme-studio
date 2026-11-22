@@ -5,7 +5,7 @@
 // rasterized to JPEG, shown for review, and only saved when asked.
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { toJpeg } from 'html-to-image';
-import { Check, ChevronDown, ChevronRight, Images, Loader2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Images, LayoutGrid, Loader2, RefreshCw } from 'lucide-react';
 import { resourceUrl } from '../../lib/api';
 import { fileName } from '../../lib/paths';
 import type { FileInfo } from '../../lib/types';
@@ -16,6 +16,7 @@ import { themeFontFile, usePackageFont } from '../common/themeFont';
 import { PhoneLockScreen, useClockWidgetPath, useHasLockLayout, useLockPages } from './MamlPreview';
 import { gridRows, HomeScreen, StatusBar, SystemLockClock, useHomeColors, usePageDots, useWallpaperTone, type HomeIcon } from './PhoneMock';
 import { findWallpaper, pickIcons, useClock } from './PreviewView';
+import { defaultLayout, HomeLayoutEditor, normalizeLayout, type HomeLayout } from './HomeLayoutEditor';
 
 const SYSTEM_FONT = 'MiSans, "Mi Sans", Roboto, "Segoe UI", system-ui, sans-serif';
 
@@ -375,29 +376,30 @@ export function PreviewGenerator({ res: size, wallPath = null, onClose, onSaved 
 
   const homeWall = (wallPath && files.find((f) => f.path === wallPath)) || findWallpaper(files, false);
   const lockWall = (wallPath && files.find((f) => f.path === wallPath)) || findWallpaper(files, true);
-  // Every theme icon with an app name; the user picks which are shown, in order.
+  // Every theme icon with an app name; the user lays them out on the home screen pages.
   const candidates = useMemo(() => pickIcons(files, 1000), [files]);
-  const storeKey = `mts-preview-apps:${project?.title ?? ''}`;
-  const [order, setOrder] = useState<string[]>(() => {
-    const fallback = pickIcons(files).map((i) => i.file.path);
+  const byPath = useMemo(() => new Map(candidates.map((c) => [c.file.path, c])), [candidates]);
+  const defaults = useMemo(() => pickIcons(files).map((i) => i.file.path), [files]);
+  const rows = gridRows(w, h);
+  const storeKey = `mts-preview-layout:${project?.title ?? ''}`;
+  const [layout, setLayout] = useState<HomeLayout>(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem(storeKey) ?? 'null');
-      if (Array.isArray(saved) && saved.length) return saved.filter((p): p is string => typeof p === 'string');
+      const saved = normalizeLayout(JSON.parse(localStorage.getItem(storeKey) ?? 'null'), rows, new Set(candidates.map((c) => c.file.path)));
+      if (saved) return saved;
     } catch {
-      /* no saved choice */
+      /* no saved layout */
     }
-    return fallback;
+    return defaultLayout(defaults, rows);
   });
   useEffect(() => {
     try {
-      localStorage.setItem(storeKey, JSON.stringify(order));
+      localStorage.setItem(storeKey, JSON.stringify(layout));
     } catch {
       /* storage unavailable */
     }
-  }, [order, storeKey]);
-  const icons = useMemo(() => order.map((p) => candidates.find((c) => c.file.path === p)).filter((c): c is HomeIcon => !!c), [order, candidates]);
-  const [showApps, setShowApps] = useState(false);
-  const toggleApp = (path: string) => setOrder((prev) => (prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path]));
+  }, [layout, storeKey]);
+  const slotsOf = (list: (string | null)[]) => list.map((p) => (p ? (byPath.get(p) ?? null) : null));
+  const [tab, setTab] = useState<'layout' | 'pictures'>('layout');
   const colors = useHomeColors(files);
   const tone = useWallpaperTone(homeWall, h / w);
   const lockTone = useWallpaperTone(lockWall, h / w);
@@ -422,15 +424,17 @@ export function PreviewGenerator({ res: size, wallPath = null, onClose, onSaved 
 
   const shots = useMemo<Shot[]>(() => {
     const out: Shot[] = [];
-    const home = (page: 'home' | 'apps', grid?: HomeIcon[]) => (
+    const dock = slotsOf(layout.dock);
+    const home = (page: 'home' | 'apps', grid: (HomeIcon | null)[], withClock: boolean) => (
       <>
         <Wallpaper file={homeWall} />
         <StatusBar w={w} left={time} font={font} dark={tone.top} />
-        <HomeScreen w={w} h={h} icons={icons} font={font} tone={tone} colors={colors} page={page} clock={grid ? null : clock} dots={dots} grid={grid} />
+        <HomeScreen w={w} h={h} icons={[]} font={font} tone={tone} colors={colors} page={page} clock={withClock ? clock : null} dots={dots} grid={grid} dock={dock} />
       </>
     );
-    out.push({ id: 'launcher_0', group: 'launcher', label: 'Home · first page', node: home('home') });
-    out.push({ id: 'launcher_1', group: 'launcher', label: 'Home · apps page', node: home('apps') });
+    const filled = (list: (HomeIcon | null)[]) => list.some(Boolean);
+    out.push({ id: 'launcher_0', group: 'launcher', label: 'Home · first page', node: home('home', slotsOf(layout.home), true) });
+    if (filled(slotsOf(layout.apps))) out.push({ id: 'launcher_1', group: 'launcher', label: 'Home · apps page', node: home('apps', slotsOf(layout.apps), false) });
 
     const lock = (value: number | null) =>
       hasLock ? (
@@ -448,25 +452,23 @@ export function PreviewGenerator({ res: size, wallPath = null, onClose, onSaved 
     if (hasLock && lockPages) lockPages.values.forEach((value, i) => out.push({ id: `lockscreen_${i}`, group: 'lockscreen', label: `Lock screen · page ${i + 1}`, node: lock(value) }));
     else out.push({ id: 'lockscreen_0', group: 'lockscreen', label: 'Lock screen', node: lock(null) });
 
-    if (icons.length) {
-      const perPage = gridRows(w, h) * 4;
-      const rest = icons.slice(4);
-      for (let i = 0; i < 2 && i * perPage < rest.length; i++) {
-        const grid = rest.slice(i * perPage, (i + 1) * perPage);
-        if (i > 0 && grid.length < 4) break;
-        out.push({ id: `icons_${i}`, group: 'icons', label: `Icons · page ${i + 1}`, node: home('apps', grid) });
-      }
+    let n = 0;
+    for (const key of ['icons0', 'icons1'] as const) {
+      const grid = slotsOf(layout[key]);
+      if (filled(grid)) out.push({ id: `icons_${n++}`, group: 'icons', label: `Icons · page ${n}`, node: home('apps', grid, false) });
     }
+    // Recent apps: the first four apps of the dock and the first home page.
+    const recent = [...dock, ...slotsOf(layout.home)].filter((i): i is HomeIcon => !!i).filter((i, k, all) => all.findIndex((x) => x.file.path === i.file.path) === k);
 
-    out.push({ id: 'statusbar_0', group: 'statusbar', label: 'Recent apps', node: <RecentsScreen w={w} h={h} icons={icons} wallpaper={homeWall} font={font} time={time} clearIcon={clearIcon} /> });
+    out.push({ id: 'statusbar_0', group: 'statusbar', label: 'Recent apps', node: <RecentsScreen w={w} h={h} icons={recent} wallpaper={homeWall} font={font} time={time} clearIcon={clearIcon} /> });
     out.push({ id: 'mms_0', group: 'mms', label: 'Messages · list', node: <MessagesList w={w} h={h} font={font} time={time} accent={accent} /> });
     out.push({ id: 'mms_1', group: 'mms', label: 'Messages · chat', node: <MessagesChat w={w} h={h} font={font} time={time} accent={accent} /> });
     return out;
-  }, [w, h, homeWall, lockWall, time, now, font, tone, lockTone, icons, colors, clock, dots, hasLock, lockPages, clearIcon, accent]);
+  }, [w, h, homeWall, lockWall, time, now, font, tone, lockTone, layout, byPath, colors, clock, dots, hasLock, lockPages, clearIcon, accent]);
 
   // Rendering: every screen mounted off-screen, captured one after another.
   const [run, setRun] = useState(0);
-  const [rendering, setRendering] = useState(true);
+  const [rendering, setRendering] = useState(false);
   const [progress, setProgress] = useState(0);
   const [images, setImages] = useState<Record<string, string>>({});
   const [chosen, setChosen] = useState<Set<string>>(new Set());
@@ -476,18 +478,24 @@ export function PreviewGenerator({ res: size, wallPath = null, onClose, onSaved 
   const nodes = useRef(new Map<string, HTMLDivElement>());
   const shotsRef = useRef(shots);
   shotsRef.current = shots;
-  const orderKey = icons.map((i) => i.file.path).join('|');
-  const orderKeyRef = useRef(orderKey);
-  orderKeyRef.current = orderKey;
-  const [drawnKey, setDrawnKey] = useState(orderKey);
-  const stale = !rendering && drawnKey !== orderKey;
+  const layoutKey = JSON.stringify(layout);
+  const layoutKeyRef = useRef(layoutKey);
+  layoutKeyRef.current = layoutKey;
+  const [drawnKey, setDrawnKey] = useState<string | null>(null);
+  const stale = drawnKey !== layoutKey;
+  const draw = () => {
+    setTab('pictures');
+    setRun((r) => r + 1);
+  };
+  const showPictures = () => (stale || !Object.keys(images).length ? draw() : setTab('pictures'));
 
   useEffect(() => {
+    if (!run) return;
     let cancelled = false;
     setRendering(true);
     setProgress(0);
     setError(null);
-    setDrawnKey(orderKeyRef.current);
+    setDrawnKey(layoutKeyRef.current);
     (async () => {
       // Let the font and the lock screen layout load before the first capture.
       await new Promise((r) => setTimeout(r, 300));
@@ -516,6 +524,7 @@ export function PreviewGenerator({ res: size, wallPath = null, onClose, onSaved 
     })();
     return () => {
       cancelled = true;
+      setRendering(false);
     };
     // Re-render only on request or a new size; the screens read their latest content when captured.
   }, [run, w, h, font]);
@@ -541,7 +550,7 @@ export function PreviewGenerator({ res: size, wallPath = null, onClose, onSaved 
   };
 
   const existing = files.filter((f) => f.component === 'previews' && f.kind === 'image').length;
-  const thumbW = 132;
+  const thumbW = 120;
 
   return (
     <Modal
@@ -550,71 +559,51 @@ export function PreviewGenerator({ res: size, wallPath = null, onClose, onSaved 
       icon={<Images width={16} className="muted" />}
       onClose={onClose}
       footer={
-        <>
-          <label className="check" style={{ marginRight: 'auto' }} title="Deletes every other picture in preview/, e.g. covers that still show the theme this one was remixed from.">
-            <input type="checkbox" checked={removeOld} disabled={!existing} onChange={(e) => setRemoveOld(e.target.checked)} /> Remove the other {existing || ''} preview picture{existing === 1 ? '' : 's'}
-          </label>
-          <button className={`btn ${stale ? 'btn-primary' : ''}`} disabled={rendering || saving} onClick={() => setRun((r) => r + 1)}>
-            <RefreshCw /> {stale ? 'Redraw with these apps' : 'Draw again'}
-          </button>
-          <button className="btn" onClick={onClose}>
-            Cancel
-          </button>
-          <button className={`btn ${stale ? '' : 'btn-primary'}`} disabled={rendering || saving || !chosen.size} onClick={() => void save()}>
-            {saving ? <Loader2 className="spin" /> : <Check />} Add {chosen.size} to theme
-          </button>
-        </>
+        tab === 'layout' ? (
+          <>
+            <span className="faint" style={{ marginRight: 'auto', fontSize: 'var(--fs-xs)' }}>
+              {w} × {h} · {rows} rows of 4
+            </span>
+            <button className="btn" onClick={onClose}>
+              Cancel
+            </button>
+            <button className="btn btn-primary" onClick={showPictures}>
+              Draw pictures <ArrowRight />
+            </button>
+          </>
+        ) : (
+          <>
+            <label className="check" style={{ marginRight: 'auto' }} title="Deletes every other picture in preview/, e.g. covers that still show the theme this one was remixed from.">
+              <input type="checkbox" checked={removeOld} disabled={!existing} onChange={(e) => setRemoveOld(e.target.checked)} /> Remove the other {existing || ''} preview picture{existing === 1 ? '' : 's'}
+            </label>
+            <button className="btn" disabled={rendering || saving} onClick={() => setTab('layout')}>
+              <ArrowLeft /> Layout
+            </button>
+            <button className={`btn ${stale && !rendering ? 'btn-primary' : ''}`} disabled={rendering || saving} onClick={draw}>
+              <RefreshCw /> {stale ? 'Redraw with this layout' : 'Draw again'}
+            </button>
+            <button className={`btn ${stale ? '' : 'btn-primary'}`} disabled={rendering || saving || !chosen.size} onClick={() => void save()}>
+              {saving ? <Loader2 className="spin" /> : <Check />} Add {chosen.size} to theme
+            </button>
+          </>
+        )
       }
     >
-      <p className="faint" style={{ fontSize: 12.5, margin: 0 }}>
-        Drawn at {w} × {h} from the theme's wallpaper, icons, font, launcher colours and lock screen, saved as preview/{prefix}*.jpg. Files with the same names are replaced. The recent apps and Messages screens are generic stand-ins showing the theme's icons, font and wallpaper.
-      </p>
-      <div>
-        <button className="btn btn-sm btn-ghost" style={{ paddingLeft: 0 }} aria-expanded={showApps} onClick={() => setShowApps((v) => !v)}>
-          {showApps ? <ChevronDown /> : <ChevronRight />} Apps shown · {icons.length} of {candidates.length}
+      <div className="segmented" role="tablist" aria-label="Step" style={{ alignSelf: 'flex-start' }}>
+        <button role="tab" aria-pressed={tab === 'layout'} aria-selected={tab === 'layout'} disabled={rendering} onClick={() => setTab('layout')}>
+          <LayoutGrid /> 1 · Home screen layout
         </button>
-        {showApps && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 6 }}>
-            <p className="faint" style={{ fontSize: 12.5, margin: 0 }}>
-              Click apps in the order you want them. The first 4 go in the dock and on the recent apps screen, the next 8 on the first home page, and the rest fill the apps and icon pages.
-            </p>
-            <div className="row" style={{ gap: 6 }}>
-              <button className="btn btn-sm" disabled={rendering} onClick={() => setOrder(pickIcons(files).map((i) => i.file.path))}>
-                Default
-              </button>
-              <button className="btn btn-sm" disabled={rendering} onClick={() => setOrder(candidates.map((i) => i.file.path))}>
-                All
-              </button>
-              <button className="btn btn-sm" disabled={rendering} onClick={() => setOrder([])}>
-                None
-              </button>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(64px, 1fr))', gap: 6, maxHeight: 220, overflow: 'auto', padding: 2 }}>
-              {candidates.map((c) => {
-                const at = order.indexOf(c.file.path);
-                const on = at >= 0;
-                return (
-                  <button
-                    key={c.file.path}
-                    type="button"
-                    disabled={rendering}
-                    aria-pressed={on}
-                    title={`${c.label} · ${c.file.path}`}
-                    onClick={() => toggleApp(c.file.path)}
-                    style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, padding: '6px 2px', borderRadius: 8, border: on ? '1.5px solid var(--accent)' : '1px solid var(--line)', background: 'transparent', opacity: on ? 1 : 0.5, cursor: 'pointer', color: 'inherit' }}
-                  >
-                    <img src={resourceUrl('main', c.file.path, c.file.rev)} alt="" loading="lazy" style={{ width: 34, height: 34, objectFit: 'contain' }} />
-                    <span style={{ fontSize: 10.5, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.label}</span>
-                    {on && (
-                      <span style={{ position: 'absolute', top: 2, right: 3, fontSize: 9.5, fontWeight: 600, minWidth: 14, height: 14, lineHeight: '14px', borderRadius: 7, background: 'var(--accent)', color: '#fff', textAlign: 'center' }}>{at + 1}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        <button role="tab" aria-pressed={tab === 'pictures'} aria-selected={tab === 'pictures'} disabled={rendering} onClick={showPictures}>
+          <Images /> 2 · Pictures
+        </button>
       </div>
+      {tab === 'layout' ? (
+        <HomeLayoutEditor layout={layout} onChange={setLayout} candidates={candidates} defaults={defaults} rows={rows} ratio={h / w} wallpaper={homeWall} hasClock={!!clock && rows >= 4} />
+      ) : (
+      <>
+      <p className="faint" style={{ fontSize: 12.5, margin: 0 }}>
+        Drawn at {w} × {h} from your layout and the theme's wallpaper, icons, font, launcher colours and lock screen, saved as preview/{prefix}*.jpg. Files with the same names are replaced. The recent apps and Messages screens are generic stand-ins showing the theme's icons, font and wallpaper.
+      </p>
       {rendering ? (
         <div className="row" style={{ gap: 8, padding: '24px 0', justifyContent: 'center' }}>
           <Loader2 className="spin" /> Drawing {Math.min(progress + 1, shots.length)} of {shots.length}…
@@ -657,6 +646,8 @@ export function PreviewGenerator({ res: size, wallPath = null, onClose, onSaved 
             );
           })}
         </>
+      )}
+      </>
       )}
       {rendering && (
         // Off-screen stage at full resolution; each child is captured as it is laid out.

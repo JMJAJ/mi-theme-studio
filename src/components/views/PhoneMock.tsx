@@ -251,6 +251,7 @@ export function HomeScreen({
   dots,
   onIcon,
   grid: gridOverride,
+  dock: dockOverride,
 }: {
   w: number;
   h: number;
@@ -262,12 +263,14 @@ export function HomeScreen({
   clock?: string | null;
   dots?: { on: FileInfo; off: FileInfo } | null;
   onIcon?: (path: string) => void;
-  /** Icons for the grid instead of the page's usual slice (the dock keeps the first four). */
-  grid?: HomeIcon[];
+  /** The grid's slots, row by row, instead of the page's usual slice; null leaves a cell empty. */
+  grid?: (HomeIcon | null)[];
+  /** The dock's four slots instead of the first four icons. */
+  dock?: (HomeIcon | null)[];
 }) {
   const size = w * M.icon;
   const rows = gridRows(w, h);
-  const dock = icons.slice(0, 4);
+  const dock = dockOverride ? dockOverride.slice(0, 4) : icons.slice(0, 4);
   const rest = icons.slice(12, 12 + rows * 4);
   const grid = gridOverride ? gridOverride.slice(0, (page === 'home' ? 2 : rows) * 4) : page === 'home' ? icons.slice(4, 12) : rest.length ? rest : icons.slice(4, 4 + rows * 4);
   // Centre of a row counted from the top of the page.
@@ -324,8 +327,8 @@ export function HomeScreen({
       </div>,
     );
   }
-  grid.forEach((icon, i) => nodes.push(iconAt(icon, w * M.cols[i % 4], rowY(firstRow + Math.floor(i / 4)), true, `g${i}`)));
-  dock.forEach((icon, i) => nodes.push(iconAt(icon, w * M.cols[i], h - w * M.dockY, false, `d${i}`)));
+  grid.forEach((icon, i) => icon && nodes.push(iconAt(icon, w * M.cols[i % 4], rowY(firstRow + Math.floor(i / 4)), true, `g${i}`)));
+  dock.forEach((icon, i) => icon && nodes.push(iconAt(icon, w * M.cols[i], h - w * M.dockY, false, `d${i}`)));
   if (dots) {
     const k = w / 1080;
     const dot = (f: FileInfo, i: number) => (

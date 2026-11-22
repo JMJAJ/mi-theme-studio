@@ -115,6 +115,14 @@ async function themeFontCss(file: FileInfo | undefined, family: string | undefin
   }
 }
 
+/** JPEG bytes from a data: URL. Decoded here: the app's CSP does not let fetch() read data: URLs. */
+function dataUrlBytes(url: string) {
+  const binary = atob(url.slice(url.indexOf(',') + 1));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
 function iconFor(icons: HomeIcon[], label: string, index: number) {
   return icons.find((i) => i.label === label) ?? icons[index % Math.max(1, icons.length)];
 }
@@ -488,14 +496,17 @@ export function PreviewGenerator({ res: size, wallPath = null, onClose, onSaved 
     const picked = shots.filter((s) => chosen.has(s.id) && images[s.id]);
     if (!picked.length) return;
     setSaving(true);
+    setError(null);
     try {
-      const out: { path: string; bytes: Uint8Array }[] = [];
-      for (const s of picked) out.push({ path: `preview/${prefix}${s.id}.jpg`, bytes: new Uint8Array(await (await fetch(images[s.id])).arrayBuffer()) });
+      const out = picked.map((s) => ({ path: `preview/${prefix}${s.id}.jpg`, bytes: dataUrlBytes(images[s.id]) }));
       const ok = await A.savePreviewImages(out, removeOld);
       if (ok) {
         onSaved?.();
         onClose();
-      }
+      } else setError('The pictures could not be added to the theme.');
+    } catch (err) {
+      console.error('Saving previews failed', err);
+      setError(`The pictures could not be added: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSaving(false);
     }

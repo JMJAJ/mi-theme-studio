@@ -10,7 +10,7 @@
 [![Build](https://img.shields.io/github/actions/workflow/status/JMJAJ/mi-theme-studio/build-windows.yml?label=build)](https://github.com/JMJAJ/mi-theme-studio/actions/workflows/build-windows.yml)
 [![Downloads](https://img.shields.io/github/downloads/JMJAJ/mi-theme-studio/total?color=2ea44f)](https://github.com/JMJAJ/mi-theme-studio/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078d4)](#install)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![License: PolyForm Noncommercial](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue)](LICENSE)
 
 [**Download**](https://github.com/JMJAJ/mi-theme-studio/releases/latest) ·
 [Features](#features) ·
@@ -23,7 +23,7 @@
 
 ---
 
-Mi Theme Studio is a free, open-source **MIUI and HyperOS theme editor** for Windows: a theme maker and `.mtz` file editor for **Xiaomi, Redmi and POCO** phones. Open a theme, change its wallpapers, icons, lock screen, fonts and sounds, see the result on a phone frame or on your real phone, and export a package that is verified entry by entry.
+Mi Theme Studio is a free, source-available **MIUI and HyperOS theme editor** for Windows: a theme maker and `.mtz` file editor for **Xiaomi, Redmi and POCO** phones. Open a theme, change its wallpapers, icons, lock screen, fonts and sounds, see the result on a phone frame or on your real phone, and export a package that is verified entry by entry.
 
 Everything runs locally. Packages are edited in memory, saves are atomic and backed up, and files the editor does not understand are written back untouched.
 
@@ -248,4 +248,10 @@ Bug reports and pull requests are welcome. Please open an [issue](https://github
 
 ## License
 
-[MIT](LICENSE) © JMJAJ
+[PolyForm Noncommercial 1.0.0](LICENSE) © JMJAJ
+
+You are free to use, modify and share Mi Theme Studio for any noncommercial purpose (personal use, hobby, research, education). When you share it or a derivative, keep the `Required Notice:` line from [LICENSE](LICENSE) and link to this project.
+
+**Commercial use needs permission.** If you want to make money from it (selling it, bundling it in a paid product or service, using it for paid work at a company), open an [issue](https://github.com/JMJAJ/mi-theme-studio/issues) or contact the author first to agree on a commercial license.
+
+Versions released before this change (up to 0.5.22) were published under the MIT license, and copies already obtained under MIT stay under MIT.

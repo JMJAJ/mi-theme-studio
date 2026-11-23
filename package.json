@@ -5,7 +5,7 @@
   "type": "module",
   "author": "JMJAJ",
   "description": "A desktop studio for creating, inspecting, previewing and packaging MIUI/HyperOS theme packages.",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "engines": {
     "node": ">=22.12.0"
   },

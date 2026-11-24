@@ -213,6 +213,7 @@ pub fn run() {
             designer::designer_submit,
             designer::designer_proof_info,
             designer::designer_proof_build,
+            designer::designer_proof_scan,
             designer::designer_products,
             designer::designer_product,
             designer::designer_product_versions,

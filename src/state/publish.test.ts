@@ -16,6 +16,7 @@ describe('publish flow helpers', () => {
       keywords: 'Anime, samurai',
       artworkFiles: 0,
       artworkBytes: 0,
+      artwork: [],
       attributions: [],
     };
     expect(suggestTags(groups, info)).toEqual(['Cool', 'Dark', 'Anime', 'Ukiyo-e']);

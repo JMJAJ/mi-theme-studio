@@ -1,6 +1,6 @@
 // Publish to Xiaomi Themes, one step at a time. Details come from the theme, the proof of
 // copyright is put together automatically, and Submit does every upload in one go.
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
@@ -14,6 +14,7 @@ import {
   ExternalLink,
   FileArchive,
   Film,
+  FolderPlus,
   Loader2,
   LogIn,
   PartyPopper,
@@ -36,6 +37,10 @@ import {
   setStep,
   signIn,
   signOut,
+  addProofPaths,
+  removeProofRoot,
+  setProofIncluded,
+  ticked,
   updateForm,
   uploadVideo,
   usePublish,
@@ -44,11 +49,11 @@ import {
   startPublishing,
   type PublishStep,
 } from '../../state/publish';
+import { ProofTree } from './ProofTree';
 import { api, errorMessage } from '../../lib/api';
 import { toast } from '../../state/store';
 
 const STATION = 'https://zhuti.designer.intl.xiaomi.com/';
-const fileName = (p: string) => p.split(/[\\/]/).pop() ?? p;
 
 export function PublishWizard() {
   const step = usePublish((s) => s.step);
@@ -339,84 +344,127 @@ function DetailsStep() {
 
 function ProofStep() {
   const info = usePublish((s) => s.proofInfo);
-  const includeArtwork = usePublish((s) => s.includeArtwork);
-  const extraFiles = usePublish((s) => s.extraFiles);
+  const excludedArtwork = usePublish((s) => s.excludedArtwork);
+  const extraEntries = usePublish((s) => s.extraEntries);
+  const excludedExtra = usePublish((s) => s.excludedExtra);
   const sources = usePublish((s) => s.sources);
+  const ownProof = usePublish((s) => s.ownProof);
   useEffect(() => void refreshProofInfo(), []);
-  const hasPsd = extraFiles.some((f) => /\.(psd|psb|ai|kra|procreate|afdesign|fig|sketch|xd)$/i.test(f));
+  const chosen = ticked({ extraEntries, excludedExtra });
+  const hasPsd = chosen.some((e) => /\.(psd|psb|ai|kra|procreate|afdesign|fig|sketch|xd)$/i.test(e.path));
+  const artwork = useMemo(() => (info?.artwork ?? []).map((f) => ({ key: f.path, rel: f.path, size: f.size })), [info]);
+  const extras = useMemo(() => extraEntries.map((e) => ({ key: e.path, rel: e.rel, size: e.size, root: e.root })), [extraEntries]);
+  const artTicked = artwork.filter((f) => !excludedArtwork.includes(f.key));
+
+  const pick = async (directory: boolean) => {
+    const picked = await openDialog(
+      directory
+        ? { directory: true, multiple: true, title: 'Add folders: source files, licences, consent forms…' }
+        : { multiple: true, title: 'Add files: source files, licences, consent forms…' },
+    );
+    const list = Array.isArray(picked) ? picked : typeof picked === 'string' ? [picked] : [];
+    if (list.length) await addProofPaths(list);
+  };
+
+  const files = (
+    <div className="field">
+      <div className="row">
+        <label className="field-label grow">{ownProof ? 'Your proof of copyright' : 'Your files and folders'}</label>
+        <button className="btn btn-sm" onClick={() => void pick(false)}>
+          <Plus /> Add files…
+        </button>
+        <button className="btn btn-sm" onClick={() => void pick(true)}>
+          <FolderPlus /> Add folder…
+        </button>
+      </div>
+      <ProofTree
+        entries={extras}
+        excluded={excludedExtra}
+        onToggle={(keys, include) => setProofIncluded('extra', keys, include)}
+        onRemove={(root) => void removeProofRoot(root)}
+        empty={
+          ownProof
+            ? 'Nothing added yet. Add your ZIP, or the files and folders to zip. Folders keep their structure; untick what you do not want.'
+            : 'None added. The proof still works without them, but source files make approval much more likely. Folders keep their structure; untick what you do not want.'
+        }
+      />
+    </div>
+  );
 
   return (
     <>
       <h2>Proof of copyright</h2>
+      <div className="segmented" role="group" aria-label="Proof of copyright">
+        <button aria-pressed={!ownProof} onClick={() => usePublish.setState({ ownProof: false })}>
+          Build it for me
+        </button>
+        <button aria-pressed={ownProof} onClick={() => usePublish.setState({ ownProof: true })}>
+          Use my own files
+        </button>
+      </div>
       <p className="muted publish-lead">
-        Xiaomi asks for one ZIP that shows the theme is yours. The app builds it for you when you submit: a signed copyright declaration, a list of third-party material, a checksum manifest, and the files below.
+        {ownProof
+          ? 'Xiaomi gets exactly what you tick below and nothing else: no declaration, no third-party list, no artwork. A single ZIP is sent as it is; anything else is zipped together as it is, folders included.'
+          : 'Xiaomi asks for one ZIP that shows the theme is yours. The app builds it for you when you submit: a signed copyright declaration, a list of third-party material, a checksum manifest, and the files you tick below.'}
       </p>
 
-      {info && info.attributions.length > 0 && <Disclosure attributions={info.attributions} />}
-
-      <div className="publish-checklist">
-        <label className="publish-check">
-          <input type="checkbox" checked={includeArtwork} onChange={(e) => usePublish.setState({ includeArtwork: e.target.checked })} />
+      {!ownProof && info && info.attributions.length > 0 && <Disclosure attributions={info.attributions} />}
+      {ownProof && info && info.attributions.length > 0 && (
+        <div className="publish-callout is-warn">
+          <AlertTriangle />
           <div>
-            <b>The theme’s artwork at full resolution</b>
-            <div className="muted">{info ? `${plural(info.artworkFiles, 'image')}, ${formatBytes(info.artworkBytes)}` : 'Every image in the package'}</div>
+            {plural(info.attributions.reduce((n, a) => n + a.files, 0), 'file')} in this theme came from other themes ({info.attributions.map((a) => `“${a.sourceTitle}”`).join(', ')}). With your own proof nothing is disclosed for you, so cover them in your files or the review may reject the theme.
           </div>
-        </label>
+        </div>
+      )}
 
-        <div className={`publish-check ${hasPsd ? '' : 'is-suggested'}`}>
-          {hasPsd ? <CircleCheck className="ok" /> : <AlertTriangle className="warn" />}
-          <div className="grow">
-            <b>Source files</b>
-            <div className="muted">Layered PSD (or AI, Procreate, Figma…) files, sketches, work in progress. The strongest proof you made it.</div>
+      {!ownProof && (
+        <>
+          <div className="field">
+            <div className="row">
+              <label className="field-label grow">The theme’s artwork at full resolution</label>
+              <span className="muted">{info ? `${plural(artTicked.length, 'image')}, ${formatBytes(artTicked.reduce((n, f) => n + f.size, 0))}` : ''}</span>
+            </div>
+            <ProofTree
+              entries={artwork}
+              excluded={excludedArtwork}
+              onToggle={(keys, include) => setProofIncluded('artwork', keys, include)}
+              empty="This theme has no images."
+            />
           </div>
-        </div>
-        <div className="publish-check">
-          <span className="publish-check-pad" />
-          <div className="grow muted">
-            If the design shows a real person: their signed image-consent form, plus a photo of you holding your photo ID.
-          </div>
-        </div>
-      </div>
 
-      <div className="field">
-        <div className="row">
-          <label className="field-label grow">Files to include</label>
-          <button
-            className="btn btn-sm"
-            onClick={async () => {
-              const picked = await openDialog({ multiple: true, title: 'Add source files, licences, consent forms…' });
-              const list = Array.isArray(picked) ? picked : typeof picked === 'string' ? [picked] : [];
-              if (list.length) usePublish.setState({ extraFiles: Array.from(new Set([...extraFiles, ...list])) });
-            }}
-          >
-            <Plus /> Add files…
-          </button>
-        </div>
-        {extraFiles.length ? (
-          <div className="publish-files">
-            {extraFiles.map((f) => (
-              <div key={f} className="row">
-                <FileArchive className="muted" />
-                <span className="grow" title={f}>{fileName(f)}</span>
-                <button className="btn btn-sm btn-icon" aria-label={`Remove ${fileName(f)}`} onClick={() => usePublish.setState({ extraFiles: extraFiles.filter((x) => x !== f) })}><X /></button>
+          <div className="publish-checklist">
+            <div className={`publish-check ${hasPsd ? '' : 'is-suggested'}`}>
+              {hasPsd ? <CircleCheck className="ok" /> : <AlertTriangle className="warn" />}
+              <div className="grow">
+                <b>Source files</b>
+                <div className="muted">Layered PSD (or AI, Procreate, Figma…) files, sketches, work in progress. The strongest proof you made it.</div>
               </div>
-            ))}
+            </div>
+            <div className="publish-check">
+              <span className="publish-check-pad" />
+              <div className="grow muted">
+                If the design shows a real person: their signed image-consent form, plus a photo of you holding your photo ID.
+              </div>
+            </div>
           </div>
-        ) : (
-          <div className="field-hint">None added. The proof still works without them, but source files make approval much more likely.</div>
-        )}
-      </div>
+        </>
+      )}
 
-      <div className="field">
-        <label>Third-party or free-licensed material <span className="muted">· leave empty if you made everything</span></label>
-        <textarea
-          className="textarea"
-          rows={3}
-          value={sources}
-          onChange={(e) => usePublish.setState({ sources: e.target.value })}
-          placeholder={'Background photo: Unsplash, https://unsplash.com/photos/…, Unsplash License (commercial use allowed)\nFont: Inter, SIL Open Font License 1.1'}
-        />
-      </div>
+      {files}
+
+      {!ownProof && (
+        <div className="field">
+          <label>Third-party or free-licensed material <span className="muted">· leave empty if you made everything</span></label>
+          <textarea
+            className="textarea"
+            rows={3}
+            value={sources}
+            onChange={(e) => usePublish.setState({ sources: e.target.value })}
+            placeholder={'Background photo: Unsplash, https://unsplash.com/photos/…, Unsplash License (commercial use allowed)\nFont: Inter, SIL Open Font License 1.1'}
+          />
+        </div>
+      )}
 
       <div className="row">
         <button className="btn btn-sm" onClick={() => void exportProof()}>
@@ -425,7 +473,12 @@ function ProofStep() {
         <span className="field-hint">Optional: keep a copy, or check what will be sent.</span>
       </div>
 
-      <StepNav back="details" next={() => setStep('submit')} />
+      <StepNav
+        back="details"
+        next={() => setStep('submit')}
+        nextDisabled={ownProof && chosen.length === 0}
+        hint={ownProof && chosen.length === 0 ? 'Tick at least one file, or switch to “Build it for me”.' : undefined}
+      />
     </>
   );
 }
@@ -479,7 +532,7 @@ function SubmitStep() {
         <div><span className="muted">Designer</span>{s.form.designerName}{s.form.authorName !== s.form.designerName ? ` · author ${s.form.authorName}` : ''}</div>
         <div><span className="muted">Tags</span>{s.tags.join(', ')}</div>
         <div><span className="muted">Preview video</span>{s.gifUrl ? 'Added' : 'None'}</div>
-        <div><span className="muted">Proof</span>{s.extraFiles.length ? plural(s.extraFiles.length, 'added file') : 'Generated'}{s.includeArtwork ? ' + artwork' : ''}</div>
+        <div><span className="muted">Proof</span>{s.ownProof ? `Your own: ${plural(ticked(s).length, 'file')}, sent as they are` : `Generated + ${plural(ticked(s).length, 'of your files')}${(s.proofInfo?.artwork.length ?? 0) - s.excludedArtwork.length > 0 ? ' + artwork' : ''}`}</div>
         <div><span className="muted">Account</span>{designer?.nickname ?? '—'}</div>
       </div>
 
@@ -490,7 +543,7 @@ function SubmitStep() {
             return (
               <li key={t.id} className={`is-${state}`}>
                 {state === 'done' ? <CircleCheck className="ok" /> : state === 'running' ? <Loader2 className="spin" /> : state === 'error' ? <CircleX className="err" /> : <span className="publish-task-dot" />}
-                <span className="grow">{t.label}</span>
+                <span className="grow">{t.id === 'proof' && s.ownProof ? 'Prepare your proof of copyright' : t.label}</span>
                 {state === 'running' && percent !== null && (t.id === 'package' || t.id === 'proofUpload') && (
                   <span className="muted">{percent >= 100 ? 'Processing…' : `${percent}%`}</span>
                 )}

@@ -244,6 +244,7 @@ export const api = {
   designerUploadCopyright: (path: string) => call<DesignerCopyrightFile>('designer_upload_copyright', { path }),
   designerSubmit: (submission: DesignerSubmission) => call<void>('designer_submit', { submission }),
   designerProofInfo: () => call<DesignerProofInfo>('designer_proof_info'),
+  designerProofScan: (paths: string[]) => call<DesignerProofEntry[]>('designer_proof_scan', { paths }),
   designerProofBuild: (request: DesignerProofRequest) => call<DesignerProofResult>('designer_proof_build', { request }),
   designerProducts: () => call<{ total: number; data: DesignerProductRow[] }>('designer_products'),
   designerProduct: (productId: string) => call<DesignerProductDetail>('designer_product', { productId }),
@@ -333,6 +334,8 @@ export interface DesignerProofInfo {
   keywords: string;
   artworkFiles: number;
   artworkBytes: number;
+  /** Every image of the theme, to pick what goes into the proof. */
+  artwork: { path: string; size: number }[];
   /** Material from other themes, found by content; disclosed in the proof automatically. */
   attributions: { sourceTitle: string; sourceAuthor: string; origin: string; files: number; paths: string[] }[];
 }
@@ -344,6 +347,21 @@ export interface DesignerProofRequest {
   includeArtwork: boolean;
   extraFiles: string[];
   sources: string;
+  /** Nothing is generated: one ZIP is used as it is, other files are zipped as they are. */
+  ownFiles?: boolean;
+  /** Theme images left out (package paths). */
+  excludeArtwork?: string[];
+  /** Files inside picked folders that are left out (absolute paths). */
+  excludeExtra?: string[];
+}
+/** A file the designer picked, or one found inside a folder they picked. */
+export interface DesignerProofEntry {
+  path: string;
+  /** Under the picked item: `Folder/sub/file.psd`, or just `file.psd`. */
+  rel: string;
+  size: number;
+  /** The picked file or folder it belongs to. */
+  root: string;
 }
 export interface DesignerProofResult { path: string; bytes: number; files: number }
 export interface DesignerUploadProgress { what: 'package' | 'video' | 'copyright'; sent: number; total: number }

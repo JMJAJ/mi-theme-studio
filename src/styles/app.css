@@ -1209,3 +1209,12 @@ button.catalog-card:hover, button.icon-link:hover { border-color: var(--line-str
 .publish-disclosure .row { align-items: flex-start; }
 .publish-disclosure-list { display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow: auto; padding: 8px 10px; border-radius: 6px; background: var(--bg-2); }
 .publish-disclosure-list ul { margin: 4px 0 0; padding-left: 18px; font-family: var(--font-mono, monospace); font-size: var(--fs-xs); color: var(--muted); }
+.pick-tree { border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg-2); overflow: hidden; }
+.pick-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--line); font-size: var(--fs-sm); }
+.pick-body { max-height: 260px; overflow: auto; padding: 3px 0; }
+.pick-row { display: flex; align-items: center; gap: 6px; height: var(--row, 26px); padding-right: 8px; font-size: var(--fs); color: var(--text-2); white-space: nowrap; cursor: default; }
+.pick-row:hover { background: var(--bg-hover); }
+.pick-row.is-off { color: var(--faint); }
+.pick-row.is-off .tree-name { text-decoration: line-through; text-decoration-color: var(--line-strong); }
+.pick-row input[type="checkbox"] { flex: none; margin: 0; }
+

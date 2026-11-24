@@ -836,8 +836,17 @@ pub struct ProofInfo {
     pub keywords: String,
     pub artwork_files: usize,
     pub artwork_bytes: u64,
+    /// Every image of the theme, so the designer can pick what goes into the proof.
+    pub artwork: Vec<ProofFile>,
     /// Material from other themes; disclosed in the proof automatically.
     pub attributions: Vec<ProofAttribution>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProofFile {
+    pub path: String,
+    pub size: u64,
 }
 
 fn is_art(path: &str) -> bool {
@@ -870,6 +879,7 @@ pub async fn designer_proof_info(app: AppHandle) -> AppResult<ProofInfo> {
             keywords: field("keywords"),
             artwork_files: art.len(),
             artwork_bytes: art.iter().map(|(_, b)| b.data.len() as u64).sum(),
+            artwork: art.iter().map(|(p, b)| ProofFile { path: (*p).clone(), size: b.data.len() as u64 }).collect(),
             attributions,
         })
     })
@@ -886,12 +896,23 @@ pub struct ProofRequest {
     pub title: String,
     #[serde(default)]
     pub include_artwork: bool,
-    /// Source files (PSD, sketches, consent forms, licences, ID photo...) copied in as they are.
+    /// Theme images left out of the proof (package paths).
+    #[serde(default)]
+    pub exclude_artwork: Vec<String>,
+    /// Files and folders (PSD, sketches, consent forms, licences, ID photo...) copied in with
+    /// their folder structure.
     #[serde(default)]
     pub extra_files: Vec<String>,
+    /// Files inside the folders above that are left out (absolute paths).
+    #[serde(default)]
+    pub exclude_extra: Vec<String>,
     /// Free-licensed material: sources, websites, commercial-use permission.
     #[serde(default)]
     pub sources: String,
+    /// The designer supplies the proof themselves: nothing is generated. One ZIP among the
+    /// extra files is used as it is; otherwise the files are zipped as they are.
+    #[serde(default)]
+    pub own_files: bool,
 }
 
 #[derive(Serialize)]
@@ -900,6 +921,83 @@ pub struct ProofResult {
     pub path: String,
     pub bytes: u64,
     pub files: usize,
+}
+
+/// A file the designer picked, or found inside a folder they picked.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtraEntry {
+    /// Absolute path on disk.
+    pub path: String,
+    /// Where it sits under what was picked: `Folder/sub/file.psd`, or just `file.psd`.
+    pub rel: String,
+    pub size: u64,
+    /// The picked item it belongs to (the folder, or the file itself).
+    pub root: String,
+}
+
+const MAX_SCAN_ENTRIES: usize = 20_000;
+
+fn walk(dir: &Path, rel: &str, root: &str, out: &mut Vec<ExtraEntry>, depth: u8) {
+    if depth > 32 || out.len() >= MAX_SCAN_ENTRIES {
+        return;
+    }
+    let Ok(read) = std::fs::read_dir(dir) else { return };
+    let mut items: Vec<_> = read.flatten().collect();
+    items.sort_by_key(|e| e.file_name());
+    for item in items {
+        let Ok(kind) = item.file_type() else { continue };
+        if kind.is_symlink() {
+            continue;
+        }
+        let name = item.file_name().to_string_lossy().into_owned();
+        let rel = format!("{rel}/{name}");
+        if kind.is_dir() {
+            walk(&item.path(), &rel, root, out, depth + 1);
+        } else if kind.is_file() {
+            let size = item.metadata().map(|m| m.len()).unwrap_or(0);
+            out.push(ExtraEntry { path: item.path().to_string_lossy().into_owned(), rel, size, root: root.to_string() });
+        }
+    }
+}
+
+/// Files and folders picked by the designer, expanded into the files they contain.
+fn scan_extra(paths: &[String]) -> Vec<ExtraEntry> {
+    let mut out = Vec::new();
+    for raw in paths {
+        let path = PathBuf::from(raw);
+        let Ok(meta) = std::fs::symlink_metadata(&path) else { continue };
+        if meta.is_dir() {
+            walk(&path, &file_name(&path), raw, &mut out, 0);
+        } else if meta.is_file() {
+            out.push(ExtraEntry { path: raw.clone(), rel: file_name(&path), size: meta.len(), root: raw.clone() });
+        }
+    }
+    out
+}
+
+/// Expands the picked files and folders for the proof's file tree.
+#[tauri::command]
+pub async fn designer_proof_scan(app: AppHandle, paths: Vec<String>) -> AppResult<Vec<ExtraEntry>> {
+    blocking(app, move |_, _| Ok(scan_extra(&paths))).await
+}
+
+/// The picked files minus the ones the designer unticked.
+fn collect_extra(paths: &[String], exclude: &[String]) -> Vec<ExtraEntry> {
+    let skip: std::collections::HashSet<&str> = exclude.iter().map(String::as_str).collect();
+    scan_extra(paths).into_iter().filter(|e| !skip.contains(e.path.as_str())).collect()
+}
+
+/// Which section of the proof a picked folder belongs in: source files win, then documents.
+fn folder_section(entries: &[&ExtraEntry]) -> &'static str {
+    let sections: Vec<&str> = entries.iter().map(|e| extra_folder(Path::new(&e.path))).collect();
+    if sections.contains(&"source") {
+        "source"
+    } else if sections.iter().all(|s| *s == "documents") {
+        "documents"
+    } else {
+        "supporting"
+    }
 }
 
 fn extra_folder(path: &Path) -> &'static str {
@@ -912,14 +1010,15 @@ fn extra_folder(path: &Path) -> &'static str {
 }
 
 fn unique_name(used: &mut std::collections::HashSet<String>, folder: &str, name: &str) -> String {
-    let mut candidate = format!("{folder}/{name}");
+    let prefix = if folder.is_empty() { String::new() } else { format!("{folder}/") };
+    let mut candidate = format!("{prefix}{name}");
     let (stem, ext) = match name.rsplit_once('.') {
         Some((s, e)) if !s.is_empty() => (s.to_string(), format!(".{e}")),
         _ => (name.to_string(), String::new()),
     };
     let mut n = 2;
     while !used.insert(candidate.to_ascii_lowercase()) {
-        candidate = format!("{folder}/{stem} ({n}){ext}");
+        candidate = format!("{prefix}{stem} ({n}){ext}");
         n += 1;
     }
     candidate
@@ -975,18 +1074,69 @@ fn declaration(req: &ProofRequest, version: &str, stamp: &str, attributions: &[P
     out
 }
 
+/// The designer's own proof, untouched: a single ZIP is copied as it is, any other files are
+/// zipped as they are. No declaration, no sources list, no artwork is added.
+fn build_own_proof(files: &[String], exclude: &[String], output: &Path) -> AppResult<ProofResult> {
+    if files.is_empty() {
+        return Err(AppError::invalid("Add the files that make up your proof of copyright."));
+    }
+    if let ([only], true) = (files, exclude.is_empty()) {
+        let path = PathBuf::from(only);
+        if has_extension(&path, "zip") {
+            let data = read_file(&path, MAX_COPYRIGHT_BYTES, &file_name(&path))?;
+            if !crate::package::blob::is_zip_magic(&data) {
+                return Err(AppError::invalid(format!("{} is not a valid ZIP archive.", file_name(&path))));
+            }
+            let count = zip::ZipArchive::new(Cursor::new(&data)).map(|z| z.len()).unwrap_or(0);
+            if !same_file(&path, output) {
+                crate::storage::atomic_write(output, &data)?;
+            }
+            return Ok(ProofResult { path: output.to_string_lossy().into_owned(), bytes: data.len() as u64, files: count });
+        }
+    }
+    let mut used = std::collections::HashSet::new();
+    let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut total = 0u64;
+    for extra in collect_extra(files, exclude) {
+        let path = PathBuf::from(&extra.path);
+        let data = read_file(&path, MAX_PROOF_EXTRA_BYTES, &file_name(&path))?;
+        total += data.len() as u64;
+        if total > MAX_PROOF_EXTRA_BYTES {
+            return Err(AppError::new("limit", "The files are larger than 1 GB together."));
+        }
+        let name = unique_name(&mut used, "", &extra.rel);
+        entries.push((name, data));
+    }
+    if entries.is_empty() {
+        return Err(AppError::invalid("Every file is unticked. Tick at least one file for your proof of copyright."));
+    }
+    let write: Vec<WriteEntry> = entries.iter().map(|(p, d)| WriteEntry { path: p, data: d, compression: Compression::Deflated }).collect();
+    let zip = archive::write_zip(Cursor::new(Vec::new()), &write, |_, _| {})?.into_inner();
+    archive::verify_zip(&zip, &write)?;
+    crate::storage::atomic_write(output, &zip)?;
+    Ok(ProofResult { path: output.to_string_lossy().into_owned(), bytes: zip.len() as u64, files: write.len() })
+}
+
+fn same_file(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
+}
+
 /// Builds the proof-of-copyright ZIP the station asks for.
 #[tauri::command]
 pub async fn designer_proof_build(app: AppHandle, request: ProofRequest) -> AppResult<ProofResult> {
     blocking(app, move |state, _| {
         let req = request;
-        if req.title.trim().is_empty() || req.designer.trim().is_empty() {
+        if !req.own_files && (req.title.trim().is_empty() || req.designer.trim().is_empty()) {
             return Err(AppError::invalid("Enter the theme name and the designer name."));
         }
         let output = match req.output.as_deref().filter(|o| !o.trim().is_empty()) {
             Some(o) => PathBuf::from(o),
             None => {
                 let safe: String = req.title.chars().filter(|c| !matches!(c, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|')).collect();
+                let safe = if safe.trim().is_empty() { "theme".to_string() } else { safe };
                 let dir = state.paths.data.join("publish");
                 std::fs::create_dir_all(&dir).map_err(|e| AppError::io("Could not create the publish folder", e))?;
                 dir.join(format!("{} - proof of copyright.zip", safe.trim()))
@@ -994,6 +1144,9 @@ pub async fn designer_proof_build(app: AppHandle, request: ProofRequest) -> AppR
         };
         if !has_extension(&output, "zip") {
             return Err(AppError::invalid("Save the proof as a .zip file."));
+        }
+        if req.own_files {
+            return build_own_proof(&req.extra_files, &req.exclude_extra, &output);
         }
         let own = {
             let guard = lock(&state.main);
@@ -1009,7 +1162,7 @@ pub async fn designer_proof_build(app: AppHandle, request: ProofRequest) -> AppR
             let meta = metadata::parse(project.text(DESCRIPTION_PATH).as_deref());
             let version = meta.fields.iter().find(|f| f.name == "version").map(|f| f.value.trim().to_string()).unwrap_or_default();
             let artwork: Vec<(String, Vec<u8>)> = if req.include_artwork {
-                project.files.iter().filter(|(p, _)| is_art(p)).map(|(p, b)| (p.clone(), b.data.clone())).collect()
+                project.files.iter().filter(|(p, _)| is_art(p) && !req.exclude_artwork.contains(p)).map(|(p, b)| (p.clone(), b.data.clone())).collect()
             } else {
                 Vec::new()
             };
@@ -1019,14 +1172,21 @@ pub async fn designer_proof_build(app: AppHandle, request: ProofRequest) -> AppR
         let mut used = std::collections::HashSet::new();
         let mut entries: Vec<(String, Vec<u8>, Compression)> = Vec::new();
         let mut extra_total = 0u64;
-        for path in &req.extra_files {
-            let path = PathBuf::from(path);
+        let extras = collect_extra(&req.extra_files, &req.exclude_extra);
+        for extra in &extras {
+            let path = PathBuf::from(&extra.path);
             let data = read_file(&path, MAX_PROOF_EXTRA_BYTES, &file_name(&path))?;
             extra_total += data.len() as u64;
             if extra_total > MAX_PROOF_EXTRA_BYTES {
                 return Err(AppError::new("limit", "The added files are larger than 1 GB together."));
             }
-            let name = unique_name(&mut used, extra_folder(&path), &file_name(&path));
+            let section = if extra.rel.contains('/') {
+                let family: Vec<&ExtraEntry> = extras.iter().filter(|e| e.root == extra.root).collect();
+                folder_section(&family)
+            } else {
+                extra_folder(&path)
+            };
+            let name = unique_name(&mut used, section, &extra.rel);
             entries.push((name, data, Compression::Deflated));
         }
         for (path, data) in artwork {
@@ -1117,6 +1277,48 @@ mod tests {
         assert_eq!(extra_folder(Path::new("x/Lock.PSD")), "source");
         assert_eq!(extra_folder(Path::new("consent.pdf")), "documents");
         assert_eq!(extra_folder(Path::new("me.jpg")), "supporting");
+    }
+
+    #[test]
+    fn own_proof_is_used_as_given() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a.txt");
+        let b = dir.path().join("b.pdf");
+        std::fs::write(&a, b"consent").unwrap();
+        std::fs::write(&b, b"licence").unwrap();
+        // Loose files are zipped as they are: no declaration, sources list or manifest.
+        let out = dir.path().join("out.zip");
+        let r = build_own_proof(&[a.to_string_lossy().into(), b.to_string_lossy().into()], &[], &out).unwrap();
+        assert_eq!(r.files, 2);
+        let names: Vec<String> = {
+            let mut z = zip::ZipArchive::new(std::fs::File::open(&out).unwrap()).unwrap();
+            (0..z.len()).map(|i| z.by_index(i).unwrap().name().unwrap().into_owned()).collect()
+        };
+        assert_eq!(names, vec!["a.txt", "b.pdf"]);
+        // A single ZIP is copied byte for byte.
+        let copy = dir.path().join("copy.zip");
+        build_own_proof(&[out.to_string_lossy().into()], &[], &copy).unwrap();
+        assert_eq!(std::fs::read(&out).unwrap(), std::fs::read(&copy).unwrap());
+        assert!(build_own_proof(&[], &[], &copy).is_err());
+
+        // Folders keep their structure; unticked files are left out.
+        let folder = dir.path().join("Docs");
+        std::fs::create_dir_all(folder.join("sub")).unwrap();
+        std::fs::write(folder.join("one.txt"), b"1").unwrap();
+        std::fs::write(folder.join("sub").join("two.txt"), b"2").unwrap();
+        std::fs::write(folder.join("skip.txt"), b"3").unwrap();
+        let tree = dir.path().join("tree.zip");
+        let roots = [folder.to_string_lossy().into_owned()];
+        let skip = [folder.join("skip.txt").to_string_lossy().into_owned()];
+        build_own_proof(&roots, &skip, &tree).unwrap();
+        let mut names: Vec<String> = {
+            let mut z = zip::ZipArchive::new(std::fs::File::open(&tree).unwrap()).unwrap();
+            (0..z.len()).map(|i| z.by_index(i).unwrap().name().unwrap().into_owned()).collect()
+        };
+        names.sort();
+        assert_eq!(names, vec!["Docs/one.txt", "Docs/sub/two.txt"]);
+        assert_eq!(scan_extra(&roots).len(), 3);
+        assert_eq!(folder_section(&scan_extra(&roots).iter().collect::<Vec<_>>()), "documents");
     }
 
     #[test]

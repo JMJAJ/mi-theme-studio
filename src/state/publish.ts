@@ -6,6 +6,7 @@ import {
   errorMessage,
   type DesignerCopyrightFile,
   type DesignerPackageAudit,
+  type DesignerProofEntry,
   type DesignerProofInfo,
   type DesignerProductDetail,
   type DesignerProductRow,
@@ -69,8 +70,16 @@ interface PublishState {
   tagGroups: DesignerTagGroup[];
   gifUrl: string | null;
   proofInfo: DesignerProofInfo | null;
-  includeArtwork: boolean;
+  /** Theme images unticked in the proof's file tree. */
+  excludedArtwork: string[];
+  /** The designer brings their own proof: nothing is generated, the files below are the proof. */
+  ownProof: boolean;
+  /** Files and folders picked from disk. */
   extraFiles: string[];
+  /** What they contain, as shown in the tree. */
+  extraEntries: DesignerProofEntry[];
+  /** Files unticked in the tree. */
+  excludedExtra: string[];
   sources: string;
   /** Uploads are reused while what they were made from is unchanged. */
   audit: { data: DesignerPackageAudit; key: string } | null;
@@ -96,8 +105,11 @@ const initial = (): Omit<PublishState, 'signingIn' | 'tagGroups'> => ({
   tags: [],
   gifUrl: null,
   proofInfo: null,
-  includeArtwork: true,
+  excludedArtwork: [],
+  ownProof: false,
   extraFiles: [],
+  extraEntries: [],
+  excludedExtra: [],
   sources: '',
   audit: null,
   proof: null,
@@ -129,7 +141,7 @@ function packageKey(): string {
 
 function proofKey(): string {
   const s = get();
-  return hash(JSON.stringify([s.form.productName, s.form.designerName, s.includeArtwork, s.extraFiles, s.sources, packageKey()]));
+  return hash(JSON.stringify([s.form.productName, s.form.designerName, s.ownProof, s.excludedArtwork, s.extraFiles, s.excludedExtra, s.sources, packageKey()]));
 }
 
 export const updateForm = (patch: Partial<PublishForm>) => set((s) => ({ form: { ...s.form, ...patch } }));
@@ -304,7 +316,73 @@ export function detailProblems(s: Pick<PublishState, 'form' | 'tags'> & { update
   return out;
 }
 
-/** Saves a copy of the proof ZIP where the user wants it. */
+/** What the proof is made of, as ticked in the file tree. */
+export function proofSelection(s: Pick<PublishState, 'excludedArtwork' | 'extraFiles' | 'excludedExtra'>) {
+  return { includeArtwork: true, excludeArtwork: s.excludedArtwork, extraFiles: s.extraFiles, excludeExtra: s.excludedExtra };
+}
+
+/** Picked files that are still ticked. */
+export function ticked(s: Pick<PublishState, 'extraEntries' | 'excludedExtra'>): DesignerProofEntry[] {
+  const out = new Set(s.excludedExtra);
+  return s.extraEntries.filter((e) => !out.has(e.path));
+}
+
+async function rescanExtras(paths: string[]) {
+  try {
+    const entries = paths.length ? await api.designerProofScan(paths) : [];
+    set({ extraEntries: entries });
+  } catch (e) {
+    toast('error', `Could not read the files: ${errorMessage(e)}`);
+  }
+}
+
+/** Adds files or folders; everything inside a folder starts ticked. */
+export async function addProofPaths(picked: string[]) {
+  const extraFiles = Array.from(new Set([...get().extraFiles, ...picked]));
+  set({ extraFiles });
+  await rescanExtras(extraFiles);
+}
+
+export async function removeProofRoot(root: string) {
+  const extraFiles = get().extraFiles.filter((f) => f !== root);
+  const gone = get().extraEntries.filter((e) => e.root === root).map((e) => e.path);
+  set((s) => ({ extraFiles, excludedExtra: s.excludedExtra.filter((p) => !gone.includes(p)) }));
+  await rescanExtras(extraFiles);
+}
+
+/** Ticks or unticks files in the tree ('artwork' = the theme's images, 'extra' = picked files). */
+export function setProofIncluded(kind: 'artwork' | 'extra', keys: string[], include: boolean) {
+  set((s) => {
+    const current = kind === 'artwork' ? s.excludedArtwork : s.excludedExtra;
+    const next = new Set(current);
+    for (const k of keys) include ? next.delete(k) : next.add(k);
+    return kind === 'artwork' ? { excludedArtwork: [...next] } : { excludedExtra: [...next] };
+  });
+}
+
+/** Saves the designer's own proof (their files, untouched) where they want it. */
+async function exportOwnProof() {
+  const s = get();
+  if (!ticked(s).length) {
+    toast('warning', 'Tick at least one file for your proof of copyright first.');
+    return;
+  }
+  const output = await saveDialog({
+    title: 'Export proof of copyright',
+    defaultPath: `${s.form.productName.replace(/[\\/:*?"<>|]/g, '').trim() || 'theme'} - proof of copyright.zip`,
+    filters: [{ name: 'ZIP archive', extensions: ['zip'] }],
+  });
+  if (!output) return;
+  try {
+    const result = await api.designerProofBuild({ output, title: s.form.productName, designer: s.form.designerName, ...proofSelection(s), includeArtwork: false, sources: '', ownFiles: true });
+    toast('success', `Proof of copyright exported: ${plural(result.files, 'file')}, ${formatBytes(result.bytes)}.`, result.path, [
+      { label: 'Show in folder', run: () => void revealItemInDir(result.path) },
+    ]);
+  } catch (e) {
+    toast('error', `Export proof of copyright: ${errorMessage(e)}`);
+  }
+}
+
 /**
  * Exports the proof-of-copyright ZIP to a place the user picks. Works without signing in
  * and outside the publish flow; a publish in progress for this project lends its choices
@@ -315,6 +393,7 @@ export async function exportProof() {
   if (!project) return;
   const s = get();
   const sameProject = s.projectId === projectId(project);
+  if (sameProject && s.ownProof) return exportOwnProof();
   let title = sameProject ? s.form.productName.trim() : '';
   let designer = sameProject ? s.form.designerName.trim() : '';
   if (!title || !designer) {
@@ -346,8 +425,7 @@ export async function exportProof() {
       output,
       title,
       designer,
-      includeArtwork: sameProject ? s.includeArtwork : true,
-      extraFiles: sameProject ? s.extraFiles : [],
+      ...(sameProject ? proofSelection(s) : proofSelection({ excludedArtwork: [], extraFiles: [], excludedExtra: [] })),
       sources: sameProject ? s.sources : '',
     });
     toast('success', `Proof of copyright exported: ${plural(result.files, 'file')}, ${formatBytes(result.bytes)}.`, result.path, [
@@ -373,6 +451,11 @@ export async function runPublish() {
     set({ step: 'details' });
     return;
   }
+  if (get().ownProof && !ticked(get()).length) {
+    toast('warning', 'Add the files that make up your proof of copyright, or let the app build it.');
+    set({ step: 'proof' });
+    return;
+  }
   set({ running: true, taskError: null, tasks: { ...IDLE_TASKS } });
   const mark = (id: TaskId, state: TaskState) => set((s) => ({ tasks: { ...s.tasks, [id]: state } }));
   let current: TaskId = 'package';
@@ -394,9 +477,9 @@ export async function runPublish() {
       const result = await api.designerProofBuild({
         title: s.form.productName,
         designer: s.form.designerName,
-        includeArtwork: s.includeArtwork,
-        extraFiles: s.extraFiles,
+        ...proofSelection(s),
         sources: s.sources,
+        ownFiles: s.ownProof,
       });
       proof = { ...result, key: prk };
       set({ proof, copyright: null });

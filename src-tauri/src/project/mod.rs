@@ -15,6 +15,7 @@ pub mod snapshot;
 use crate::error::{AppError, AppResult};
 use crate::package::archive::{self, ImportReport, Limits, WriteEntry};
 use crate::package::blob::{Blob, BlobRef, Compression};
+use crate::package::convert;
 use crate::package::metadata;
 use crate::package::paths::{
     self, join_nested, split_nested, validate_name, validate_project_path, NESTED_SEP,
@@ -74,6 +75,14 @@ pub struct CopyPlanItem {
     pub destination: String,
     pub conflict: bool,
     pub size: usize,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConvertResult {
+    pub converted: Vec<String>,
+    /// `(path, reason)` for files left unchanged.
+    pub failed: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -516,6 +525,56 @@ impl Project {
             for (path, blob) in planned {
                 tx.set(&path, Some(blob));
                 result.written.push(path);
+            }
+            Ok(())
+        })?;
+        Ok(result)
+    }
+
+    /// Re-encode images so their content matches their extension, in one undo step.
+    /// Files that cannot be converted are reported with the reason and left as they are.
+    pub fn convert_images(&mut self, paths: &[String]) -> AppResult<ConvertResult> {
+        let jobs: Vec<(String, BlobRef)> = paths
+            .iter()
+            .filter_map(|p| self.files.get(p).map(|b| (p.clone(), b.clone())))
+            .collect();
+        let mut result = ConvertResult::default();
+        for p in paths.iter().filter(|p| !self.files.contains_key(*p)) {
+            result.failed.push((p.clone(), "Not in the package.".into()));
+        }
+        let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).min(jobs.len().max(1));
+        let chunk = jobs.len().div_ceil(threads).max(1);
+        let outcomes: Vec<(String, BlobRef, AppResult<Vec<u8>>)> = std::thread::scope(|scope| {
+            let handles: Vec<_> = jobs
+                .chunks(chunk)
+                .map(|part| {
+                    scope.spawn(move || {
+                        part.iter()
+                            .map(|(p, b)| (p.clone(), b.clone(), convert::convert_for_path(p, &b.data)))
+                            .collect::<Vec<_>>()
+                    })
+                })
+                .collect();
+            handles.into_iter().flat_map(|h| h.join().unwrap_or_default()).collect()
+        });
+        let mut planned = Vec::new();
+        for (path, old, outcome) in outcomes {
+            match outcome {
+                Ok(data) => planned.push((path, Blob::new(data, old.compression))),
+                Err(e) => result.failed.push((path, e.message)),
+            }
+        }
+        if planned.is_empty() {
+            return Ok(result);
+        }
+        let label = match planned.as_slice() {
+            [(path, _)] => format!("Convert {}", paths::file_name(path)),
+            many => format!("Convert {} images", many.len()),
+        };
+        self.transact(&label, |tx| {
+            for (path, blob) in planned {
+                tx.set(&path, Some(blob));
+                result.converted.push(path);
             }
             Ok(())
         })?;

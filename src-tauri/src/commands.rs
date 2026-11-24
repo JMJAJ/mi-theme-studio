@@ -14,7 +14,7 @@ use crate::package::paths;
 use crate::project::history::History;
 use crate::project::snapshot::{snapshot, ProjectSnapshot};
 use crate::project::search::{self, ReplaceResult, ReplaceTarget, SearchOptions, SearchResult};
-use crate::project::{decode_text, BulkResult, ConflictPolicy, CopyPlanItem, ExportData, ExportEntry, Project};
+use crate::project::{decode_text, BulkResult, ConvertResult, ConflictPolicy, CopyPlanItem, ExportData, ExportEntry, Project};
 use crate::state::{lock, AppState, Screenshot, ScreenshotInfo, MAX_ADB_LOG, MAX_SCREENSHOTS};
 use crate::storage::{self, RecoveryInfo, Settings};
 use crate::validation::{self, ValidationReport};
@@ -868,6 +868,25 @@ pub async fn folder_pack(app: AppHandle, folder: String) -> AppResult<ProjectSna
         with_main(state, |project| {
             project.pack_folder(&folder)?;
             Ok(snapshot(project, "main"))
+        })
+    })
+    .await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConvertResponse {
+    pub snapshot: ProjectSnapshot,
+    pub result: ConvertResult,
+}
+
+/// Re-encode images so their content matches their file extension.
+#[tauri::command]
+pub async fn images_convert(app: AppHandle, paths: Vec<String>) -> AppResult<ConvertResponse> {
+    blocking(app, move |state, _| {
+        with_main(state, |project| {
+            let result = project.convert_images(&paths)?;
+            Ok(ConvertResponse { snapshot: snapshot(project, "main"), result })
         })
     })
     .await

@@ -693,6 +693,19 @@ export async function packFolder(folder: string) {
   }
 }
 
+/** Re-encode images so their content matches their extension (e.g. PNG data named .webp). */
+export async function convertImages(paths: string[]) {
+  if (!paths.length) return;
+  const response = await guard('Convert images', () => api.imagesConvert(paths), `Converting ${plural(paths.length, 'image')}…`);
+  if (!response) return;
+  applySnapshot(response.snapshot);
+  const { converted, failed } = response.result;
+  for (const [path, reason] of failed) log('warning', `Not converted: ${path}: ${reason}`);
+  if (converted.length && !failed.length) toast('success', `Converted ${plural(converted.length, 'image')} to match their extensions`);
+  else if (converted.length) toast('warning', `Converted ${converted.length} of ${paths.length} images; ${failed.length} could not be converted (see the log)`);
+  else toast('error', failed.length === 1 ? `Could not convert: ${failed[0][1]}` : `None of the ${failed.length} images could be converted (see the log)`);
+}
+
 export async function createDescription() {
   const title = getState().project?.title ?? 'My Theme';
   const snapshot = await guard('Create description.xml', () => api.metadataUpdate([{ name: 'title', value: title }], 'Create description.xml'));

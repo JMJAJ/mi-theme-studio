@@ -30,6 +30,7 @@ percent-encoding = "2"
 ureq = "3"
 sha1_smol = "1"
 png = "0.17"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp"] }
 regex = { version = "1", default-features = false, features = ["std", "unicode-perl", "unicode-case"] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"

@@ -1,4 +1,4 @@
-import { AlertTriangle, CircleX, Info, Wrench } from 'lucide-react';
+import { AlertTriangle, CircleX, Info, RefreshCw, Wrench } from 'lucide-react';
 import type { Issue } from '../../lib/types';
 import { useStore } from '../../state/store';
 import * as A from '../../state/actions';
@@ -74,8 +74,18 @@ export function ProblemList({ limit }: { limit?: number }) {
   if (!validation) return <div className="tree-empty">Validation has not run yet.</div>;
   if (!validation.issues.length) return <div className="tree-empty">No problems found in {validation.checkedFiles} files.</div>;
   const issues = limit ? validation.issues.slice(0, limit) : validation.issues;
+  const convertible = validation.issues.filter((i) => i.fix === 'convert-format' && i.path).map((i) => i.path!);
   return (
     <div role="list">
+      {convertible.length > 1 && (
+        <div className="problem-row problem-bulk">
+          <RefreshCw className="warn" />
+          <span className="ellipsis">{convertible.length} images are stored in a different format than their extension says.</span>
+          <button className="btn btn-sm btn-primary" title="Re-encode each file to the format its extension names; names and references stay the same" onClick={() => void A.convertImages(convertible)}>
+            <Wrench /> Convert all
+          </button>
+        </div>
+      )}
       {issues.map((issue, i) => (
         <div
           key={i}
@@ -97,6 +107,18 @@ export function ProblemList({ limit }: { limit?: number }) {
               }}
             >
               <Wrench /> Pack folder
+            </button>
+          )}
+          {issue.fix === 'convert-format' && issue.path && (
+            <button
+              className="btn btn-sm"
+              title="Re-encode the file to the format its extension names"
+              onClick={(e) => {
+                e.stopPropagation();
+                void A.convertImages([issue.path!]);
+              }}
+            >
+              <Wrench /> Convert
             </button>
           )}
           {issue.fix === 'create-description' && (

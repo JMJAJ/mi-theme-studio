@@ -26,7 +26,8 @@ pub struct Issue {
     pub code: &'static str,
     pub message: String,
     pub path: Option<String>,
-    /// Optional one-click fix the UI can offer (`pack-folder`, `create-description`).
+    /// Optional one-click fix the UI can offer (`pack-folder`, `create-description`,
+    /// `convert-format`).
     pub fix: Option<&'static str>,
 }
 
@@ -180,12 +181,16 @@ pub fn validate(project: &Project) -> ValidationReport {
         };
         if let Some(expected) = expected {
             match probe.format {
-                Some(actual) if actual != expected => issues.push(issue(
-                    Severity::Warning,
-                    "format-mismatch",
-                    format!("Named .{ext} but the content is {actual}."),
-                    Some(path),
-                )),
+                Some(actual) if actual != expected => issues.push(Issue {
+                    fix: crate::package::convert::can_convert(path, &blob.data)
+                        .then_some("convert-format"),
+                    ..issue(
+                        Severity::Warning,
+                        "format-mismatch",
+                        format!("Named .{ext} but the content is {actual}."),
+                        Some(path),
+                    )
+                }),
                 None if !blob.data.is_empty() => issues.push(issue(
                     Severity::Error,
                     "image-unreadable",

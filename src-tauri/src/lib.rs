@@ -118,6 +118,7 @@ pub fn run() {
             commands::files_extract,
             commands::container_create,
             commands::folder_pack,
+            commands::images_convert,
             commands::metadata_get,
             commands::metadata_update,
             commands::history_undo,

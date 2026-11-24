@@ -137,6 +137,12 @@ export interface TextFile {
   rev: number;
 }
 
+export interface ConvertResult {
+  converted: string[];
+  /** `[path, reason]` for files left unchanged. */
+  failed: [string, string][];
+}
+
 export interface BulkResult {
   written: string[];
   skipped: string[];
@@ -163,7 +169,7 @@ export interface Issue {
   code: string;
   message: string;
   path: string | null;
-  fix: 'pack-folder' | 'create-description' | null;
+  fix: 'pack-folder' | 'create-description' | 'convert-format' | null;
 }
 
 export interface ValidationReport {

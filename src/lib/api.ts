@@ -1,7 +1,7 @@
 // Typed wrappers over the native commands. All file system, archive and
 // device work happens in Rust; the UI only calls these.
 import { invoke } from '@tauri-apps/api/core';
-import type { DeviceApp, TryOnResult,
+import type { DeviceApp, TryOnResult, ConvertResult,
   LicenceReport,
   LocalImageData, LocalImageListing, TerminalResult,
   LicenseOutcome,
@@ -127,6 +127,7 @@ export const api = {
     call<FilesExtractResult>('files_extract', { paths, destination, slot }),
   containerCreate: (name: string) => call<ProjectSnapshot>('container_create', { name }),
   folderPack: (folder: string) => call<ProjectSnapshot>('folder_pack', { folder }),
+  imagesConvert: (paths: string[]) => call<{ snapshot: ProjectSnapshot; result: ConvertResult }>('images_convert', { paths }),
 
   metadataGet: (slot: Slot = 'main') => call<MetadataView>('metadata_get', { slot }),
   metadataUpdate: (fields: FieldUpdate[], label?: string) => call<ProjectSnapshot>('metadata_update', { fields, label }),

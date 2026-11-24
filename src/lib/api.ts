@@ -229,7 +229,123 @@ export const api = {
   aiCancel: (requestId: string) => call<void>('ai_cancel', { requestId }),
   /** GET JSON for the playground's Live mode (a few fixed weather and location hosts). */
   liveGetJson: (url: string) => call<string>('live_get_json', { url }),
+
+  // Xiaomi Theme Design Station (publishing). Uploads stream `designer-upload` progress events.
+  designerStatus: () => call<DesignerStatus>('designer_status'),
+  designerLoginOpen: () => call<void>('designer_login_open'),
+  designerLoginClose: () => call<void>('designer_login_close'),
+  designerSetCookie: (cookie: string) => call<DesignerStatus>('designer_set_cookie', { cookie }),
+  designerSignOut: () => call<void>('designer_sign_out'),
+  designerTags: () => call<DesignerTagGroup[]>('designer_tags'),
+  /** Uploads the given .mtz, or builds the open project when path is omitted. */
+  designerUploadPackage: (miuiVersion: 'V12' | 'V15' | 'V17', path?: string, productId?: string) =>
+    call<DesignerPackageAudit>('designer_upload_package', { path, miuiVersion, productId }),
+  designerUploadVideo: (path: string) => call<string>('designer_upload_video', { path }),
+  designerUploadCopyright: (path: string) => call<DesignerCopyrightFile>('designer_upload_copyright', { path }),
+  designerSubmit: (submission: DesignerSubmission) => call<void>('designer_submit', { submission }),
+  designerProofInfo: () => call<DesignerProofInfo>('designer_proof_info'),
+  designerProofBuild: (request: DesignerProofRequest) => call<DesignerProofResult>('designer_proof_build', { request }),
+  designerProducts: () => call<{ total: number; data: DesignerProductRow[] }>('designer_products'),
+  designerProduct: (productId: string) => call<DesignerProductDetail>('designer_product', { productId }),
+  designerProductVersions: (productId: string) => call<DesignerVersionRow[]>('designer_product_versions', { productId }),
 };
+
+export interface DesignerStatus {
+  signedIn: boolean;
+  manualCookie: boolean;
+  nickname: string | null;
+  designerId: number | null;
+  designerType: string | null;
+  registrationStatus: string | null;
+  profilePic: string | null;
+  message: string | null;
+}
+export interface DesignerTagGroup { name: string; subTags: string[] }
+export interface DesignerPackageAudit {
+  auditId: string;
+  productName: string;
+  designerName: string;
+  authorName: string;
+  versionName: string;
+  miuiVersion: string;
+  description: string;
+  fileSize: number;
+}
+export interface DesignerCopyrightFile { fileId: string; filename: string }
+export interface DesignerSubmission {
+  auditId: string;
+  productName: string;
+  versionName: string;
+  designerName: string;
+  authorName: string;
+  description: string;
+  tags: string[];
+  talkToUs: string;
+  copyrightLocator: string;
+  copyrightFilename: string;
+  gifUrl?: string | null;
+  priceInCent?: number;
+  /** New version of a published theme. */
+  changeLog?: string | null;
+}
+
+/** A theme in `audits-and-products`: the product plus its latest audit. */
+export interface DesignerProductRow {
+  productId: string;
+  productName: string;
+  auditId?: string | null;
+  /** EDITING/SNAPSHOT/WAIT_SNAPSHOT/SNAPSHOT_PROCESS, WAIT_AUDIT, WAIT_ONLINE/GOING_ONLINE, REJECTED… */
+  auditState?: string | null;
+  auditType?: string | null;
+  auditMiuiVersion?: string | null;
+  /** ONLINE, OFFLINE, HIDDEN once published. */
+  productStatus?: string | null;
+  displayState?: string | null;
+  showedSnapshot?: string | null;
+  versionName?: string | null;
+  createTime?: string | null;
+  updateTime?: string | null;
+  priceInCent?: number;
+  [key: string]: unknown;
+}
+
+export interface DesignerProductDetail extends DesignerProductRow {
+  description?: string;
+  tags?: string[];
+  designerName?: string;
+  authorName?: string;
+  talkToUs?: string;
+  copyrightLocator?: string;
+  copyrightFilename?: string;
+  changeLogList?: Record<string, unknown>[];
+  mtzDownloadInfoList?: Record<string, unknown>[];
+  refusalReason?: Record<string, unknown> | null;
+  originalThemePack?: { miuiVersion?: string; deviceType?: string; size?: number; downloadUri?: string } | null;
+}
+
+export type DesignerVersionRow = Record<string, unknown>;
+export interface DesignerProofInfo {
+  title: string;
+  designer: string;
+  author: string;
+  version: string;
+  description: string;
+  keywords: string;
+  artworkFiles: number;
+  artworkBytes: number;
+  attributions: { sourceTitle: string; sourceAuthor: string; files: number }[];
+}
+export interface DesignerProofRequest {
+  /** Defaults to the app's publish folder. */
+  output?: string;
+  designer: string;
+  title: string;
+  includeArtwork: boolean;
+  extraFiles: string[];
+  sources: string;
+}
+export interface DesignerProofResult { path: string; bytes: number; files: number }
+export interface DesignerUploadProgress { what: 'package' | 'video' | 'copyright'; sent: number; total: number }
 
 // Windows/Android webviews reach custom protocols as http://<scheme>.localhost.
 const RESOURCE_BASE =

@@ -28,7 +28,8 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { getState, hasUnsavedWork, updateLayout, useStore, choiceDialog, log, toast } from './state/store';
 import { COMMANDS, isEnabled, targetFolder } from './state/commands';
 import { matches, isTextTarget } from './lib/shortcuts';
-import { api } from './lib/api';
+import { api, type DesignerStatus, type DesignerUploadProgress } from './lib/api';
+import { onDesignerSession, usePublish } from './state/publish';
 import * as A from './state/actions';
 import { installZoom } from './state/zoom';
 import { startUpdateChecks } from './state/updater';
@@ -185,6 +186,26 @@ function useFileDrop() {
   }, []);
 }
 
+/** Keeps the Design Station sign-in (saved between runs) in the store. */
+function useDesignerSession() {
+  useEffect(() => {
+    let disposed = false;
+    const unlisteners: (() => void)[] = [];
+    const keep = (p: Promise<() => void>) => p.then((fn) => (disposed ? fn() : unlisteners.push(fn))).catch(() => undefined);
+    api.designerStatus().then((designer) => useStore.setState({ designer })).catch(() => undefined);
+    keep(listen<DesignerStatus>('designer-session', (event) => {
+      useStore.setState({ designer: event.payload });
+      onDesignerSession(event.payload.signedIn);
+    }));
+    keep(listen('designer-login-closed', () => usePublish.setState({ signingIn: false })));
+    keep(listen<DesignerUploadProgress>('designer-upload', (event) => usePublish.setState({ progress: event.payload })));
+    return () => {
+      disposed = true;
+      unlisteners.forEach((fn) => fn());
+    };
+  }, []);
+}
+
 /** Opens a .mtz double-clicked in Explorer, at launch or while the app is running. */
 function useOpenedPackages() {
   useEffect(() => {
@@ -313,6 +334,7 @@ export function App() {
   useFileDrop();
   useCloseGuard();
   useOpenedPackages();
+  useDesignerSession();
   useBackgroundTasks();
 
   useEffect(() => {

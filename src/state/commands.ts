@@ -3,6 +3,8 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Archive,
+  LogIn,
+  LogOut,
   BookOpen,
   Bot,
   Camera,
@@ -40,6 +42,7 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import * as A from './actions';
+import { signIn as signInToDesigner, signOut as signOutOfDesigner, startPublishing } from './publish';
 import { openGuide } from './guide';
 import { DEFAULT_LAYOUT, getState, setState, updateLayout, type StoreState } from './store';
 import { parentOf } from '../lib/paths';
@@ -108,7 +111,7 @@ export const COMMANDS: Command[] = [
   { id: 'go.files', group: 'Go', label: 'Files', shortcut: 'Ctrl+2', run: () => A.goTo('files'), global: true },
   { id: 'go.store', group: 'Go', label: 'Theme store', shortcut: 'Ctrl+3', run: () => A.goTo('store'), global: true },
   { id: 'go.phone', group: 'Go', label: 'Phone', shortcut: 'Ctrl+4', run: () => A.goTo('phone'), global: true },
-  { id: 'go.check', group: 'Go', label: 'Check & export', shortcut: 'Ctrl+5', run: () => A.goTo('check'), global: true },
+  { id: 'go.check', group: 'Go', label: 'Export & publish', shortcut: 'Ctrl+5', run: () => A.goTo('check'), global: true },
   { id: 'go.library', group: 'Go', label: 'Library', shortcut: 'Ctrl+6', run: () => A.goTo('library'), global: true },
   { id: 'go.guide', group: 'Go', label: 'Guide', shortcut: 'Ctrl+7', icon: BookOpen, run: () => A.goTo('guide'), global: true },
   { id: 'go.assistant', group: 'Go', label: 'AI assistant (full screen)', shortcut: 'Ctrl+8', icon: Bot, run: () => A.goTo('assistant'), global: true },
@@ -147,6 +150,9 @@ export const COMMANDS: Command[] = [
   { id: 'project.newComponent', group: 'Project', label: 'New component archive…', icon: Archive, enabled: hasProject, run: () => A.createContainer() },
   { id: 'project.validate', group: 'Project', label: 'Validate package', shortcut: 'Ctrl+Shift+B', icon: ListChecks, enabled: hasProject, run: () => { void A.runValidation(false); updateLayout({ dock: true }); setState({ dockTab: 'problems' }); }, global: true },
   { id: 'project.build', group: 'Project', label: 'Build & export', icon: FileDown, enabled: hasProject, run: () => A.openSingleton('build') },
+  { id: 'project.publish', group: 'Project', label: 'Publish to Xiaomi Themes…', icon: Send, enabled: hasProject, run: () => startPublishing() },
+  { id: 'account.signIn', group: 'Account', label: 'Sign in to Xiaomi Theme Design Station', icon: LogIn, enabled: (s) => !s.designer?.signedIn, run: () => void signInToDesigner() },
+  { id: 'account.signOut', group: 'Account', label: 'Sign out of Xiaomi Theme Design Station', icon: LogOut, enabled: (s) => !!s.designer?.signedIn, run: () => void signOutOfDesigner() },
 
   // Tools
   { id: 'tools.catalog', group: 'Tools', label: 'Theme store', icon: Globe, run: () => A.openSingleton('catalog') },

@@ -37,7 +37,7 @@ static TERMINAL_CANCELLATION: std::sync::Mutex<Option<(String, Arc<AtomicBool>)>
 
 static NEXT_SHOT_ID: AtomicU64 = AtomicU64::new(1);
 
-async fn blocking<T, F>(app: AppHandle, f: F) -> AppResult<T>
+pub(crate) async fn blocking<T, F>(app: AppHandle, f: F) -> AppResult<T>
 where
     T: Send + 'static,
     F: FnOnce(&AppState, &AppHandle) -> AppResult<T> + Send + 'static,
@@ -998,6 +998,12 @@ fn force_ui_version_for(adb: &Adb, serial: &str) -> u32 {
 
 fn build_package(state: &AppState, app: Option<&AppHandle>) -> AppResult<Built> {
     build_package_with_ui_version(state, app, None)
+}
+
+/// The open project as verified .mtz bytes, with its name (for uploads).
+pub(crate) fn build_package_bytes(state: &AppState, app: &AppHandle) -> AppResult<(Vec<u8>, String)> {
+    let built = build_package(state, Some(app))?;
+    Ok((built.data, built.name))
 }
 
 fn force_ui_version_in_entries(entries: &mut [ExportEntry], ui_version: u32) -> AppResult<()> {

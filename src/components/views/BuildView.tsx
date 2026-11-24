@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { AlertTriangle, CircleCheck, Download, FolderOpen, ListChecks, Loader2, MoreHorizontal, Save, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, CircleCheck, Download, Send, FolderOpen, ListChecks, Loader2, MoreHorizontal, Save, ShieldAlert } from 'lucide-react';
 import { openContextMenu } from '../common/Menu';
 import { useStore } from '../../state/store';
 import * as A from '../../state/actions';
@@ -7,6 +7,9 @@ import { runCommand } from '../../state/commands';
 import { formatBytes, formatTime, plural } from '../../lib/format';
 import { ProblemList } from './ProblemList';
 import { ExportChecklist } from './ExportChecklist';
+import { PublishWizard } from './PublishWizard';
+import { PublishedThemes } from './PublishedThemes';
+import { projectId, startPublishing, usePublish } from '../../state/publish';
 
 export function BuildView() {
   const project = useStore((s) => s.project);
@@ -23,7 +26,10 @@ export function BuildView() {
     return { added, modified, removed: project?.removed ?? [] };
   }, [project]);
 
+  const publishing = usePublish((s) => s.active && s.projectId === projectId(project));
+
   if (!project) return <div className="empty">Open a package to build it.</div>;
+  if (publishing) return <PublishWizard />;
   const rebuilt = project.containers.filter((c) => c.status !== 'original');
 
   return (
@@ -55,8 +61,11 @@ export function BuildView() {
             <button className="btn" onClick={() => runCommand('file.save')}>
               <Save /> {project.sourcePath ? 'Save' : 'Save…'}
             </button>
-            <button className="btn btn-primary" onClick={() => runCommand('file.exportCopy')}>
+            <button className="btn" onClick={() => runCommand('file.exportCopy')}>
               <Download /> Export .mtz…
+            </button>
+            <button className="btn btn-primary" onClick={() => startPublishing()} title="Upload to the Xiaomi Theme Design Station and submit for review">
+              <Send /> Publish…
             </button>
           </div>
         </div>
@@ -74,6 +83,8 @@ export function BuildView() {
         )}
 
         <ExportChecklist />
+
+        <PublishedThemes />
 
         <div className="stats">
           <div className="stat">

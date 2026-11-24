@@ -2252,7 +2252,7 @@ dependencies = [
 
 [[package]]
 name = "mi-theme-studio"
-version = "0.5.9"
+version = "0.6.2"
 dependencies = [
  "image",
  "imagesize",

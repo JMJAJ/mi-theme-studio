@@ -21,7 +21,9 @@
         { "url": "https://openrouter.ai/*" },
         { "url": "https://aistudio.google.com/*" },
         { "url": "https://console.groq.com/*" },
-        { "url": "https://github.com/JMJAJ/mi-theme-studio/commit/*" }
+        { "url": "https://github.com/JMJAJ/mi-theme-studio/commit/*" },
+        { "url": "https://zhuti.designer.intl.xiaomi.com/*" },
+        { "url": "https://*.market.xiaomi.com/*" }
       ]
     },
     "updater:default",

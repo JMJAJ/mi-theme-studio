@@ -8,11 +8,13 @@
 //! - `adb`: device discovery, details, screenshots, verified file copy
 //! - `store`: online theme store (browse, details, verified free downloads)
 //! - `ai`: OpenAI-compatible chat client for the assistant
+//! - `designer`: publishing to the Xiaomi Theme Design Station
 //! - `commands` / `protocol` / `state`: Tauri integration
 
 pub mod adb;
 pub mod ai;
 pub mod commands;
+pub mod designer;
 pub mod error;
 pub mod inventory;
 pub mod package;
@@ -197,6 +199,21 @@ pub fn run() {
             commands::ai_chat,
             commands::ai_cancel,
             commands::live_get_json,
+            designer::designer_status,
+            designer::designer_login_open,
+            designer::designer_login_close,
+            designer::designer_set_cookie,
+            designer::designer_sign_out,
+            designer::designer_tags,
+            designer::designer_upload_package,
+            designer::designer_upload_video,
+            designer::designer_upload_copyright,
+            designer::designer_submit,
+            designer::designer_proof_info,
+            designer::designer_proof_build,
+            designer::designer_products,
+            designer::designer_product,
+            designer::designer_product_versions,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Mi Theme Studio")

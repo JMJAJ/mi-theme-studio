@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { DesignerStatus } from '../lib/api';
 import type {
   AdbLogEntry,
   AdbStatus,
@@ -194,6 +195,8 @@ export interface StoreState {
   screenshots: ScreenshotInfo[];
   adbLog: AdbLogEntry[];
   exportProgress: ExportProgress | null;
+  /** Xiaomi Theme Design Station session (publishing); null until checked. */
+  designer: DesignerStatus | null;
   builds: BuildRecord[];
   busy: string | null;
   /** Try on phone does a permanent (AOD) apply instead; confirmed when ticked, reset on restart. */
@@ -240,6 +243,7 @@ export const useStore = create<StoreState>(() => ({
   screenshots: [],
   adbLog: [],
   exportProgress: null,
+  designer: null,
   builds: [],
   busy: null,
   permanentApply: false,

@@ -9,6 +9,7 @@
 //! - `store`: online theme store (browse, details, verified free downloads)
 //! - `ai`: OpenAI-compatible chat client for the assistant
 //! - `designer`: publishing to the Xiaomi Theme Design Station
+//! - `provenance`: where theme material came from (disclosed in the proof of copyright)
 //! - `commands` / `protocol` / `state`: Tauri integration
 
 pub mod adb;
@@ -20,6 +21,7 @@ pub mod inventory;
 pub mod package;
 pub mod project;
 pub mod protocol;
+pub mod provenance;
 pub mod state;
 pub mod storage;
 pub mod store;

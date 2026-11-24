@@ -333,7 +333,8 @@ export interface DesignerProofInfo {
   keywords: string;
   artworkFiles: number;
   artworkBytes: number;
-  attributions: { sourceTitle: string; sourceAuthor: string; files: number }[];
+  /** Material from other themes, found by content; disclosed in the proof automatically. */
+  attributions: { sourceTitle: string; sourceAuthor: string; origin: string; files: number; paths: string[] }[];
 }
 export interface DesignerProofRequest {
   /** Defaults to the app's publish folder. */

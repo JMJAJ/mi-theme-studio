@@ -1204,3 +1204,8 @@ button.catalog-card:hover, button.icon-link:hover { border-color: var(--line-str
 .published-actions { flex-wrap: wrap; }
 .published .err { color: var(--err); }
 @media (max-width: 760px) { .published-body { padding-left: 14px; } }
+.publish-disclosure { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--ok-soft); }
+.publish-disclosure .muted { font-size: var(--fs-sm); line-height: 1.5; }
+.publish-disclosure .row { align-items: flex-start; }
+.publish-disclosure-list { display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow: auto; padding: 8px 10px; border-radius: 6px; background: var(--bg-2); }
+.publish-disclosure-list ul { margin: 4px 0 0; padding-left: 18px; font-family: var(--font-mono, monospace); font-size: var(--fs-xs); color: var(--muted); }

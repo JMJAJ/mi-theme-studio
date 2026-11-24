@@ -788,7 +788,40 @@ const ART_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "webp", "gif", "svg", "b
 pub struct ProofAttribution {
     pub source_title: String,
     pub source_author: String,
+    /// Where it was taken from (theme store item, reference file, phone).
+    pub origin: String,
     pub files: usize,
+    /// The theme's files that came from this source, at their current paths.
+    pub paths: Vec<String>,
+}
+
+/// Material in the open project that came from other themes, found by content (see
+/// `provenance`). Store downloads are indexed first so anything taken from them counts.
+/// The designer's own names are left out.
+fn third_party(state: &AppState, own_names: &[&str]) -> AppResult<Vec<ProofAttribution>> {
+    crate::provenance::scan_downloads(&state.paths.data, &state.paths.data.join("downloads"));
+    let guard = lock(&state.main);
+    let project = guard.as_ref().ok_or_else(AppError::no_project)?;
+    let matches = crate::provenance::find(
+        &state.paths.data,
+        project.files.iter().map(|(p, b)| (p.as_str(), b.data.as_slice())),
+        own_names,
+    );
+    Ok(matches
+        .into_iter()
+        .map(|m| ProofAttribution {
+            source_title: m.source.title,
+            source_author: m.source.author,
+            origin: m.source.origin,
+            files: m.paths.len(),
+            paths: m.paths,
+        })
+        .collect())
+}
+
+fn credit(a: &ProofAttribution) -> String {
+    let author = if a.source_author.trim().is_empty() { "an unknown author".to_string() } else { a.source_author.trim().to_string() };
+    format!("\"{}\" by {author}", a.source_title.trim())
 }
 
 #[derive(Serialize)]
@@ -803,7 +836,7 @@ pub struct ProofInfo {
     pub keywords: String,
     pub artwork_files: usize,
     pub artwork_bytes: u64,
-    /// Material copied in from other themes; the station asks for its licence.
+    /// Material from other themes; disclosed in the proof automatically.
     pub attributions: Vec<ProofAttribution>,
 }
 
@@ -815,6 +848,14 @@ fn is_art(path: &str) -> bool {
 #[tauri::command]
 pub async fn designer_proof_info(app: AppHandle) -> AppResult<ProofInfo> {
     blocking(app, |state, _| {
+        let (designer, author) = {
+            let guard = lock(&state.main);
+            let project = guard.as_ref().ok_or_else(AppError::no_project)?;
+            let meta = metadata::parse(project.text(DESCRIPTION_PATH).as_deref());
+            let field = |name: &str| meta.fields.iter().find(|f| f.name == name).map(|f| f.value.trim().to_string()).unwrap_or_default();
+            (field("designer"), field("author"))
+        };
+        let attributions = third_party(state, &[&designer, &author])?;
         let guard = lock(&state.main);
         let project = guard.as_ref().ok_or_else(AppError::no_project)?;
         let meta = metadata::parse(project.text(DESCRIPTION_PATH).as_deref());
@@ -829,11 +870,7 @@ pub async fn designer_proof_info(app: AppHandle) -> AppResult<ProofInfo> {
             keywords: field("keywords"),
             artwork_files: art.len(),
             artwork_bytes: art.iter().map(|(_, b)| b.data.len() as u64).sum(),
-            attributions: project
-                .attributions
-                .iter()
-                .map(|a| ProofAttribution { source_title: a.source_title.clone(), source_author: a.source_author.clone(), files: a.files })
-                .collect(),
+            attributions,
         })
     })
     .await
@@ -897,13 +934,25 @@ fn declaration(req: &ProofRequest, version: &str, stamp: &str, attributions: &[P
     }
     out.push_str(&format!("Designer:  {}\r\n", req.designer.trim()));
     out.push_str(&format!("Prepared:  {stamp} UTC\r\n\r\n"));
-    out.push_str(&format!(
-        "I, {}, declare that I am the author of the theme \"{}\" submitted to the Xiaomi Theme Design Station, \
-         or that I hold the rights needed to publish every part of it. Materials I did not create are listed in \
-         SOURCES.txt together with where they come from and the permission to use them commercially.\r\n\r\n",
-        req.designer.trim(),
-        req.title.trim()
-    ));
+    if attributions.is_empty() {
+        out.push_str(&format!(
+            "I, {}, declare that I am the author of the theme \"{}\" submitted to the Xiaomi Theme Design Station, \
+             or that I hold the rights needed to publish every part of it. Materials I did not create are listed in \
+             SOURCES.txt together with where they come from and the permission to use them commercially.\r\n\r\n",
+            req.designer.trim(),
+            req.title.trim()
+        ));
+    } else {
+        let taken: usize = attributions.iter().map(|a| a.files).sum();
+        out.push_str(&format!(
+            "I, {}, declare that I am the author of the theme \"{}\" submitted to the Xiaomi Theme Design Station, \
+             except for {taken} file(s) taken from other themes, which are disclosed in full in SOURCES.txt (source, author \
+             and every affected file). Any other material I did not create is listed there as well, with where it comes \
+             from and the permission to use it commercially.\r\n\r\n",
+            req.designer.trim(),
+            req.title.trim()
+        ));
+    }
     out.push_str("Contents\r\n--------\r\n");
     out.push_str("  source/      Original working files (layered PSD and similar).\r\n");
     out.push_str("  artwork/     Every image in the theme package at full resolution, at its path in the package.\r\n");
@@ -914,7 +963,10 @@ fn declaration(req: &ProofRequest, version: &str, stamp: &str, attributions: &[P
     if !attributions.is_empty() || !has_sources {
         out.push_str("Notes\r\n-----\r\n");
         if !attributions.is_empty() {
-            out.push_str("  Parts of this theme were copied from other themes (see SOURCES.txt). Their licence or the\r\n  copyright holder's authorisation is required for review.\r\n");
+            out.push_str("  Material from other themes was detected automatically by Mi Theme Studio, by comparing file\r\n  contents, and is disclosed in SOURCES.txt:\r\n");
+            for a in attributions {
+                out.push_str(&format!("    - {} ({} file{})\r\n", credit(a), a.files, if a.files == 1 { "" } else { "s" }));
+            }
         }
         if !has_sources {
             out.push_str("  No third-party material is declared.\r\n");
@@ -943,7 +995,15 @@ pub async fn designer_proof_build(app: AppHandle, request: ProofRequest) -> AppR
         if !has_extension(&output, "zip") {
             return Err(AppError::invalid("Save the proof as a .zip file."));
         }
-        let (artwork, version, attributions) = {
+        let own = {
+            let guard = lock(&state.main);
+            let project = guard.as_ref().ok_or_else(AppError::no_project)?;
+            let meta = metadata::parse(project.text(DESCRIPTION_PATH).as_deref());
+            let field = |name: &str| meta.fields.iter().find(|f| f.name == name).map(|f| f.value.trim().to_string()).unwrap_or_default();
+            [field("designer"), field("author"), req.designer.trim().to_string()]
+        };
+        let attributions = third_party(state, &[&own[0], &own[1], &own[2]])?;
+        let (artwork, version) = {
             let guard = lock(&state.main);
             let project = guard.as_ref().ok_or_else(AppError::no_project)?;
             let meta = metadata::parse(project.text(DESCRIPTION_PATH).as_deref());
@@ -953,12 +1013,7 @@ pub async fn designer_proof_build(app: AppHandle, request: ProofRequest) -> AppR
             } else {
                 Vec::new()
             };
-            let attributions: Vec<ProofAttribution> = project
-                .attributions
-                .iter()
-                .map(|a| ProofAttribution { source_title: a.source_title.clone(), source_author: a.source_author.clone(), files: a.files })
-                .collect();
-            (artwork, version, attributions)
+            (artwork, version)
         };
 
         let mut used = std::collections::HashSet::new();
@@ -994,9 +1049,18 @@ pub async fn designer_proof_build(app: AppHandle, request: ProofRequest) -> AppR
                 sources.push_str("\r\n\r\n");
             }
             if !attributions.is_empty() {
-                sources.push_str("Copied from other themes (recorded by Mi Theme Studio):\r\n");
+                sources.push_str("MATERIAL FROM OTHER THEMES\r\n--------------------------\r\n");
+                sources.push_str("Detected automatically by Mi Theme Studio by comparing file contents with the themes it was\r\ntaken from. Every affected file of this theme is listed at its path in the package.\r\n\r\n");
                 for a in &attributions {
-                    sources.push_str(&format!("  - \"{}\" by {} ({} files)\r\n", a.source_title, a.source_author, a.files));
+                    sources.push_str(&format!("{}\r\n", credit(a)));
+                    if !a.origin.trim().is_empty() {
+                        sources.push_str(&format!("  Taken from: {}\r\n", a.origin.trim()));
+                    }
+                    sources.push_str(&format!("  Files ({}):\r\n", a.files));
+                    for path in &a.paths {
+                        sources.push_str(&format!("    {path}\r\n"));
+                    }
+                    sources.push_str("\r\n");
                 }
             }
         }

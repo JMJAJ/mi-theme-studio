@@ -56,6 +56,25 @@ fn with_main<T>(state: &AppState, f: impl FnOnce(&mut Project) -> AppResult<T>) 
     f(project)
 }
 
+/// Remembers by content that these project files came from `source` (for the proof of copyright).
+fn remember_origin(state: &AppState, project: &Project, source: crate::provenance::Source, paths: &[String]) {
+    let files: Vec<(&str, &[u8])> = paths
+        .iter()
+        .filter_map(|p| project.files.get(p).map(|b| (p.as_str(), b.data.as_slice())))
+        .collect();
+    crate::provenance::record(&state.paths.data, source, files);
+}
+
+/// The `author` (or `designer`) declared by a package.
+fn declared_author(project: &Project) -> String {
+    let meta = metadata::parse(project.text(DESCRIPTION_PATH).as_deref());
+    ["author", "designer"]
+        .iter()
+        .find_map(|name| meta.fields.iter().find(|f| f.name == *name && f.attributes.is_empty()).map(|f| f.value.trim().to_string()))
+        .filter(|v| !v.is_empty())
+        .unwrap_or_default()
+}
+
 fn read_limited(path: &Path, limit: u64, what: &str) -> AppResult<Vec<u8>> {
     let meta = std::fs::metadata(path)
         .map_err(|e| AppError::io(format!("Could not read {}", path.display()), e))?;
@@ -1300,6 +1319,14 @@ pub async fn reference_copy(
             .ok_or_else(|| AppError::not_found("No reference package is open."))?;
         with_main(state, |project| {
             let result = project.copy_from(source, &paths, folder.as_deref(), policy)?;
+            if !result.written.is_empty() {
+                let origin = crate::provenance::Source {
+                    title: source.title(),
+                    author: declared_author(source),
+                    origin: source.name.clone(),
+                };
+                remember_origin(state, project, origin, &result.written);
+            }
             Ok(BulkResponse {
                 snapshot: snapshot(project, "main"),
                 result,
@@ -1487,6 +1514,13 @@ pub async fn adb_cached_theme_open(
         if let Some(report) = project.import_report.as_mut() {
             report.warnings.extend(package.warnings);
         }
+        let origin = crate::provenance::Source {
+            title: project.title(),
+            author: declared_author(&project),
+            origin: format!("Theme Manager on the phone · {}", package.name),
+        };
+        let all: Vec<String> = project.files.keys().cloned().collect();
+        remember_origin(state, &project, origin, &all);
         let snap = snapshot(&project, "main");
         *lock(&state.main) = Some(project);
         *lock(&state.last_autosave) = None;
@@ -2371,13 +2405,19 @@ pub async fn store_apply_media(app: AppHandle, module_id: String, target: MediaT
         let ext = paths::extension(&record.path);
         let data = read_limited(&path, MAX_ASSET_BYTES, "The download")?;
         with_main(state, |project| {
-            project.place_file(
+            let placed = project.place_file(
                 target.stem(),
                 &ext,
                 data,
                 &format!("Use “{}” from the theme store", record.name),
                 Some((record.name.clone(), record.designer.clone().unwrap_or_default(), format!("Theme store · {}", record.module_id))),
             )?;
+            let origin = crate::provenance::Source {
+                title: record.name.clone(),
+                author: record.designer.clone().unwrap_or_default(),
+                origin: format!("Theme store · {}", record.module_id),
+            };
+            remember_origin(state, project, origin, &[placed]);
             Ok(snapshot(project, "main"))
         })
     })
@@ -2397,6 +2437,13 @@ pub async fn store_open_project(app: AppHandle, module_id: String) -> AppResult<
         let path = PathBuf::from(&record.path);
         let data = read_limited(&path, MAX_PACKAGE_BYTES, "The package")?;
         let project = Project::from_bytes(&data, &file_name_of(&path), None, Limits::default())?;
+        let origin = crate::provenance::Source {
+            title: record.name.clone(),
+            author: record.designer.clone().filter(|d| !d.is_empty()).unwrap_or_else(|| declared_author(&project)),
+            origin: format!("Theme store · {}", record.module_id),
+        };
+        let all: Vec<String> = project.files.keys().cloned().collect();
+        remember_origin(state, &project, origin, &all);
         let snap = snapshot(&project, "main");
         *lock(&state.main) = Some(project);
         *lock(&state.last_autosave) = None;

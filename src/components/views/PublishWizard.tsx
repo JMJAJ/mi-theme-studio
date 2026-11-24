@@ -353,14 +353,7 @@ function ProofStep() {
         Xiaomi asks for one ZIP that shows the theme is yours. The app builds it for you when you submit: a signed copyright declaration, a list of third-party material, a checksum manifest, and the files below.
       </p>
 
-      {info && info.attributions.length > 0 && (
-        <div className="publish-callout is-warn">
-          <AlertTriangle />
-          <div>
-            Parts of this theme came from {info.attributions.map((a) => `“${a.sourceTitle}” by ${a.sourceAuthor}`).join(', ')}. Add the owner’s written permission below, or the review will likely reject it.
-          </div>
-        </div>
-      )}
+      {info && info.attributions.length > 0 && <Disclosure attributions={info.attributions} />}
 
       <div className="publish-checklist">
         <label className="publish-check">
@@ -444,6 +437,39 @@ function ProofStep() {
 
       <StepNav back="details" next={() => setStep('submit')} />
     </>
+  );
+}
+
+/** Material from other themes: disclosed in the proof without the user doing anything. */
+function Disclosure({ attributions }: { attributions: NonNullable<ReturnType<typeof usePublish.getState>['proofInfo']>['attributions'] }) {
+  const [open, setOpen] = useState(false);
+  const files = attributions.reduce((n, a) => n + a.files, 0);
+  return (
+    <div className="publish-disclosure">
+      <div className="row">
+        <CircleCheck className="ok" />
+        <div className="grow">
+          <b>{plural(files, 'file')} from other themes will be disclosed automatically</b>
+          <div className="muted">
+            Found by comparing file contents with where they came from: {attributions.map((a) => `“${a.sourceTitle}”${a.sourceAuthor ? ` by ${a.sourceAuthor}` : ''}`).join(', ')}. SOURCES.txt lists each source and every affected file; nothing for you to fill in. Replace a file and it drops off this list.
+          </div>
+        </div>
+        <button className="btn btn-sm" onClick={() => setOpen((v) => !v)} aria-expanded={open}>{open ? 'Hide files' : 'Show files'}</button>
+      </div>
+      {open && (
+        <div className="publish-disclosure-list">
+          {attributions.map((a) => (
+            <div key={`${a.sourceTitle}|${a.origin}`}>
+              <div className="field-label">{a.sourceTitle}{a.sourceAuthor ? ` · ${a.sourceAuthor}` : ''}{a.origin ? ` · ${a.origin}` : ''}</div>
+              <ul>
+                {a.paths.map((p) => <li key={p}>{p}</li>)}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="field-hint">Xiaomi may still ask for the owner’s permission for reused artwork; if you have it, add it under Files to include.</div>
+    </div>
   );
 }
 

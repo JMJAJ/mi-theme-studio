@@ -126,7 +126,7 @@ function packageKey(): string {
 
 function proofKey(): string {
   const s = get();
-  return hash(JSON.stringify([s.form.productName, s.form.designerName, s.includeArtwork, s.extraFiles, s.sources, s.includeArtwork ? packageKey() : '']));
+  return hash(JSON.stringify([s.form.productName, s.form.designerName, s.includeArtwork, s.extraFiles, s.sources, packageKey()]));
 }
 
 export const updateForm = (patch: Partial<PublishForm>) => set((s) => ({ form: { ...s.form, ...patch } }));

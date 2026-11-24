@@ -28,7 +28,7 @@ Mi Theme Studio is a free, source-available **MIUI and HyperOS theme editor** fo
 Everything runs locally. Packages are edited in memory, saves are atomic and backed up, and files the editor does not understand are written back untouched.
 
 > [!IMPORTANT]
-> **Phone support.** I DONT RECOMMEND THIS WAY, UPLOAD YOUR THEME VIA OUR OFFICIAL WAY TO OFFICIAL XIAOMI SERVERS!! YOU HAVE BEEN WARNED. Full customization on rooted phones is the stable path. On normal (non-rooted) phones, a whole theme can be applied through Theme Manager's own editor entry point when the phone's factory Theme app build (3.0.5.16 is last support version, anyhting above doesnt work because Xiaomi removed needed function we use) has it. The experimental **Permanent apply (AOD)** path works on one HyperOS 3 / Android 16 phone for theme files, wallpaper and MAML lock screen.
+> **Phone support.** I DONT RECOMMEND THIS WAY, UPLOAD YOUR THEME VIA OUR OFFICIAL WAY TO OFFICIAL XIAOMI SERVERS!! YOU HAVE BEEN WARNED. Full customization on rooted phones is the stable path. On normal (non-rooted) phones, a whole theme can be applied through Theme Manager's own editor entry point when the phone's factory Theme app build (3.0.5.16 is last support version, anything above doesnt work because Xiaomi removed needed function we use) has it. The experimental **Permanent apply (AOD)** path works on one HyperOS 3 / Android 16 phone for theme files, wallpaper and MAML lock screen.
 
 > [!NOTE]
 > Mi Theme Studio is an independent, unofficial tool. It is not affiliated with, endorsed by or sponsored by Xiaomi. MIUI, HyperOS and Xiaomi are trademarks of their respective owners.

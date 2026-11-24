@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { listen } from '@tauri-apps/api/event';
 import { TitleBar } from './components/shell/TitleBar';
 import { Rail } from './components/shell/Rail';
 import { PhonePanel } from './components/shell/PhonePanel';
@@ -184,6 +185,21 @@ function useFileDrop() {
   }, []);
 }
 
+/** Opens a .mtz double-clicked in Explorer, at launch or while the app is running. */
+function useOpenedPackages() {
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    listen<string>('open-package', (event) => void A.openPackage(event.payload))
+      .then((fn) => (disposed ? fn() : (unlisten = fn)))
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+}
+
 function useCloseGuard() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -296,12 +312,16 @@ export function App() {
   useInterfaceZoom();
   useFileDrop();
   useCloseGuard();
+  useOpenedPackages();
   useBackgroundTasks();
 
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    void A.init();
+    void A.init().then(async () => {
+      const launched = await api.launchPackageTake().catch(() => null);
+      if (launched) await A.openPackage(launched);
+    });
     startUpdateChecks();
   }, []);
 

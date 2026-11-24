@@ -1,6 +1,6 @@
 {
   "name": "mi-theme-studio",
-  "version": "0.5.22",
+  "version": "0.5.23",
   "private": true,
   "type": "module",
   "author": "JMJAJ",
@@ -11,15 +11,16 @@
   },
   "scripts": {
     "dev": "vite",
-    "start": "node scripts/fetch-scrcpy.mjs && tauri dev",
+    "start": "node scripts/prune-rust-cache.mjs && node scripts/fetch-scrcpy.mjs && tauri dev",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "test:rust": "node scripts/prune-rust-cache.mjs && cargo test --manifest-path src-tauri/Cargo.toml",
     "tauri": "tauri",
+    "prune:rust": "node scripts/prune-rust-cache.mjs",
     "fetch:scrcpy": "node scripts/fetch-scrcpy.mjs",
     "version:bump": "node scripts/bump-version.mjs",
-    "build:win": "node scripts/bump-version.mjs && node scripts/build-windows.mjs",
+    "build:win": "node scripts/prune-rust-cache.mjs && node scripts/bump-version.mjs && node scripts/build-windows.mjs",
     "build:win:ci": "node scripts/build-windows.mjs"
   },
   "dependencies": {

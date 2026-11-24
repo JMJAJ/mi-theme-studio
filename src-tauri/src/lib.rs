@@ -25,11 +25,45 @@ pub mod validation;
 
 use state::AppState;
 use storage::AppPaths;
-use tauri::Manager;
+use std::sync::Mutex;
+use tauri::{Emitter, Manager};
+
+/// A theme package passed on the command line, e.g. by double-clicking a .mtz
+/// file in Explorer. The UI takes it once it has finished starting up.
+static LAUNCH_PACKAGE: Mutex<Option<String>> = Mutex::new(None);
+
+/// First argument that names an existing .mtz/.zip file.
+fn package_arg<I: IntoIterator<Item = String>>(args: I) -> Option<String> {
+    args.into_iter().skip(1).find(|arg| {
+        let path = std::path::Path::new(arg);
+        let ext = path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase);
+        matches!(ext.as_deref(), Some("mtz") | Some("zip")) && path.is_file()
+    })
+}
+
+/// Returns the package the app was launched with, once.
+#[tauri::command]
+fn launch_package_take() -> Option<String> {
+    LAUNCH_PACKAGE.lock().ok()?.take()
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if let Ok(mut slot) = LAUNCH_PACKAGE.lock() {
+        *slot = package_arg(std::env::args());
+    }
     tauri::Builder::default()
+        // Opening another .mtz while the app runs hands it to the open window
+        // instead of starting a second copy.
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+            if let Some(path) = package_arg(args) {
+                let _ = app.emit("open-package", path);
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -54,6 +88,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            launch_package_take,
             commands::app_info,
             commands::inventory_list,
             commands::inventory_save,

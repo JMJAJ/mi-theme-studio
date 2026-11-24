@@ -95,6 +95,7 @@ export interface FieldUpdate {
 
 export const api = {
   appInfo: () => call<AppInfo>('app_info'),
+  launchPackageTake: () => call<string | null>('launch_package_take'),
   settingsUpdate: (patch: Partial<Omit<Settings, 'recent'>>) => call<Settings>('settings_update', { patch }),
   recentRemove: (path: string) => call<Settings>('recent_remove', { path }),
 

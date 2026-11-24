@@ -33,9 +33,19 @@ png = "0.17"
 regex = { version = "1", default-features = false, features = ["std", "unicode-perl", "unicode-case"] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tauri-plugin-single-instance = "2"
 
 [dev-dependencies]
 tempfile = "3"
+
+# Dev/test builds keep line numbers for this crate only. Full debug info for every
+# dependency (tauri, webview2, zip, ...) is what made target/debug grow by tens of GB:
+# each test binary and each feature/flag variant carried its own copy.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
 
 # Local installer builds favour build time: parallel codegen, no cross-crate LTO and an
 # incremental cache, so a rebuild after a version bump takes seconds, not minutes.

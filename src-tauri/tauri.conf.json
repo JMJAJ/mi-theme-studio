@@ -45,6 +45,14 @@
     "shortDescription": "MIUI/HyperOS theme package studio",
     "longDescription": "A local desktop studio for creating, inspecting, previewing and packaging MIUI/HyperOS .mtz theme packages.",
     "category": "DeveloperTool",
+    "fileAssociations": [
+      {
+        "ext": ["mtz"],
+        "name": "MIUI Theme Package",
+        "description": "MIUI/HyperOS theme package",
+        "role": "Editor"
+      }
+    ],
     "copyright": "Copyright (c) 2026 JMJAJ. PolyForm Noncommercial License 1.0.0",
     "icon": [
       "icons/32x32.png",

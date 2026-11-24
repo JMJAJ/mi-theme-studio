@@ -13,6 +13,9 @@ import {
   type DesignerUploadProgress,
 } from '../lib/api';
 import type { ProjectSnapshot } from '../lib/types';
+import { save as saveDialog } from '@tauri-apps/plugin-dialog';
+import { revealItemInDir } from '@tauri-apps/plugin-opener';
+import { formatBytes, plural } from '../lib/format';
 import { goTo } from './actions';
 import { toast, useStore } from './store';
 
@@ -302,20 +305,58 @@ export function detailProblems(s: Pick<PublishState, 'form' | 'tags'> & { update
 }
 
 /** Saves a copy of the proof ZIP where the user wants it. */
-export async function buildProofCopy(output: string) {
+/**
+ * Exports the proof-of-copyright ZIP to a place the user picks. Works without signing in
+ * and outside the publish flow; a publish in progress for this project lends its choices
+ * (added files, third-party notes, artwork), otherwise the theme's details are used.
+ */
+export async function exportProof() {
+  const project = useStore.getState().project;
+  if (!project) return;
   const s = get();
+  const sameProject = s.projectId === projectId(project);
+  let title = sameProject ? s.form.productName.trim() : '';
+  let designer = sameProject ? s.form.designerName.trim() : '';
+  if (!title || !designer) {
+    try {
+      const info = await api.designerProofInfo();
+      title ||= info.title.trim();
+      designer ||= (info.designer || info.author).trim();
+    } catch {
+      // Fall back to the project name below.
+    }
+  }
+  title ||= project.title.trim() || project.name.replace(/\.(mtz|zip)$/i, '');
+  designer ||= useStore.getState().designer?.nickname?.trim() ?? '';
+  if (!designer) {
+    toast('warning', 'Add a designer name in the theme details first; the copyright declaration is made in that name.', undefined, [
+      { label: 'Theme details', run: () => goTo('design', 'info') },
+    ]);
+    return;
+  }
+  const output = await saveDialog({
+    title: 'Export proof of copyright',
+    defaultPath: `${title.replace(/[\\/:*?"<>|]/g, '').trim() || 'theme'} - proof of copyright.zip`,
+    filters: [{ name: 'ZIP archive', extensions: ['zip'] }],
+  });
+  if (!output) return;
+  useStore.setState({ busy: 'Building proof of copyright…' });
   try {
     const result = await api.designerProofBuild({
       output,
-      title: s.form.productName,
-      designer: s.form.designerName,
-      includeArtwork: s.includeArtwork,
-      extraFiles: s.extraFiles,
-      sources: s.sources,
+      title,
+      designer,
+      includeArtwork: sameProject ? s.includeArtwork : true,
+      extraFiles: sameProject ? s.extraFiles : [],
+      sources: sameProject ? s.sources : '',
     });
-    toast('success', `Saved ${result.path}`);
+    toast('success', `Proof of copyright exported: ${plural(result.files, 'file')}, ${formatBytes(result.bytes)}.`, result.path, [
+      { label: 'Show in folder', run: () => void revealItemInDir(result.path) },
+    ]);
   } catch (e) {
-    toast('error', `Proof of copyright: ${errorMessage(e)}`);
+    toast('error', `Export proof of copyright: ${errorMessage(e)}`);
+  } finally {
+    useStore.setState({ busy: null });
   }
 }
 

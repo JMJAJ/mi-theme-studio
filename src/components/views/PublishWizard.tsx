@@ -1,7 +1,7 @@
 // Publish to Xiaomi Themes, one step at a time. Details come from the theme, the proof of
 // copyright is put together automatically, and Submit does every upload in one go.
 import { useEffect, useState } from 'react';
-import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
+import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
   AlertTriangle,
@@ -26,7 +26,7 @@ import { useStore } from '../../state/store';
 import {
   PUBLISH_STEPS,
   TASKS,
-  buildProofCopy,
+  exportProof,
   cancelPublishing,
   detailProblems,
   loadTags,
@@ -342,7 +342,6 @@ function ProofStep() {
   const includeArtwork = usePublish((s) => s.includeArtwork);
   const extraFiles = usePublish((s) => s.extraFiles);
   const sources = usePublish((s) => s.sources);
-  const form = usePublish((s) => s.form);
   useEffect(() => void refreshProofInfo(), []);
   const hasPsd = extraFiles.some((f) => /\.(psd|psb|ai|kra|procreate|afdesign|fig|sketch|xd)$/i.test(f));
 
@@ -420,19 +419,10 @@ function ProofStep() {
       </div>
 
       <div className="row">
-        <button
-          className="btn btn-sm"
-          onClick={async () => {
-            const output = await saveDialog({
-              defaultPath: `${form.productName.replace(/[\\/:*?"<>|]/g, '').trim() || 'theme'} - proof of copyright.zip`,
-              filters: [{ name: 'ZIP archive', extensions: ['zip'] }],
-            });
-            if (output) void buildProofCopy(output);
-          }}
-        >
-          <FileArchive /> Save a copy of the ZIP…
+        <button className="btn btn-sm" onClick={() => void exportProof()}>
+          <FileArchive /> Export the ZIP…
         </button>
-        <span className="field-hint">Optional, to check what will be sent.</span>
+        <span className="field-hint">Optional: keep a copy, or check what will be sent.</span>
       </div>
 
       <StepNav back="details" next={() => setStep('submit')} />

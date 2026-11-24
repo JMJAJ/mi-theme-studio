@@ -3,6 +3,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Archive,
+  FileArchive,
   LogIn,
   LogOut,
   BookOpen,
@@ -42,7 +43,7 @@ import {
   ZoomOut,
 } from 'lucide-react';
 import * as A from './actions';
-import { signIn as signInToDesigner, signOut as signOutOfDesigner, startPublishing } from './publish';
+import { exportProof, signIn as signInToDesigner, signOut as signOutOfDesigner, startPublishing } from './publish';
 import { openGuide } from './guide';
 import { DEFAULT_LAYOUT, getState, setState, updateLayout, type StoreState } from './store';
 import { parentOf } from '../lib/paths';
@@ -150,6 +151,7 @@ export const COMMANDS: Command[] = [
   { id: 'project.newComponent', group: 'Project', label: 'New component archive…', icon: Archive, enabled: hasProject, run: () => A.createContainer() },
   { id: 'project.validate', group: 'Project', label: 'Validate package', shortcut: 'Ctrl+Shift+B', icon: ListChecks, enabled: hasProject, run: () => { void A.runValidation(false); updateLayout({ dock: true }); setState({ dockTab: 'problems' }); }, global: true },
   { id: 'project.build', group: 'Project', label: 'Build & export', icon: FileDown, enabled: hasProject, run: () => A.openSingleton('build') },
+  { id: 'project.exportProof', group: 'Project', label: 'Export proof of copyright…', icon: FileArchive, enabled: hasProject, run: () => void exportProof() },
   { id: 'project.publish', group: 'Project', label: 'Publish to Xiaomi Themes…', icon: Send, enabled: hasProject, run: () => startPublishing() },
   { id: 'account.signIn', group: 'Account', label: 'Sign in to Xiaomi Theme Design Station', icon: LogIn, enabled: (s) => !s.designer?.signedIn, run: () => void signInToDesigner() },
   { id: 'account.signOut', group: 'Account', label: 'Sign out of Xiaomi Theme Design Station', icon: LogOut, enabled: (s) => !!s.designer?.signedIn, run: () => void signOutOfDesigner() },
@@ -201,7 +203,7 @@ export type MenuEntry = string | '-' | { heading: string };
 
 /** Menu bar layout (command ids; '-' is a separator). */
 export const MENUS: { label: string; items: MenuEntry[] }[] = [
-  { label: 'File', items: ['file.new', 'file.open', 'file.openPhone', 'file.openDownloaded', 'recent', '-', 'file.save', 'file.saveAs', 'file.exportCopy', 'file.report', '-', 'file.openReference', '-', 'file.close'] },
+  { label: 'File', items: ['file.new', 'file.open', 'file.openPhone', 'file.openDownloaded', 'recent', '-', 'file.save', 'file.saveAs', 'file.exportCopy', 'project.exportProof', 'file.report', '-', 'file.openReference', '-', 'file.close'] },
   { label: 'Edit', items: ['edit.undo', 'edit.redo', '-', 'edit.rename', 'edit.duplicate', 'edit.move', 'edit.delete', '-', 'edit.findInFiles', 'edit.goToFile', 'edit.palette'] },
   { label: 'Go', items: ['go.design', 'go.files', 'go.store', 'go.phone', 'go.check', 'go.library', 'go.guide'] },
   { label: 'View', items: ['view.phone', 'view.sidebar', 'view.inspector', 'view.dock', '-', 'view.problems', 'view.output', 'view.adbLog', 'view.history', '-', 'view.zoomIn', 'view.zoomOut', 'view.zoomReset', '-', 'view.resetLayout'] },

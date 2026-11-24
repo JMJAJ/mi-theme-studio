@@ -9,7 +9,7 @@ import { ProblemList } from './ProblemList';
 import { ExportChecklist } from './ExportChecklist';
 import { PublishWizard } from './PublishWizard';
 import { PublishedThemes } from './PublishedThemes';
-import { projectId, startPublishing, usePublish } from '../../state/publish';
+import { exportProof, projectId, startPublishing, usePublish } from '../../state/publish';
 
 export function BuildView() {
   const project = useStore((s) => s.project);
@@ -46,13 +46,14 @@ export function BuildView() {
             </button>
             <button
               className="btn btn-icon"
-              title="More: save as, save report"
+              title="More: save as, save report, export proof of copyright"
               aria-label="More actions"
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
                 openContextMenu({ clientX: rect.left, clientY: rect.bottom + 4, preventDefault: () => e.preventDefault() }, [
                   { label: 'Save as…', shortcut: 'Ctrl+Shift+S', onSelect: () => runCommand('file.saveAs') },
                   { label: 'Save package report…', onSelect: () => void A.saveReport() },
+                  { label: 'Export proof of copyright…', onSelect: () => void exportProof() },
                 ]);
               }}
             >

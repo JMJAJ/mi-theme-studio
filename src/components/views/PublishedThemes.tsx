@@ -222,7 +222,7 @@ function ProductRow({ row, mine, open, onToggle }: { row: DesignerProductRow; mi
             <button className="btn btn-sm btn-primary" disabled={!project || !updatable || running} title={updateTitle} onClick={() => void publishUpdate()}>
               <Send /> Publish new version…
             </button>
-            <button className="btn btn-sm" onClick={() => void openUrl(`${STATION}/detail/${row.productId}`)}>
+            <button className="btn btn-sm" onClick={() => void openUrl(`${STATION}/detail/${row.productId}/?productType=THEME`)}>
               <ExternalLink /> Open on Design Station
             </button>
           </div>

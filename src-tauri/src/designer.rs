@@ -10,6 +10,10 @@
 //!    `fileId`/`filename` pair the submission names as `copyrightLocator`/`copyrightFilename`.
 //! 4. `POST /v3/designers/audits/submit-mtz` (JSON) submits the audit for review.
 //!
+//! A theme already on the station takes `update-mtz` in step 1 (plus `productId`). Its
+//! submission carries a `changeLog` only once the theme has been live (`productStatus` set);
+//! one rejected before going live is simply resubmitted, as the website's Update dialog does.
+//!
 //! Sign-in runs Xiaomi's own Mi account page (`/v1/login` → `loginUrl` on account.xiaomi.com,
 //! password via `serviceLoginAuth2`, then the e-mailed/texted code via `identity/verifyEmail`)
 //! in a separate webview window, so the app never sees the password. When the window comes

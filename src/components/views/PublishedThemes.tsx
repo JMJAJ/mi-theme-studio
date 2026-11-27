@@ -6,7 +6,7 @@ import { ChevronDown, ChevronRight, CircleUserRound, Download, ExternalLink, Loa
 import { api, errorMessage, type DesignerProductDetail, type DesignerProductRow, type DesignerVersionRow } from '../../lib/api';
 import { formatBytes } from '../../lib/format';
 import { useStore } from '../../state/store';
-import { canUpdate, refreshPublished, reviewState, signIn, startPublishing, usePublish, usePublished } from '../../state/publish';
+import { canUpdate, refreshPublished, refusalReasons, reviewState, signIn, startPublishing, usePublish, usePublished } from '../../state/publish';
 
 const STATION = 'https://zhuti.designer.intl.xiaomi.com';
 const SYSTEMS: Record<string, string> = { V12: 'MIUI 12', V15: 'Xiaomi HyperOS', V17: 'Xiaomi HyperOS 3' };
@@ -26,15 +26,6 @@ function pick(row: Record<string, unknown>, keys: string[]): string {
     if (typeof v === 'number') return String(v);
   }
   return '';
-}
-
-/** Rejection reasons come as an object of messages (empty when there are none). */
-function reasons(value: unknown): string[] {
-  if (!value) return [];
-  if (typeof value === 'string') return value.trim() ? [value] : [];
-  if (Array.isArray(value)) return value.flatMap(reasons);
-  if (typeof value === 'object') return Object.values(value as Record<string, unknown>).flatMap(reasons);
-  return [];
 }
 
 export function PublishedThemes() {
@@ -135,9 +126,11 @@ function ProductRow({ row, mine, open, onToggle }: { row: DesignerProductRow; mi
     ? 'Open the theme project first'
     : !updatable
       ? 'Xiaomi accepts a new version once the current review is finished'
-      : `Upload the open project as a new version of ${row.productName}`;
+      : row.productStatus
+        ? `Upload the open project as a new version of ${row.productName}`
+        : `Fix what the review asked for and send ${row.productName} again`;
 
-  const why = reasons(detail?.refusalReason);
+  const why = refusalReasons(detail?.refusalReason);
   const changeLog = detail?.changeLogList ?? [];
   const pack = detail?.originalThemePack;
 
@@ -220,7 +213,7 @@ function ProductRow({ row, mine, open, onToggle }: { row: DesignerProductRow; mi
 
           <div className="row published-actions">
             <button className="btn btn-sm btn-primary" disabled={!project || !updatable || running} title={updateTitle} onClick={() => void publishUpdate()}>
-              <Send /> Publish new version…
+              <Send /> {row.productStatus ? 'Publish new version…' : 'Resubmit…'}
             </button>
             <button className="btn btn-sm" onClick={() => void openUrl(`${STATION}/detail/${row.productId}/?productType=THEME`)}>
               <ExternalLink /> Open on Design Station

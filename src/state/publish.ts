@@ -44,7 +44,7 @@ export interface PublishForm {
   authorName: string;
   description: string;
   talkToUs: string;
-  /** What changed; only for a new version of a published theme. */
+  /** What changed; only for a new version of a theme that has been live. */
   changeLog: string;
 }
 
@@ -54,6 +54,12 @@ export interface UpdateTarget {
   productName: string;
   /** Version currently on the station. */
   versionName: string;
+  /** Has been in the store. A theme rejected before it ever went live is resubmitted: the
+   *  station then asks for no change log and no newer version (`changeLog.show` needs a
+   *  `productStatus` in its update form). */
+  live: boolean;
+  /** Why the last review was rejected, when it was. */
+  refusal: string[];
 }
 
 interface PublishState {
@@ -213,7 +219,13 @@ export function startPublishing(update?: DesignerProductDetail) {
   if (!project) return;
   const id = projectId(project);
   const target: UpdateTarget | null = update
-    ? { productId: update.productId, productName: update.productName, versionName: update.versionName ?? '' }
+    ? {
+        productId: update.productId,
+        productName: update.productName,
+        versionName: update.versionName ?? '',
+        live: !!update.productStatus,
+        refusal: update.auditState === 'REJECTED' ? refusalReasons(update.refusalReason) : [],
+      }
     : get().projectId === id ? get().updateOf : null;
   if (get().projectId !== id || get().updateOf?.productId !== target?.productId) {
     set({ ...initial(), projectId: id, updateOf: target });
@@ -309,7 +321,7 @@ export function detailProblems(s: Pick<PublishState, 'form' | 'tags'> & { update
   if (!f.designerName.trim() || !f.authorName.trim()) out.push('designer and author');
   if (!f.description.trim()) out.push('a description');
   if (!s.tags.length) out.push('at least one tag');
-  if (s.updateOf) {
+  if (s.updateOf?.live) {
     if (f.versionName.trim() && f.versionName.trim() === s.updateOf.versionName.trim()) out.push(`a version newer than ${s.updateOf.versionName}`);
     if (!f.changeLog.trim()) out.push('what changed in this version');
   }
@@ -505,11 +517,11 @@ export async function runPublish() {
       copyrightLocator: copyright.file.fileId,
       copyrightFilename: copyright.file.filename,
       gifUrl: s.gifUrl,
-      changeLog: s.updateOf ? s.form.changeLog : null,
+      changeLog: s.updateOf?.live ? s.form.changeLog : null,
     });
     mark('submit', 'done');
     set({ step: 'done' });
-    toast('success', s.updateOf ? `Version ${s.form.versionName} submitted for review.` : 'Submitted to Xiaomi Themes for review.');
+    toast('success', s.updateOf?.live ? `Version ${s.form.versionName} submitted for review.` : 'Submitted to Xiaomi Themes for review.');
     void refreshPublished();
   } catch (e) {
     mark(current, 'error');
@@ -565,6 +577,15 @@ export function reviewState(row: Pick<DesignerProductRow, 'auditState' | 'produc
   if (p === 'OFFLINE') return { label: 'Taken down', tone: 'grey', hint: 'No longer in the store.' };
   if (p === 'HIDDEN') return { label: 'Hidden', tone: 'grey', hint: 'Not listed in the store.' };
   return { label: p || 'Unknown', tone: 'grey', hint: '' };
+}
+
+/** Rejection reasons come as an object of messages (empty when there are none). */
+export function refusalReasons(value: unknown): string[] {
+  if (!value) return [];
+  if (typeof value === 'string') return value.trim() ? [value.trim()] : [];
+  if (Array.isArray(value)) return value.flatMap(refusalReasons);
+  if (typeof value === 'object') return Object.values(value as Record<string, unknown>).flatMap(refusalReasons);
+  return [];
 }
 
 /** Whether the station accepts a new version now (same rules as its website). */

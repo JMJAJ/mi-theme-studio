@@ -40,11 +40,20 @@ describe('publish flow helpers', () => {
     expect(canUpdate({ productStatus: 'ONLINE' })).toBe(true);
   });
 
+  it('reads rejection reasons in any shape', async () => {
+    const { refusalReasons } = await import('./publish');
+    expect(refusalReasons(null)).toEqual([]);
+    expect(refusalReasons({ copyright: ' No proof. ', other: '' })).toEqual(['No proof.']);
+    expect(refusalReasons([['a'], { b: 'c' }])).toEqual(['a', 'c']);
+  });
+
   it('asks for a new version number and change log on updates', async () => {
     const { detailProblems } = await import('./publish');
     const form = { productName: 'Vagabond', versionName: '1.0', designerName: 'Jx', authorName: 'Jx', description: 'x', talkToUs: '', changeLog: '' };
-    const updateOf = { productId: 'p', productName: 'Vagabond', versionName: '1.0' };
+    const updateOf = { productId: 'p', productName: 'Vagabond', versionName: '1.0', live: true, refusal: [] };
     expect(detailProblems({ form, tags: ['Cool'], updateOf })).toEqual(['a version newer than 1.0', 'what changed in this version']);
     expect(detailProblems({ form: { ...form, versionName: '1.1', changeLog: 'New icons' }, tags: ['Cool'], updateOf })).toEqual([]);
+    // Rejected before it ever went live: resubmitted as it is, like the station's update form.
+    expect(detailProblems({ form, tags: ['Cool'], updateOf: { ...updateOf, live: false } })).toEqual([]);
   });
 });

@@ -68,9 +68,11 @@ export function PublishWizard() {
       <div className="view-pad publish-view">
         <div className="view-header">
           <div>
-            <h1>{updateOf ? `New version of ${updateOf.productName}` : 'Publish to Xiaomi Themes'}</h1>
+            <h1>{updateOf ? (updateOf.live ? `New version of ${updateOf.productName}` : `Resubmit ${updateOf.productName}`) : 'Publish to Xiaomi Themes'}</h1>
             <div className="sub">
-              {updateOf
+              {updateOf && !updateOf.live
+                ? `Uploads the open project in place of the rejected ${updateOf.productName} and sends it for review again.`
+                : updateOf
                 ? `Uploads the open project as an update to ${updateOf.productName}${updateOf.versionName ? ` (now ${updateOf.versionName})` : ''} and sends it for review.`
                 : 'Sends this theme to the Xiaomi Theme Design Station for review, the same way the website does.'}{' '}
               Your progress is kept if you leave this page.
@@ -203,7 +205,11 @@ function DetailsStep() {
     <>
       <h2>Store details</h2>
       <p className="muted publish-lead">
-        {updateOf ? `Taken from ${updateOf.productName} on the store; give it a new version number and say what changed.` : 'Filled in from the theme’s details. This is what people see in the Themes app.'}
+        {updateOf?.live
+          ? `Taken from ${updateOf.productName} on the store; give it a new version number and say what changed.`
+          : updateOf
+          ? `Taken from ${updateOf.productName} on the station. It has not been live yet, so the version can stay as it is and no change log is needed.`
+          : 'Filled in from the theme’s details. This is what people see in the Themes app.'}
       </p>
       {existing && (
         <div className="publish-callout is-warn">
@@ -228,7 +234,8 @@ function DetailsStep() {
           )}
         </div>
       )}
-      {updateOf && (
+      {updateOf && updateOf.refusal.length > 0 && <Refusal reasons={updateOf.refusal} />}
+      {updateOf?.live && (
         <div className="field">
           <label>What’s new in this version</label>
           <textarea className="textarea" rows={3} {...field('changeLog')} maxLength={1000} placeholder="New icons for…, fixed the clock on…" />
@@ -243,7 +250,7 @@ function DetailsStep() {
         <div className="field">
           <label>Version</label>
           <input className="input" {...field('versionName')} />
-          {updateOf?.versionName && <span className="field-hint">On the store: {updateOf.versionName}</span>}
+          {updateOf?.versionName && <span className="field-hint">{updateOf.live ? 'On the store' : 'Rejected'}: {updateOf.versionName}</span>}
         </div>
         <div className="field">
           <label>Designer</label>
@@ -349,6 +356,7 @@ function ProofStep() {
   const excludedExtra = usePublish((s) => s.excludedExtra);
   const sources = usePublish((s) => s.sources);
   const ownProof = usePublish((s) => s.ownProof);
+  const updateOf = usePublish((s) => s.updateOf);
   useEffect(() => void refreshProofInfo(), []);
   const chosen = ticked({ extraEntries, excludedExtra });
   const hasPsd = chosen.some((e) => /\.(psd|psb|ai|kra|procreate|afdesign|fig|sketch|xd)$/i.test(e.path));
@@ -408,6 +416,20 @@ function ProofStep() {
           : 'Xiaomi asks for one ZIP that shows the theme is yours. The app builds it for you when you submit: a signed copyright declaration, a list of third-party material, a checksum manifest, and the files you tick below.'}
       </p>
 
+      {updateOf && updateOf.refusal.length > 0 && <Refusal reasons={updateOf.refusal} />}
+      {updateOf && updateOf.refusal.some((r) => /copyright|original|proof/i.test(r)) && chosen.length === 0 && (
+        <div className="publish-callout is-warn">
+          <AlertTriangle />
+          <div>
+            The last review was rejected over the proof of copyright, and the theme’s own images alone did not convince it. Add evidence that only
+            the author has: layered source files (PSD and similar), screenshots of the design layers in your editor, sketches or work-in-progress
+            exports, and licences for anything you did not make.{' '}
+            <a href="#" onClick={(e) => { e.preventDefault(); void openUrl('https://zhuti.designer.intl.xiaomi.com/docs/proof-of-copyright-example'); }}>
+              Xiaomi’s examples
+            </a>
+          </div>
+        </div>
+      )}
       {!ownProof && info && info.attributions.length > 0 && <Disclosure attributions={info.attributions} />}
       {ownProof && info && info.attributions.length > 0 && (
         <div className="publish-callout is-warn">
@@ -526,9 +548,9 @@ function SubmitStep() {
     <>
       <h2>Submit</h2>
       <div className="publish-summary">
-        <div><span className="muted">{s.updateOf ? 'New version' : 'Theme'}</span>{s.form.productName} {s.form.versionName}{s.updateOf?.versionName ? ` (was ${s.updateOf.versionName})` : ''}</div>
-        {s.updateOf && <div><span className="muted">What’s new</span>{s.form.changeLog}</div>}
-        <div><span className="muted">Works on</span>{s.miuiVersion === 'V17' ? 'Xiaomi HyperOS 3' : 'Xiaomi HyperOS'}</div>
+        <div><span className="muted">{s.updateOf?.live ? 'New version' : s.updateOf ? 'Resubmitting' : 'Theme'}</span>{s.form.productName} {s.form.versionName}{s.updateOf?.live && s.updateOf.versionName ? ` (was ${s.updateOf.versionName})` : ''}</div>
+        {s.updateOf?.live && <div><span className="muted">What’s new</span>{s.form.changeLog}</div>}
+        <div><span className="muted">Works on</span>{s.miuiVersion === 'V17' ? 'Xiaomi HyperOS 3' : s.miuiVersion === 'V12' ? 'MIUI 12' : 'Xiaomi HyperOS'}</div>
         <div><span className="muted">Designer</span>{s.form.designerName}{s.form.authorName !== s.form.designerName ? ` · author ${s.form.authorName}` : ''}</div>
         <div><span className="muted">Tags</span>{s.tags.join(', ')}</div>
         <div><span className="muted">Preview video</span>{s.gifUrl ? 'Added' : 'None'}</div>
@@ -585,6 +607,19 @@ function DoneStep() {
       <div className="row">
         <button className="btn" onClick={() => void openUrl(STATION)}><ExternalLink /> Open Design Station</button>
         <button className="btn btn-primary" onClick={cancelPublishing}>Done</button>
+      </div>
+    </div>
+  );
+}
+
+/** Why the station rejected the last review, quoted as it gave it. */
+function Refusal({ reasons }: { reasons: string[] }) {
+  return (
+    <div className="publish-callout is-err">
+      <CircleX />
+      <div>
+        <b>Why the last review was rejected</b>
+        {reasons.map((r, i) => <div key={i}>{r}</div>)}
       </div>
     </div>
   );

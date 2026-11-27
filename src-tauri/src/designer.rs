@@ -917,6 +917,16 @@ pub struct ProofRequest {
     /// extra files is used as it is; otherwise the files are zipped as they are.
     #[serde(default)]
     pub own_files: bool,
+    /// The layered working files behind the artwork: `included` (default), `missing`
+    /// (deleted or lost, so this archive has none) or `none` (none were made).
+    #[serde(default)]
+    pub working_files: String,
+    /// Parts made with generative AI: the tools, what was generated and how it was directed.
+    #[serde(default)]
+    pub ai_text: String,
+    /// How the theme was made, in the designer's words: tools, order of work, what is in source/.
+    #[serde(default)]
+    pub process: String,
 }
 
 #[derive(Serialize)]
@@ -1028,51 +1038,160 @@ fn unique_name(used: &mut std::collections::HashSet<String>, folder: &str, name:
     candidate
 }
 
-fn declaration(req: &ProofRequest, version: &str, stamp: &str, attributions: &[ProofAttribution], has_sources: bool) -> String {
+/// How the layered working files behind the artwork are handled in the proof.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WorkingFiles {
+    /// In `source/` (the default).
+    Included,
+    /// Deleted or lost: the archive cannot contain them, and says so.
+    Missing,
+    /// None were ever made.
+    None,
+}
+
+impl WorkingFiles {
+    fn parse(value: &str) -> Self {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "missing" | "deleted" | "lost" | "unavailable" => Self::Missing,
+            "none" => Self::None,
+            _ => Self::Included,
+        }
+    }
+
+    fn sentence(self, in_archive: bool) -> &'static str {
+        // What the archive holds wins over what the designer meant to add.
+        if in_archive {
+            return "The layered working files are included in source/.";
+        }
+        match self {
+            Self::Missing => {
+                "The layered working files are no longer available: they were deleted or lost, so this archive contains none."
+            }
+            Self::None => "No layered working files were made for this theme.",
+            Self::Included => "No layered working files are included in this archive.",
+        }
+    }
+}
+
+/// Plain text from the UI, with the line endings the rest of the archive uses.
+fn crlf(text: &str) -> String {
+    text.trim().replace("\r\n", "\n").replace('\n', "\r\n")
+}
+
+fn declaration(
+    req: &ProofRequest,
+    version: &str,
+    stamp: &str,
+    attributions: &[ProofAttribution],
+    third_party: bool,
+    source_files: bool,
+) -> String {
+    let designer = req.designer.trim();
+    let title = req.title.trim();
+    let ai = req.ai_text.trim();
+    let working = WorkingFiles::parse(&req.working_files);
+    let taken: usize = attributions.iter().map(|a| a.files).sum();
+    // Whether the declaration has to be scoped: anything in it the designer did not make.
+    let disclosed = taken > 0 || !ai.is_empty() || third_party;
+
     let mut out = String::new();
     out.push_str("PROOF OF COPYRIGHT\r\n==================\r\n\r\n");
-    out.push_str(&format!("Theme:     {}\r\n", req.title.trim()));
+    out.push_str(&format!("Theme:     {title}\r\n"));
     if !version.is_empty() {
         out.push_str(&format!("Version:   {version}\r\n"));
     }
-    out.push_str(&format!("Designer:  {}\r\n", req.designer.trim()));
+    out.push_str(&format!("Designer:  {designer}\r\n"));
     out.push_str(&format!("Prepared:  {stamp} UTC\r\n\r\n"));
-    if attributions.is_empty() {
+    out.push_str("Declaration\r\n-----------\r\n");
+    if disclosed {
         out.push_str(&format!(
-            "I, {}, declare that I am the author of the theme \"{}\" submitted to the Xiaomi Theme Design Station, \
-             or that I hold the rights needed to publish every part of it. Materials I did not create are listed in \
-             SOURCES.txt together with where they come from and the permission to use them commercially.\r\n\r\n",
-            req.designer.trim(),
-            req.title.trim()
+            "I, {designer}, declare that I am the author of the theme \"{title}\" submitted to the Xiaomi Theme \
+             Design Station. The parts I did not create myself are set out below, with where they come from and \
+             any permission to use them.\r\n\r\n"
         ));
     } else {
-        let taken: usize = attributions.iter().map(|a| a.files).sum();
         out.push_str(&format!(
-            "I, {}, declare that I am the author of the theme \"{}\" submitted to the Xiaomi Theme Design Station, \
-             except for {taken} file(s) taken from other themes, which are disclosed in full in SOURCES.txt (source, author \
-             and every affected file). Any other material I did not create is listed there as well, with where it comes \
-             from and the permission to use it commercially.\r\n\r\n",
-            req.designer.trim(),
-            req.title.trim()
+            "I, {designer}, declare that I am the author of the theme \"{title}\" submitted to the Xiaomi Theme \
+             Design Station, that I created every part of it myself, and that no part of it was generated with AI \
+             or taken from another theme.\r\n\r\n"
         ));
     }
+    if !req.process.trim().is_empty() {
+        out.push_str("How the theme was made\r\n----------------------\r\n");
+        out.push_str(&crlf(&req.process));
+        out.push_str("\r\n\r\n");
+    }
+    if !ai.is_empty() {
+        out.push_str("Generative AI\r\n-------------\r\n");
+        out.push_str(&crlf(ai));
+        out.push_str(
+            "\r\n\r\nI directed the generation, chose and edited the results, and built the theme around them. \
+             AI-generated material may not be protected by copyright in every country.\r\n\r\n",
+        );
+    }
+    if taken > 0 {
+        out.push_str("Material from other themes\r\n--------------------------\r\n");
+        out.push_str(&format!(
+            "{taken} file(s) of this theme come from other themes. They were found by comparing file contents; \
+             every source and affected file is listed in SOURCES.txt:\r\n"
+        ));
+        for a in attributions {
+            out.push_str(&format!("  {}\r\n", credit(a)));
+        }
+        out.push_str("\r\n");
+    }
+    if third_party {
+        out.push_str("Third-party and free-licensed material\r\n--------------------------------------\r\n");
+        out.push_str("Listed in SOURCES.txt with its source and the permission to use it commercially.\r\n\r\n");
+    }
+    out.push_str("Working files\r\n-------------\r\n");
+    out.push_str(working.sentence(source_files));
+    out.push_str("\r\n\r\n");
     out.push_str("Contents\r\n--------\r\n");
     out.push_str("  source/      Original working files (layered PSD and similar).\r\n");
     out.push_str("  artwork/     Every image in the theme package at full resolution, at its path in the package.\r\n");
     out.push_str("  documents/   Licences, authorisation forms, consent forms and other documents.\r\n");
     out.push_str("  supporting/  Other evidence (sketches, work-in-progress exports, photos).\r\n");
-    out.push_str("  SOURCES.txt  Third-party and free-licensed material.\r\n");
-    out.push_str("  MANIFEST.txt Size and SHA-1 of every file in this archive.\r\n\r\n");
-    if !attributions.is_empty() || !has_sources {
-        out.push_str("Notes\r\n-----\r\n");
-        if !attributions.is_empty() {
-            out.push_str("  Material from other themes was detected automatically by Mi Theme Studio, by comparing file\r\n  contents, and is disclosed in SOURCES.txt:\r\n");
-            for a in attributions {
-                out.push_str(&format!("    - {} ({} file{})\r\n", credit(a), a.files, if a.files == 1 { "" } else { "s" }));
+    out.push_str("  SOURCES.txt  Third-party, AI-generated and free-licensed material.\r\n");
+    out.push_str("  MANIFEST.txt Size and SHA-1 of every file in this archive.\r\n");
+    out
+}
+
+/// `SOURCES.txt`: everything the designer declared, plus the material found automatically.
+fn sources_list(req: &ProofRequest, attributions: &[ProofAttribution]) -> String {
+    let ai = req.ai_text.trim();
+    let declared = req.sources.trim();
+    let title = "THIRD-PARTY, AI-GENERATED AND FREE-LICENSED MATERIAL";
+    let mut out = format!("{title}\r\n{}\r\n\r\n", "=".repeat(title.len()));
+    if declared.is_empty() && ai.is_empty() && attributions.is_empty() {
+        out.push_str("None. Every element of this theme was created by the designer.\r\n");
+        return out;
+    }
+    if !declared.is_empty() {
+        out.push_str(&crlf(declared));
+        out.push_str("\r\n\r\n");
+    }
+    if !ai.is_empty() {
+        out.push_str("GENERATIVE AI\r\n-------------\r\n");
+        out.push_str(&crlf(ai));
+        out.push_str(
+            "\r\n\r\nProduced with generative AI under the designer's direction, then selected and edited by the \
+             designer. AI-generated material may not be protected by copyright in every country.\r\n\r\n",
+        );
+    }
+    if !attributions.is_empty() {
+        out.push_str("MATERIAL FROM OTHER THEMES\r\n--------------------------\r\n");
+        out.push_str("Detected automatically by Mi Theme Studio by comparing file contents with the themes it was\r\ntaken from. Every affected file of this theme is listed at its path in the package.\r\n\r\n");
+        for a in attributions {
+            out.push_str(&format!("{}\r\n", credit(a)));
+            if !a.origin.trim().is_empty() {
+                out.push_str(&format!("  Taken from: {}\r\n", a.origin.trim()));
             }
-        }
-        if !has_sources {
-            out.push_str("  No third-party material is declared.\r\n");
+            out.push_str(&format!("  Files ({}):\r\n", a.files));
+            for path in &a.paths {
+                out.push_str(&format!("    {path}\r\n"));
+            }
+            out.push_str("\r\n");
         }
     }
     out
@@ -1204,31 +1323,17 @@ pub async fn designer_proof_build(app: AppHandle, request: ProofRequest) -> AppR
             let s = crate::storage::utc_stamp(stamp_ms);
             format!("{}-{}-{} {}:{}:{}", &s[0..4], &s[4..6], &s[6..8], &s[9..11], &s[11..13], &s[13..15])
         };
-        let mut sources = String::from("THIRD-PARTY AND FREE-LICENSED MATERIAL\r\n======================================\r\n\r\n");
-        if req.sources.trim().is_empty() && attributions.is_empty() {
-            sources.push_str("None. Every element of this theme was created by the designer.\r\n");
-        } else {
-            if !req.sources.trim().is_empty() {
-                sources.push_str(&req.sources.trim().replace("\r\n", "\n").replace('\n', "\r\n"));
-                sources.push_str("\r\n\r\n");
-            }
-            if !attributions.is_empty() {
-                sources.push_str("MATERIAL FROM OTHER THEMES\r\n--------------------------\r\n");
-                sources.push_str("Detected automatically by Mi Theme Studio by comparing file contents with the themes it was\r\ntaken from. Every affected file of this theme is listed at its path in the package.\r\n\r\n");
-                for a in &attributions {
-                    sources.push_str(&format!("{}\r\n", credit(a)));
-                    if !a.origin.trim().is_empty() {
-                        sources.push_str(&format!("  Taken from: {}\r\n", a.origin.trim()));
-                    }
-                    sources.push_str(&format!("  Files ({}):\r\n", a.files));
-                    for path in &a.paths {
-                        sources.push_str(&format!("    {path}\r\n"));
-                    }
-                    sources.push_str("\r\n");
-                }
-            }
-        }
-        let readme = declaration(&req, &version, &stamp, &attributions, !req.sources.trim().is_empty() || !attributions.is_empty());
+        let sources = sources_list(&req, &attributions);
+        // The declaration states what the archive actually holds, not what was meant to be added.
+        let source_files = entries.iter().any(|(name, _, _)| name.starts_with("source/"));
+        let readme = declaration(
+            &req,
+            &version,
+            &stamp,
+            &attributions,
+            !req.sources.trim().is_empty(),
+            source_files,
+        );
         entries.insert(0, ("SOURCES.txt".into(), sources.into_bytes(), Compression::Deflated));
         entries.insert(0, ("README - Copyright declaration.txt".into(), readme.into_bytes(), Compression::Deflated));
 
@@ -1349,4 +1454,106 @@ mod tests {
         s.copyright_locator.clear();
         assert!(check_submission(&s).is_err());
     }
-}
+
+    fn proof_request() -> ProofRequest {
+        ProofRequest {
+            output: None,
+            designer: "Jx".into(),
+            title: "Vagabond".into(),
+            include_artwork: true,
+            exclude_artwork: Vec::new(),
+            extra_files: Vec::new(),
+            exclude_extra: Vec::new(),
+            sources: String::new(),
+            own_files: false,
+            working_files: String::new(),
+            ai_text: String::new(),
+            process: String::new(),
+        }
+    }
+
+    fn attribution(title: &str, paths: &[&str]) -> ProofAttribution {
+        ProofAttribution {
+            source_title: title.into(),
+            source_author: "Ann".into(),
+            origin: format!("Theme store · {title}"),
+            files: paths.len(),
+            paths: paths.iter().map(|p| p.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn declaration_is_scoped_to_what_the_designer_made() {
+        let stamp = "2026-11-27 12:00:00";
+        // Nothing disclosed: the plain authorship declaration.
+        let plain = declaration(&proof_request(), "1.0", stamp, &[], false, true);
+        assert!(plain.contains("that I created every part of it myself"));
+        assert!(plain.contains("The layered working files are included in source/."));
+        assert!(!plain.contains("Generative AI"));
+        assert!(!plain.contains("Material from other themes"));
+
+        // Included but nothing ticked: the declaration says what the archive holds.
+        let empty = declaration(&proof_request(), "1.0", stamp, &[], false, false);
+        assert!(empty.contains("No layered working files are included in this archive."));
+        assert!(!empty.contains("are included in source/"));
+
+        // Ticked sources win over the declared status: the archive is what matters.
+        let mut req = proof_request();
+        req.working_files = "missing".into();
+        let kept = declaration(&req, "1.0", stamp, &[], false, true);
+        assert!(kept.contains("The layered working files are included in source/."));
+        assert!(!kept.contains("no longer available"));
+
+        // AI-generated parts and working files that no longer exist are stated, not implied.
+        let mut req = proof_request();
+        req.ai_text = "Wallpaper: Midjourney v6 from my prompt, repainted in Photoshop.".into();
+        req.working_files = "missing".into();
+        let ai = declaration(&req, "1.0", stamp, &[], false, false);
+        assert!(ai.contains("The parts I did not create myself are set out below"));
+        assert!(ai.contains("Generative AI"));
+        assert!(ai.contains("Midjourney v6"));
+        assert!(ai.contains("no longer available"));
+        assert!(!ai.contains("created every part of it myself"));
+
+        // Material from other themes is counted, credited and pointed at SOURCES.txt.
+        let taken = [attribution("Sky", &["wallpaper/bg.jpg", "icons/a.png"])];
+        let mut req = proof_request();
+        req.working_files = "none".into();
+        let found = declaration(&req, "1.0", stamp, &taken, false, false);
+        assert!(found.contains("2 file(s) of this theme come from other themes"));
+        assert!(found.contains("\"Sky\" by Ann"));
+        assert!(found.contains("No layered working files were made for this theme."));
+
+        // The designer's process note is reproduced, and only when one is given.
+        let mut req = proof_request();
+        req.process = "Drew the landscape in Procreate; built the icon tiles in Figma.".into();
+        let made = declaration(&req, "1.0", stamp, &[], false, true);
+        assert!(made.contains("How the theme was made"));
+        assert!(made.contains("Drew the landscape in Procreate"));
+        assert!(!plain.contains("How the theme was made"));
+    }
+
+    #[test]
+    fn sources_list_names_ai_and_third_party_material() {
+        assert!(sources_list(&proof_request(), &[])
+            .contains("None. Every element of this theme was created by the designer."));
+
+        let mut req = proof_request();
+        req.sources = "Font: Inter, SIL Open Font License 1.1".into();
+        req.ai_text = "Icons generated with DALL·E, redrawn in Illustrator.".into();
+        let taken = [attribution("Sky", &["wallpaper/bg.jpg"])];
+        let list = sources_list(&req, &taken);
+        assert!(list.contains("SIL Open Font License 1.1"));
+        assert!(list.contains("GENERATIVE AI"));
+        assert!(list.contains("DALL"));
+        assert!(list.contains("MATERIAL FROM OTHER THEMES"));
+        assert!(list.contains("wallpaper/bg.jpg"));
+        assert!(list.contains("Taken from: Theme store · Sky"));
+        // Headings stay underlined (the rule is as long as the title above it).
+        for (title, rule) in list.lines().zip(list.lines().skip(1)) {
+            if !rule.is_empty() && rule.chars().all(|c| c == '=') {
+                assert_eq!(rule.chars().count(), title.chars().count(), "{title}");
+            }
+        }
+    }
+} 

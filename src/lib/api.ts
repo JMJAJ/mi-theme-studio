@@ -339,6 +339,9 @@ export interface DesignerProofInfo {
   /** Material from other themes, found by content; disclosed in the proof automatically. */
   attributions: { sourceTitle: string; sourceAuthor: string; origin: string; files: number; paths: string[] }[];
 }
+/** What the designer says about the layered working files behind the artwork. */
+export type ProofWorkingFiles = 'included' | 'missing' | 'none';
+
 export interface DesignerProofRequest {
   /** Defaults to the app's publish folder. */
   output?: string;
@@ -353,6 +356,12 @@ export interface DesignerProofRequest {
   excludeArtwork?: string[];
   /** Files inside picked folders that are left out (absolute paths). */
   excludeExtra?: string[];
+  /** Included (default), deleted or lost (`missing`), or never made (`none`). */
+  workingFiles?: ProofWorkingFiles;
+  /** Parts made with generative AI: tools, what was generated, how it was directed. */
+  aiText?: string;
+  /** How the theme was made: tools, order of work, what the working files are. */
+  process?: string;
 }
 /** A file the designer picked, or one found inside a folder they picked. */
 export interface DesignerProofEntry {

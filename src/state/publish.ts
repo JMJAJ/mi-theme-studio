@@ -12,6 +12,7 @@ import {
   type DesignerProductRow,
   type DesignerTagGroup,
   type DesignerUploadProgress,
+  type ProofWorkingFiles,
 } from '../lib/api';
 import type { ProjectSnapshot } from '../lib/types';
 import { save as saveDialog } from '@tauri-apps/plugin-dialog';
@@ -87,6 +88,12 @@ interface PublishState {
   /** Files unticked in the tree. */
   excludedExtra: string[];
   sources: string;
+  /** What the declaration says about the layered working files. */
+  workingFiles: ProofWorkingFiles;
+  /** Parts made with generative AI, disclosed to the reviewer as they are written. */
+  aiText: string;
+  /** How the theme was made, printed in the declaration above the working files. */
+  process: string;
   /** Uploads are reused while what they were made from is unchanged. */
   audit: { data: DesignerPackageAudit; key: string } | null;
   proof: { path: string; bytes: number; files: number; key: string } | null;
@@ -117,6 +124,9 @@ const initial = (): Omit<PublishState, 'signingIn' | 'tagGroups'> => ({
   extraEntries: [],
   excludedExtra: [],
   sources: '',
+  workingFiles: 'included',
+  aiText: '',
+  process: '',
   audit: null,
   proof: null,
   copyright: null,
@@ -145,9 +155,9 @@ function packageKey(): string {
   return hash(`${get().updateOf?.productId ?? ''}|${get().miuiVersion}|${project?.files.map((f) => `${f.path}:${f.rev}`).join('|') ?? ''}`);
 }
 
-function proofKey(): string {
+export function proofKey(): string {
   const s = get();
-  return hash(JSON.stringify([s.form.productName, s.form.designerName, s.ownProof, s.excludedArtwork, s.extraFiles, s.excludedExtra, s.sources, packageKey()]));
+  return hash(JSON.stringify([s.form.productName, s.form.designerName, s.ownProof, s.excludedArtwork, s.extraFiles, s.excludedExtra, s.sources, s.workingFiles, s.aiText, s.process, packageKey()]));
 }
 
 export const updateForm = (patch: Partial<PublishForm>) => set((s) => ({ form: { ...s.form, ...patch } }));
@@ -439,6 +449,9 @@ export async function exportProof() {
       designer,
       ...(sameProject ? proofSelection(s) : proofSelection({ excludedArtwork: [], extraFiles: [], excludedExtra: [] })),
       sources: sameProject ? s.sources : '',
+      workingFiles: sameProject ? s.workingFiles : 'included',
+      aiText: sameProject ? s.aiText : '',
+      process: sameProject ? s.process : '',
     });
     toast('success', `Proof of copyright exported: ${plural(result.files, 'file')}, ${formatBytes(result.bytes)}.`, result.path, [
       { label: 'Show in folder', run: () => void revealItemInDir(result.path) },
@@ -491,6 +504,9 @@ export async function runPublish() {
         designer: s.form.designerName,
         ...proofSelection(s),
         sources: s.sources,
+        workingFiles: s.workingFiles,
+        aiText: s.aiText,
+        process: s.process,
         ownFiles: s.ownProof,
       });
       proof = { ...result, key: prk };

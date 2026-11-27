@@ -355,6 +355,9 @@ function ProofStep() {
   const extraEntries = usePublish((s) => s.extraEntries);
   const excludedExtra = usePublish((s) => s.excludedExtra);
   const sources = usePublish((s) => s.sources);
+  const workingFiles = usePublish((s) => s.workingFiles);
+  const aiText = usePublish((s) => s.aiText);
+  const processNote = usePublish((s) => s.process);
   const ownProof = usePublish((s) => s.ownProof);
   const updateOf = usePublish((s) => s.updateOf);
   useEffect(() => void refreshProofInfo(), []);
@@ -413,7 +416,7 @@ function ProofStep() {
       <p className="muted publish-lead">
         {ownProof
           ? 'Xiaomi gets exactly what you tick below and nothing else: no declaration, no third-party list, no artwork. A single ZIP is sent as it is; anything else is zipped together as it is, folders included.'
-          : 'Xiaomi asks for one ZIP that shows the theme is yours. The app builds it for you when you submit: a signed copyright declaration, a list of third-party material, a checksum manifest, and the files you tick below.'}
+          : 'Xiaomi asks for one ZIP that shows the theme is yours. The app builds it for you when you submit: a copyright declaration that states how the theme was made, a list of third-party and AI-generated material, a checksum manifest, and the files you tick below.'}
       </p>
 
       {updateOf && updateOf.refusal.length > 0 && <Refusal reasons={updateOf.refusal} />}
@@ -442,6 +445,79 @@ function ProofStep() {
 
       {!ownProof && (
         <>
+          <div className="field">
+            <label className="field-label">The layered working files</label>
+            <div className="segmented" role="group" aria-label="Working files">
+              <button aria-pressed={workingFiles === 'included'} onClick={() => usePublish.setState({ workingFiles: 'included' })}>
+                Included above
+              </button>
+              <button aria-pressed={workingFiles === 'missing'} onClick={() => usePublish.setState({ workingFiles: 'missing' })}>
+                Deleted or lost
+              </button>
+              <button aria-pressed={workingFiles === 'none'} onClick={() => usePublish.setState({ workingFiles: 'none' })}>
+                Never made
+              </button>
+            </div>
+            <div className="field-hint">
+              The declaration says which of these is true, so a proof without sources states that plainly instead of leaving the
+              reviewer to guess.
+            </div>
+            {workingFiles === 'included' && !hasPsd && (
+              <div className="field-hint">
+                No layered source file is ticked, so the declaration will say this archive has none. Add PSDs under “Your files and
+                folders”, or switch to “Deleted or lost”.
+              </div>
+            )}
+          </div>
+
+          <div className="field">
+            <label>
+              Made with generative AI <span className="muted">· optional</span>
+            </label>
+            <textarea
+              className="textarea"
+              rows={3}
+              value={aiText}
+              onChange={(e) => usePublish.setState({ aiText: e.target.value })}
+              placeholder={'Wallpaper: Midjourney v6 from my prompt, repainted in Photoshop\nIcons: generated with DALL·E, then redrawn in Illustrator'}
+            />
+            <div className="field-hint">
+              Disclosed to the reviewer in the declaration and SOURCES.txt, with the tools and what they made. Leave it empty if no
+              AI was used.
+            </div>
+          </div>
+
+          <div className="field">
+            <label>
+              How the theme was made <span className="muted">· optional</span>
+            </label>
+            <textarea
+              className="textarea"
+              rows={3}
+              value={processNote}
+              onChange={(e) => usePublish.setState({ process: e.target.value })}
+              placeholder={'Drew the landscape in Procreate, built the icon tiles in Figma, exported the layered files to source/…'}
+            />
+            <div className="field-hint">
+              Printed in the declaration above the working files. Reviewers read this first, so say what you made, with what, and what
+              is in source/.
+            </div>
+          </div>
+
+          <div className="field">
+            <label>
+              Third-party or free-licensed material <span className="muted">· optional</span>
+            </label>
+            <textarea
+              className="textarea"
+              rows={3}
+              value={sources}
+              onChange={(e) => usePublish.setState({ sources: e.target.value })}
+              placeholder={'Background photo: Unsplash, https://unsplash.com/photos/…, Unsplash License (commercial use allowed)\nFont: Inter, SIL Open Font License 1.1'}
+            />
+            <div className="field-hint">Also list anything you took from another theme; material the app recognises is added automatically above.</div>
+          </div>
+
           <div className="field">
             <div className="row">
               <label className="field-label grow">The theme’s artwork at full resolution</label>
@@ -474,19 +550,6 @@ function ProofStep() {
       )}
 
       {files}
-
-      {!ownProof && (
-        <div className="field">
-          <label>Third-party or free-licensed material <span className="muted">· leave empty if you made everything</span></label>
-          <textarea
-            className="textarea"
-            rows={3}
-            value={sources}
-            onChange={(e) => usePublish.setState({ sources: e.target.value })}
-            placeholder={'Background photo: Unsplash, https://unsplash.com/photos/…, Unsplash License (commercial use allowed)\nFont: Inter, SIL Open Font License 1.1'}
-          />
-        </div>
-      )}
 
       <div className="row">
         <button className="btn btn-sm" onClick={() => void exportProof()}>
@@ -554,7 +617,7 @@ function SubmitStep() {
         <div><span className="muted">Designer</span>{s.form.designerName}{s.form.authorName !== s.form.designerName ? ` · author ${s.form.authorName}` : ''}</div>
         <div><span className="muted">Tags</span>{s.tags.join(', ')}</div>
         <div><span className="muted">Preview video</span>{s.gifUrl ? 'Added' : 'None'}</div>
-        <div><span className="muted">Proof</span>{s.ownProof ? `Your own: ${plural(ticked(s).length, 'file')}, sent as they are` : `Generated + ${plural(ticked(s).length, 'of your files')}${(s.proofInfo?.artwork.length ?? 0) - s.excludedArtwork.length > 0 ? ' + artwork' : ''}`}</div>
+        <div><span className="muted">Proof</span>{s.ownProof ? `Your own: ${plural(ticked(s).length, 'file')}, sent as they are` : `Generated + ${plural(ticked(s).length, 'of your files')}${(s.proofInfo?.artwork.length ?? 0) - s.excludedArtwork.length > 0 ? ' + artwork' : ''}${s.workingFiles === 'missing' ? ' · working files unavailable' : s.workingFiles === 'none' ? ' · no working files' : ''}${s.aiText.trim() ? ' · AI use disclosed' : ''}`}</div>
         <div><span className="muted">Account</span>{designer?.nickname ?? '—'}</div>
       </div>
 

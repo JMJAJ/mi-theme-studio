@@ -56,4 +56,17 @@ describe('publish flow helpers', () => {
     // Rejected before it ever went live: resubmitted as it is, like the station's update form.
     expect(detailProblems({ form, tags: ['Cool'], updateOf: { ...updateOf, live: false } })).toEqual([]);
   });
+
+  it('rebuilds the proof when its declaration changes', async () => {
+    const { usePublish, proofKey } = await import('./publish');
+    usePublish.setState({ aiText: '', workingFiles: 'included', sources: '', process: '' });
+    const base = proofKey();
+    usePublish.setState({ aiText: 'Wallpaper: Midjourney v6 from my prompt' });
+    const withAi = proofKey();
+    expect(withAi).not.toBe(base);
+    usePublish.setState({ workingFiles: 'missing' });
+    expect(proofKey()).not.toBe(withAi);
+    usePublish.setState({ process: 'Drew the icon tiles in Figma, exported the layered files to source/.' });
+    expect(proofKey()).not.toBe(withAi);
+  });
 });
